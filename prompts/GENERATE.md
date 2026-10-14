@@ -28,15 +28,24 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   binding. All other `docs/SRS.md` references below name their section.
 - `prompts/ASK_USER.md` — interrogate the user per that file first.
 - `books/<slug>/raw_chapters/<id>.txt` — the pasted chapter source.
-- `packs/<slug>/` — where your YAML lands as `<id>.yaml`, plus
-  `packs/<slug>/runner/run` when you must author a runner (§7).
+- `packs/<slug>/<id>.yaml` — TARGET OUTPUT FILE.
+  - If you are an AI coding agent with file-creation tools: write the completed
+    YAML pack directly to `packs/<slug>/<id>.yaml`, then execute
+    `python main.py validate --book <slug> --chapter <id> --strict` to verify it.
+  - If you are in a chat-only environment: output inside a single `yaml`-fenced
+    code block and state `packs/<slug>/<id>.yaml` as the save destination.
+- `packs/<slug>/runner/run` — runner script (only when authoring a runner, §5).
 
-## 0. Output envelope + full-coverage protocol (MUST)
+## 0. Output destination & protocol (MUST)
 
+- **Target File**: `packs/<slug>/<id>.yaml` (e.g. `packs/extreme-c/ch09.yaml`).
+  - **Autonomous Agents with Tools**: Write the generated file directly to
+    `packs/<slug>/<id>.yaml` using your file creation tool, then validate it
+    via `python main.py validate --book <slug> --chapter <id> --strict`.
+  - **Chat-Only Models**: Output exactly ONE `yaml`-fenced block with the full
+    chapter file and direct the user to save it to `packs/<slug>/<id>.yaml`.
 - First interrogate the user per ASK_USER.md. MUST NOT emit final YAML until
   the user answers or says `use defaults`.
-- Then output exactly ONE `yaml`-fenced block with the full chapter file.
-  Surrounding prose goes OUTSIDE the fence and is ignored by the parser.
 - If you emit without interrogation answers (user said nothing and gave no
   defaults), set top-level `draft: true` — validators flag drafts and strict
   mode fails them (docs/SRS.md FR-GEN-003).

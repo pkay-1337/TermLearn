@@ -43,10 +43,24 @@ def build_prompt(book: str, chapter: str) -> str:
         raise FileNotFoundError(f"no extracted text: {raw} — run extract first")
     text = raw.read_text(encoding="utf-8")
     parts = chunk(text)
-    out = [gen, "\n---\n", ask, "\n---\n",
+    target_path = f"packs/{book}/{chapter}.yaml"
+    agent_header = (
+        f"# =============================================================================\n"
+        f"# INSTRUCTIONS FOR AI AGENTS & CODING ASSISTANTS:\n"
+        f"# TARGET OUTPUT FILE: {target_path}\n"
+        f"# - If you have tools to create/write files (e.g. write_to_file, bash, fs tools):\n"
+        f"#   CREATE and write the generated YAML pack directly to `{target_path}`.\n"
+        f"#   Then run: python main.py validate --book {book} --chapter {chapter} --strict\n"
+        f"# - If you are in a chat-only interface without file-writing tools:\n"
+        f"#   Output the YAML in exactly ONE ```yaml``` block and direct the user to save it to `{target_path}`.\n"
+        f"# =============================================================================\n\n"
+    )
+    out = [agent_header,
+           gen, "\n---\n", ask, "\n---\n",
            normative_excerpts(), "\n---\n",
            f"# CHAPTER {chapter} OF {book} ({len(parts)} part(s))",
-           f"# Paste order: answer ASK_USER questions first, then emit YAML.\n"]
+           f"# TARGET FILE DESTINATION: {target_path}",
+           f"# Process: answer ASK_USER questions first, then emit/write YAML to `{target_path}`.\n"]
     for n, p in enumerate(parts, 1):
         out.append(f"\n## part {n}/{len(parts)}\n\n{p}\n")
     return "\n".join(out)

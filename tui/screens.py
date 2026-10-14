@@ -8,7 +8,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import Screen
-from textual.widgets import DataTable, Label, Markdown, OptionList, Static
+from textual.widgets import Button, DataTable, Label, Markdown, OptionList, Static
 from textual.widgets._option_list import Option
 
 from tui.widgets import VimScrollMixin
@@ -245,9 +245,11 @@ class HomeScreen(_Base):
 class ChaptersScreen(_Base):
     HELP_TITLE = "chapters"
     HELP_LINES = [("enter", "open chapter"), ("j/k", "move cursor / scroll"),
-                  ("l/tab", "dossier"), ("h", "back to list"), ("q", "back")]
+                  ("l/tab", "dossier"), ("h", "back to list"), ("x", "delete chapter stats"), ("q", "back")]
     BINDINGS = [
         Binding("q", "back", "Back"),
+        Binding("x", "delete_analytics", "Delete Chapter Analytics", show=False),
+        Binding("X", "delete_analytics", "Delete Chapter Analytics", show=False),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("g", "cursor_home", "First", show=False),
@@ -479,6 +481,26 @@ class ChaptersScreen(_Base):
         self.app.chapter = cid
         from tui.screens import ChapterMenu
         self.app.push_screen(ChapterMenu(self.book, cid))
+
+    def action_delete_analytics(self) -> None:
+        try:
+            lst = self.query_one("#ch-list", OptionList)
+            if lst.highlighted is not None and 0 <= lst.highlighted < len(self._ch_ids):
+                cid = self._ch_ids[lst.highlighted]
+            else:
+                return
+        except Exception:
+            return
+
+        def _on_confirm(confirmed: bool) -> None:
+            if confirmed:
+                from lib.progress import wipe_chapter_progress
+                wipe_chapter_progress(self.book, cid)
+                self.app.notify(f"Analytics wiped for {self.book} / {cid}")
+                self._update_details(cid)
+
+        from tui.widgets import ConfirmDeleteModal
+        self.app.push_screen(ConfirmDeleteModal(self.book, cid), _on_confirm)
 
 class StudyBlockListScreen(_Base):
     HELP_TITLE = "study blocks"
@@ -805,7 +827,7 @@ class StudyBlockListScreen(_Base):
 
 class ChapterMenu(_Base):
     HELP_TITLE = "chapter menu"
-    HELP_LINES = [("1-8", "open mode"), ("j/k", "move cursor"), ("enter/l", "open mode"), ("q/h", "back")]
+    HELP_LINES = [("1-8", "open mode"), ("j/k", "move cursor"), ("enter/l", "open mode"), ("x", "delete chapter stats"), ("q/h", "back")]
     BINDINGS = ([Binding(str(i), f"mode{i}", "", show=False) for i in range(1, 9)] +
                 [Binding("j", "cursor_down", "Down", show=False),
                  Binding("k", "cursor_up", "Up", show=False),
@@ -813,6 +835,8 @@ class ChapterMenu(_Base):
                  Binding("G", "cursor_last", "Last", show=False),
                  Binding("l", "open_highlighted", "Open", show=False),
                  Binding("h", "back", "Back", show=False),
+                 Binding("x", "delete_analytics", "Delete Chapter Analytics", show=False),
+                 Binding("X", "delete_analytics", "Delete Chapter Analytics", show=False),
                  Binding("q", "back", "Back"),
                  Binding("question_mark", "help", "Help")])
     MODES = ["study", "revise", "quiz", "parsons", "lab", "test", "cards", "stats"]
@@ -895,12 +919,22 @@ class ChapterMenu(_Base):
                 "lab": practice.LabScreen(self.book, self.chapter),
                 "test": TestScreen(self.book, self.chapter),
                 "cards": practice.CardsScreen(self.book),
-                "stats": StatsScreen(self.book)}[mode]
+                "stats": StatsScreen(self.book, chapter=self.chapter)}[mode]
         self.app.push_screen(dest)
 
     @on(OptionList.OptionSelected, "#mode-list")
     def _open(self, event: OptionList.OptionSelected) -> None:
         self._go(str(event.option.id))
+
+    def action_delete_analytics(self) -> None:
+        def _on_confirm(confirmed: bool) -> None:
+            if confirmed:
+                from lib.progress import wipe_chapter_progress
+                wipe_chapter_progress(self.book, self.chapter)
+                self.app.notify(f"Analytics wiped for {self.book} / {self.chapter}")
+
+        from tui.widgets import ConfirmDeleteModal
+        self.app.push_screen(ConfirmDeleteModal(self.book, self.chapter), _on_confirm)
 
     def __getattr__(self, name: str):  # action_mode1..8 -> _go(MODES[i])
         if name.startswith("action_mode") and name[len("action_mode"):].isdigit():
@@ -954,73 +988,141 @@ class ReviseScreen(VimScrollMixin, _Base):
 
 class StatsScreen(VimScrollMixin, _Base):
     HELP_TITLE = "stats"
-    HELP_LINES = [("j/k", "scroll / row"), ("tab", "toggle table"), ("d/u", "half page"), ("q/h", "back")]
+    HELP_LINES = [("j/k", "scroll / row"), ("tab", "toggle table"), ("d/u", "half page"), ("x", "delete chapter stats"), ("q/h", "back")]
     BINDINGS = ([Binding("q", "back", "Back"),
                  Binding("h", "back", "Back", show=False),
                  Binding("tab", "switch_table", "Toggle Table", show=False),
+                 Binding("x", "delete_analytics", "Delete Chapter Analytics"),
+                 Binding("X", "delete_analytics", "Delete Chapter Analytics", show=False),
                  Binding("question_mark", "help", "Help")] +
                 VimScrollMixin.VIM_BINDINGS)
 
-    def __init__(self, book: str) -> None:
+    def __init__(self, book: str, chapter: str | None = None) -> None:
         super().__init__()
         self.book = book
+        self.chapter = chapter
 
     def compose(self) -> ComposeResult:
-        from lib.progress import chapter_stats, concept_stats
-        from lib.srs import due_cards, init_db
-        con = init_db()
-        try:
-            due_count = len(due_cards(con, self.book, limit=1000))
-            block_rows = con.execute(
-                "SELECT chapter, block, SUM(correct), COUNT(*) FROM answers "
-                "WHERE book=? GROUP BY chapter, block ORDER BY chapter, block",
-                (self.book,)
-            ).fetchall()
-        finally:
-            con.close()
-
-        ch_data = chapter_stats(self.book)
-        c_data = concept_stats(self.book)
-        total_hits = sum(r[2] or 0 for r in block_rows)
-        total_attempts = sum(r[3] or 0 for r in block_rows)
-        acc_pct = f"{100.0 * total_hits / total_attempts:.0f}%" if total_attempts else "—"
-
         with ScrollableContainer(classes="stats-container"):
-            yield Label(f"📊  LEARNING ANALYTICS — {self.book}", classes="screen-title")
+            title_text = f"📊  LEARNING ANALYTICS — {self.book}" + (f" / {self.chapter}" if self.chapter else "")
+            yield Label(title_text, classes="screen-title")
 
             with Horizontal(classes="kpi-row"):
                 with Vertical(classes="kpi-card"):
                     yield Label("ACCURACY", classes="kpi-label")
-                    yield Label(acc_pct, classes="kpi-value")
+                    yield Label("—", classes="kpi-value", id="kpi-acc")
                 with Vertical(classes="kpi-card"):
                     yield Label("SRS DUE", classes="kpi-label")
-                    yield Label(f"{due_count} Cards", classes="kpi-value")
+                    yield Label("—", classes="kpi-value", id="kpi-due")
                 with Vertical(classes="kpi-card"):
                     yield Label("BLOCKS STUDIED", classes="kpi-label")
-                    yield Label(str(len(block_rows)), classes="kpi-value")
+                    yield Label("—", classes="kpi-value", id="kpi-blocks")
                 with Vertical(classes="kpi-card"):
                     yield Label("CONCEPTS", classes="kpi-label")
-                    yield Label(str(len(c_data)), classes="kpi-value")
+                    yield Label("—", classes="kpi-value", id="kpi-concepts")
 
             yield Label("Block Accuracy Breakdown", classes="details-section-title")
             acc = DataTable(id="acc")
             acc.add_column("Chapter"); acc.add_column("Block")
             acc.add_column("Hits"); acc.add_column("Total"); acc.add_column("Accuracy")
-            for ch, bl, hits, tot in block_rows:
-                pct = f"{100.0 * (hits or 0) / tot:.0f}%" if tot else "-"
-                acc.add_row(ch, bl, str(hits or 0), str(tot), pct)
             yield acc
 
             yield Label("Concept Mastery Breakdown", classes="details-section-title")
             ct = DataTable(id="concepts")
             ct.add_column("Concept Tag"); ct.add_column("Hits"); ct.add_column("Total")
             ct.add_column("Accuracy"); ct.add_column("Review In Block")
+            yield ct
+
+            yield Static("", id="srs-status-msg")
+
+            btn_label = f"🗑️  Delete {self.chapter} Analytics (x)" if self.chapter else "🗑️  Delete Chapter Analytics (x)"
+            yield Button(btn_label, id="btn-delete-chapter", classes="delete-stats-btn")
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        self._reload_data()
+
+    def _reload_data(self) -> None:
+        from lib.progress import concept_stats
+        from lib.srs import due_cards, init_db
+        con = init_db()
+        try:
+            due_count = len(due_cards(con, self.book, limit=1000))
+            if self.chapter:
+                block_rows = con.execute(
+                    "SELECT chapter, block, SUM(correct), COUNT(*) FROM answers "
+                    "WHERE book=? AND chapter=? GROUP BY chapter, block ORDER BY chapter, block",
+                    (self.book, self.chapter)
+                ).fetchall()
+            else:
+                block_rows = con.execute(
+                    "SELECT chapter, block, SUM(correct), COUNT(*) FROM answers "
+                    "WHERE book=? GROUP BY chapter, block ORDER BY chapter, block",
+                    (self.book,)
+                ).fetchall()
+        finally:
+            con.close()
+
+        c_data = concept_stats(self.book)
+        total_hits = sum(r[2] or 0 for r in block_rows)
+        total_attempts = sum(r[3] or 0 for r in block_rows)
+        acc_pct = f"{100.0 * total_hits / total_attempts:.0f}%" if total_attempts else "—"
+
+        try:
+            self.query_one("#kpi-acc", Label).update(acc_pct)
+            self.query_one("#kpi-due", Label).update(f"{due_count} Cards")
+            self.query_one("#kpi-blocks", Label).update(str(len(block_rows)))
+            self.query_one("#kpi-concepts", Label).update(str(len(c_data)))
+
+            acc = self.query_one("#acc", DataTable)
+            acc.clear()
+            for ch, bl, hits, tot in block_rows:
+                pct = f"{100.0 * (hits or 0) / tot:.0f}%" if tot else "-"
+                acc.add_row(ch, bl, str(hits or 0), str(tot), pct)
+
+            ct = self.query_one("#concepts", DataTable)
+            ct.clear()
             for r in c_data:
                 pct = f"{100.0 * r['hits'] / r['total']:.0f}%" if r["total"] else "-"
                 ct.add_row(r["concept"], str(r["hits"]), str(r["total"]), pct, r["block"])
-            yield ct
 
-            yield Static(f"[bold cyan]SRS Due Queue:[/] [yellow]{due_count}[/] card(s) ready for review today.")
+            msg = self.query_one("#srs-status-msg", Static)
+            msg.update(f"[bold cyan]SRS Due Queue:[/] [yellow]{due_count}[/] card(s) ready for review today.")
+        except Exception:
+            pass
+
+    def _get_target_chapter(self) -> str | None:
+        if self.chapter:
+            return self.chapter
+        try:
+            acc = self.query_one("#acc", DataTable)
+            if acc.cursor_row is not None and acc.row_count > 0:
+                row_data = acc.get_row_at(acc.cursor_row)
+                if row_data and len(row_data) > 0:
+                    return str(row_data[0])
+        except Exception:
+            pass
+        return None
+
+    def action_delete_analytics(self) -> None:
+        target = self._get_target_chapter()
+        if not target:
+            self.app.notify("No chapter selected or available to delete.", severity="warning")
+            return
+
+        def _on_confirm(confirmed: bool) -> None:
+            if confirmed:
+                from lib.progress import wipe_chapter_progress
+                wipe_chapter_progress(self.book, target)
+                self.app.notify(f"Analytics wiped for {self.book} / {target}")
+                self._reload_data()
+
+        from tui.widgets import ConfirmDeleteModal
+        self.app.push_screen(ConfirmDeleteModal(self.book, target), _on_confirm)
+
+    @on(Button.Pressed, "#btn-delete-chapter")
+    def _delete_button(self) -> None:
+        self.action_delete_analytics()
 
     def action_switch_table(self) -> None:
         try:

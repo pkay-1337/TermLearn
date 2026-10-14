@@ -11,7 +11,7 @@ def reset_progress(book: str, chapter: str | None = None):
         console.print("[dim]cancelled — nothing wiped.[/dim]")
         return
     con = init_db()
-    for tbl in ("answers", "quiz_runs", "test_runs", "cards"):
+    for tbl in ("answers", "quiz_runs", "test_runs", "cards", "block_progress", "solutions"):
         if chapter:
             con.execute(f"DELETE FROM {tbl} WHERE book=? AND chapter=?", (book, chapter))
         else:

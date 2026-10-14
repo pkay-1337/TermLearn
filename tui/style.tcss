@@ -621,3 +621,69 @@ Button:focus {
     color: $text-muted;
 }
 
+/* --------------------------------------------------------------------------
+   Confirm Delete Modal Overlay & Delete Button
+   -------------------------------------------------------------------------- */
+ConfirmDeleteModal {
+    align: center middle;
+}
+
+#confirm-delete-box {
+    width: 60;
+    height: auto;
+    max-height: 80%;
+    background: $mantle;
+    border: double $status-danger;
+    padding: 1 2;
+}
+
+#confirm-delete-title {
+    text-style: bold;
+    color: $status-danger;
+    border-bottom: solid $surface-0;
+    padding-bottom: 1;
+    margin-bottom: 1;
+    text-align: center;
+}
+
+.confirm-delete-body {
+    margin-bottom: 1;
+    text-align: center;
+}
+
+.confirm-delete-actions {
+    height: auto;
+    align: center middle;
+    margin-top: 1;
+}
+
+.confirm-delete-actions Button {
+    margin: 0 1;
+}
+
+#btn-confirm-delete {
+    background: $status-danger;
+    color: $crust;
+    text-style: bold;
+}
+
+#btn-cancel-delete {
+    background: $surface-1;
+    color: $text-primary;
+}
+
+.delete-stats-btn {
+    margin-top: 1;
+    margin-bottom: 1;
+    background: $surface-1;
+    color: $status-danger;
+    border: none;
+    text-style: bold;
+}
+
+.delete-stats-btn:hover {
+    background: $status-danger;
+    color: $crust;
+}
+
+

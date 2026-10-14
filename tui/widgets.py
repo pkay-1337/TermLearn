@@ -117,6 +117,49 @@ class HelpModal(ModalScreen):
         self.app.pop_screen()
 
 
+class ConfirmDeleteModal(ModalScreen[bool]):
+    """Confirmation modal to wipe chapter analytics. (FR-STAT-003)"""
+
+    BINDINGS = [
+        Binding("y", "confirm", "Yes", show=False),
+        Binding("n", "cancel", "No", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("q", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, book: str, chapter: str) -> None:
+        super().__init__()
+        self.book = book
+        self.chapter = chapter
+
+    def compose(self) -> ComposeResult:
+        from textual.containers import Horizontal
+        with Vertical(id="confirm-delete-box"):
+            yield Label("⚠️  Reset Chapter Analytics?", id="confirm-delete-title")
+            yield Static(
+                f"Are you sure you want to delete all analytics for [bold cyan]{self.book} / {self.chapter}[/]?\n\n"
+                f"[dim]This will wipe recorded answers, quiz scores, test runs, and block completion for this chapter.[/dim]",
+                classes="confirm-delete-body",
+            )
+            with Horizontal(classes="confirm-delete-actions"):
+                yield Button("Cancel (n / Esc)", id="btn-cancel-delete")
+                yield Button("Delete (y / Enter)", id="btn-confirm-delete")
+
+    @on(Button.Pressed, "#btn-confirm-delete")
+    def _on_confirm(self) -> None:
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#btn-cancel-delete")
+    def _on_cancel(self) -> None:
+        self.dismiss(False)
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
 class ChoiceCard(Static):
     """A focusable, multi-line choice card that wraps cleanly across terminal widths."""
 

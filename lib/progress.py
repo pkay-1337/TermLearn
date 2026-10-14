@@ -302,3 +302,20 @@ def chapter_blocks_progress(book: str, chapter: str, blocks: list[dict]) -> list
         out.append(st)
     return out
 
+
+def wipe_chapter_progress(book: str, chapter: str) -> None:
+    """Wipe all recorded progress and analytics for a specific chapter."""
+    con = _db_or_none()
+    if con is None:
+        return
+    try:
+        for tbl in ("answers", "quiz_runs", "test_runs", "cards", "block_progress", "solutions"):
+            try:
+                con.execute(f"DELETE FROM {tbl} WHERE book=? AND chapter=?", (book, chapter))
+            except Exception:
+                pass
+        con.commit()
+    finally:
+        con.close()
+
+

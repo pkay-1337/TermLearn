@@ -169,20 +169,56 @@ class SubgoalCodeView(Static):
         self.lang = lang
         self.subgoals = subgoals or []
 
-    def compose(self) -> ComposeResult:
+    def _get_comment_prefix(self) -> str:
+        lang = (self.lang or "").lower()
+        if lang in ("python", "py", "bash", "sh", "yaml", "yml", "ruby", "rb", "perl", "r"):
+            return "#"
+        elif lang in ("sql", "lua", "haskell", "hs", "ada"):
+            return "--"
+        elif lang in ("lisp", "clojure", "scheme"):
+            return ";;"
+        return "//"
+
+    def _build_annotated_code(self) -> str:
         lines = self.code.splitlines()
+        prefix = self._get_comment_prefix()
+
+        sg_map: dict[int, list[str]] = {}
+        for sg in self.subgoals:
+            label = sg.get("label", "Subgoal")
+            sg_lines = sg.get("lines", [])
+            if sg_lines:
+                start_line = min(sg_lines)
+                if 1 <= start_line <= len(lines):
+                    sg_map.setdefault(start_line, []).append(label)
+
+        annotated_lines = []
+        for i, line in enumerate(lines, 1):
+            if i in sg_map:
+                indent = line[: len(line) - len(line.lstrip())]
+                for lbl in sg_map[i]:
+                    annotated_lines.append(f"{indent}{prefix} ── Subgoal: {lbl} ──")
+            annotated_lines.append(line)
+
+        return "\n".join(annotated_lines)
+
+    def compose(self) -> ComposeResult:
+        annotated_code = self._build_annotated_code()
+        if len(self.subgoals) == 1:
+            title = f"🎯 Subgoal: {self.subgoals[0].get('label', '')}"
+        elif len(self.subgoals) > 1:
+            labels_str = " · ".join(sg.get("label", "") for sg in self.subgoals)
+            title = f"🎯 Subgoals: {labels_str}"
+        else:
+            title = "🎯 Code Example"
+
         with Vertical(classes="subgoal-container"):
-            for sg in self.subgoals:
-                label = sg.get("label", "Subgoal")
-                sg_lines = sg.get("lines", [])
-                sub_code = "\n".join(lines[i - 1] for i in sg_lines if 1 <= i <= len(lines))
-                with Vertical(classes="subgoal-frame"):
-                    yield Label(f"🎯  Subgoal: {label}", classes="subgoal-header")
-                    try:
-                        from textual.widgets import Syntax
-                        yield Syntax(sub_code, self.lang, theme="monokai", classes="subgoal-code")
-                    except Exception:
-                        yield Static(sub_code, classes="subgoal-code")
+            yield Label(title, classes="subgoal-summary-label")
+            try:
+                from textual.widgets import Syntax
+                yield Syntax(annotated_code, self.lang, theme="monokai", classes="study-example-box")
+            except Exception:
+                yield Static(annotated_code, classes="study-example-box")
 
 
 class ToolchainInspectModal(ModalScreen):

@@ -742,29 +742,15 @@ ConfirmDeleteModal {
 .subgoal-container {
     width: 100%;
     height: auto;
-    margin-bottom: 1;
+    margin: 1 0;
 }
 
-.subgoal-frame {
-    width: 100%;
-    height: auto;
-    border: round $surface-2;
-    background: $base;
-    margin-bottom: 1;
-    padding: 0 1;
-}
-
-.subgoal-header {
+.subgoal-summary-label {
     width: 100%;
     color: $accent-secondary;
     text-style: bold;
-    background: $surface-0;
     padding: 0 1;
-}
-
-.subgoal-code {
-    max-height: 10;
-    margin: 0;
+    margin-bottom: 0;
 }
 
 /* -------------------------------------------------------------------------

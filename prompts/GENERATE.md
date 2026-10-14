@@ -71,6 +71,126 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   `example`, turned into a check (predict/order/fillblank/micro-lab), or
   deferred with reason. Count them and say the count in the audit trail.
 
+### 0.2 Put All Your Might — Go Plus Ultra (Never Half-Ass) (MUST)
+
+- **The Plus Ultra Standard**: Treat the authoring of this chapter pack as a
+  masterwork of pedagogical engineering. The learner studies SOLELY from your
+  YAML, without the original book open. Every sentence of explanation and every
+  check must carry maximal clarity, depth, and instructional power.
+- **Zero Half-Assing & No Placeholders**:
+  - NEVER emit placeholders (`TODO`, `...`, `/* rest of code here */`, `etc.`).
+  - NEVER write lazy, hand-waving, or dismissive explanations (e.g. "This sets x to 5",
+    "Self-explanatory boilerplate", "Standard syntax").
+  - NEVER skip code boxes, exercises, diagrams, or tricky corner cases.
+  - Dedicate full cognitive and pedagogical might to every single block, code
+    example, visualizer, diagnostic check, distractor rationale, and remediation.
+
+### 0.3 Never Worry About Length — Multi-Turn / Multi-Step Protocol (MUST)
+
+- **Length Independence**: Do NOT worry about the length or character count of
+  the YAML file! Thoroughness, depth, and pedagogical completeness strictly
+  override brevity. A chapter with 8–15 richly explained blocks, deep code breakdowns,
+  and 30+ diagnostic checks is vastly superior to a rushed 3-block summary.
+- **Never Truncate to Save Tokens**: Never rush, combine distinct concepts, or
+  cut code examples to fit into a single response context.
+- **Multi-Turn Generation Protocol**:
+  - **Autonomous AI Agents (with file-creation / terminal tools)**: If a chapter
+    is large or concept-dense, do NOT attempt to rush everything into one tool call.
+    Write the initial skeleton and first batch of blocks (e.g. `meta`, `objectives`,
+    blocks `b1`–`b4`) to `packs/<slug>/<id>.yaml`. In subsequent turns or tool
+    calls, append/insert blocks `b5`–`b8`, `b9`–`b12`, `cards`, `lab`, and `test`.
+    Finally run `python main.py validate --book <slug> --chapter <id> --strict`.
+  - **Chat-Only Models (no file tools)**: If the chapter is too large to emit in
+    one message without hitting token limits, notify the user:
+    *"This chapter is being generated in sequential parts to ensure exhaustive,
+    untruncated depth."* Emit Part 1 (Meta + Blocks 1–4), then Part 2 (Blocks 5–8),
+    then Part 3 (remaining blocks, cards, lab, test). Direct the user to assemble
+    them into `packs/<slug>/<id>.yaml`.
+
+### 0.4 Evidence-Based Learning Science & Cognitive Architecture (MUST)
+
+Every instructional decision in this course pack is grounded in peer-reviewed
+learning science, cognitive psychology, and computing education research (CER):
+
+1. **Cognitive Load Theory (CLT) & Working Memory Limits** (Sweller 1988, 2011;
+   van Merriënboer & Sweller 2005):
+   - Novice working memory is strictly limited to 3–4 novel interacting elements.
+   - *Intrinsic Load*: The inherent complexity of technical logic (e.g. pointer indirection,
+     concurrency, stack layout). Managed by breaking the chapter into single-concept blocks.
+   - *Extraneous Load*: Mental waste caused by poor presentation, split attention,
+     and jargon without grounding. Minimized by keeping code and explanation spatially
+     contiguous, self-contained, and crystal clear.
+   - *Germane Load*: Productive mental effort devoted to schema acquisition.
+     Maximized through deliberate retrieval practice, contrasting cases, and prediction.
+
+2. **The Notional Machine** (du Boulay 1986; Sorva 2013; Fincher et al.):
+   - A Notional Machine is the explicit, conceptual model of the underlying computer
+     that executes the code: the call stack, stack frames, heap memory, registers,
+     instruction pointer, pointers/addresses, and variable lifetimes.
+   - *Novice Failure Mode*: Beginners fail not because of syntax, but because they hold
+     vague, magical, or anthropomorphic mental models of execution.
+   - *Rule*: Every block MUST make the Notional Machine explicit. Whenever code is
+     introduced, explain the physical/virtual state transitions taking place inside
+     the machine.
+
+3. **The Block Model for Program Comprehension** (Schulte 2008):
+   - Novices comprehend programs across three orthogonal dimensions:
+     (a) **Text Surface**: Language syntax, tokens, and grammar.
+     (b) **Execution Semantics**: Dynamic runtime operations, state changes, memory mutation.
+     (c) **Purpose / Subgoal**: What functional goal this code accomplishes and why it was chosen.
+   - Explanations MUST systematically address all three dimensions, never stopping at
+     mere surface syntax.
+
+4. **Concrete-Representational-Abstract (CRA) & Dual Coding** (Paivio 1986; Mayer 2009):
+   - Connect abstract syntax to visual memory step-throughs (`viz`) and intuitive,
+     physical mental models before formalizing abstract syntax and mathematical constraints.
+
+5. **Desirable Difficulties & Retrieval Practice** (Bjork & Bjork 1992; Karpicke & Blunt 2011, Science):
+   - Active retrieval practice produces 200%–300% higher long-term retention and conceptual
+     transfer than passive reading or highlighting.
+   - Interleaving (`from_chapter`) forces discriminative contrast between similar concepts
+     (e.g., `*p++` vs `(*p)++`, pass-by-value vs pass-by-reference).
+   - Generation effect: filling a blank or ordering scrambled code builds stronger,
+     more durable neural schemas than passively observing a solution.
+
+6. **Subgoal Learning & Schema Acquisition** (Catrambone 1998; Margulieux et al. 2016):
+   - Novices organize memory around functional goal labels ("Acquire dynamic buffer via address"),
+     not mechanical operations ("Call malloc"). Block titles and explanation headers MUST
+     be functional subgoal labels.
+
+7. **Spatial Contiguity & Avoiding Split Attention** (Mayer & Moreno 2003):
+   - Explanations of code must be immediately adjacent to or integrated with the code,
+     so the learner never has to jump back and forth across distant paragraphs.
+
+### 0.5 Comprehensive Code Block Explanations & Notional Machine Walkthroughs (MUST)
+
+- **No Code Without Deep Explanation**: Every single code snippet in `example`,
+  `explain_md`, `checks`, or `lab` MUST be accompanied by an exhaustive, intuitive breakdown.
+- **Mandatory Explanation Components for Every Code Block**:
+  1. **Line-by-Line / Construct Walkthrough**: What each line, keyword, type declaration,
+     or expression does in human terms.
+  2. **Notional Machine State Transitions**: What happens in memory (stack frames, heap,
+     pointers, CPU registers) when this code runs.
+  3. **The "Why" Behind the Design**: Why this specific implementation was chosen
+     over plausible alternatives (e.g., why pass by address vs by value; why `#define`
+     vs `const`; why NULL check before dereference).
+  4. **Boundary Conditions & Failure Traps**: What happens if a line is removed, reordered,
+     or executed with boundary values (NULL, 0, -1, uninitialized memory, buffer boundaries).
+
+### 0.6 Intuition-First Comprehensibility (MUST)
+
+- **Teach for True Comprehension**: Write with crystal clarity, warmth, and intellectual
+  rigor for an ambitious learner studying alone in a terminal.
+- **Bridge Jargon with Intuition First**: Introduce difficult concepts (e.g., pointer indirection,
+  memory alignment, race conditions, vtables, recursion) by first establishing an intuitive,
+  physical mental model (e.g., mailboxes, address books, shared whiteboards) BEFORE
+  introducing the formal keywords and syntax.
+- **Never Hand-Wave**: Ban phrases like "it is obvious that...", "simply...", or "clearly...".
+  If a step is subtle or tricky, slow down and unpack it step-by-step.
+- **Address Misconceptions Head-On**: Explicitly name and dismantle the classic
+  misconceptions that trip up learners (e.g. confusing the address of a pointer with the address
+  it points to).
+
 ## 1. Fidelity (MUST)
 
 - Use ONLY concepts/APIs present in the pasted chapter. External knowledge
@@ -93,8 +213,14 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
 
 - Split the chapter into concept-dependency order: each block teaches exactly
   ONE new falsifiable skill (e.g. `& takes an address`, not `pointers`).
-- Block shape: `id, type, title, explain_md (5-15 lines Markdown, ≤120 cols),
-  example? (≤30 lines, ≤80 cols), viz? (for model), checks[>=1], common_bugs?`.
+- Block shape: `id, type, title, explain_md, example?, viz?, checks[>=1], common_bugs?`.
+  - `explain_md`: Typically 10–25 lines of crystal-clear, comprehensible Markdown (≤120 cols).
+    MUST thoroughly unpack the concept, bridge technical jargon with intuitive mental models,
+    and walk through the example code and Notional Machine state changes. Never abbreviate or
+    cut short to save space; depth and conceptual clarity are paramount.
+  - `example`: Verified code snippet (≤35 lines, ≤80 cols), runnable where applicable.
+    Every code example MUST have an accompanying breakdown of its lines, memory mutations,
+    and design rationale in `explain_md` or check `why`.
 - `type` MUST be one of `model | syntax | design | algorithm` (meanings in the docs/SRS.md §4.6 table).
 - Each block title MUST be a functional subgoal label, NOT a comment:
   [Research: subgoal labels group procedure steps under their purpose, cut

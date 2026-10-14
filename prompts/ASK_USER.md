@@ -2,9 +2,12 @@
 # The AI MUST ask these BEFORE emitting YAML. MUST NOT emit final YAML until
 # the user answers or says `use defaults`.
 #
-# IMPORTANT: When authoring quizzes, checks, and questions, NEVER refer to
-# questions or exercises in the book (e.g. never say "refer to question 3 in book").
-# Always put the whole question with complete, self-contained context and code.
+# IMPORTANT: When authoring quizzes, checks, and questions:
+# 1. NEVER refer to questions or exercises in the book (e.g. never say "refer to question 3 in book").
+#    Always put the whole question with complete, self-contained context and code.
+# 2. NEVER worry about YAML length — multi-turn generation across sequential steps is supported.
+# 3. Always include thorough, line-by-line explanations for every code block and reveal the Notional Machine.
+# 4. Put all your might and go Plus Ultra — zero half-assing, no placeholders.
 
 Ask (compact, one message, numbered):
 
@@ -13,6 +16,8 @@ Ask (compact, one message, numbered):
    Default: comfortable-in-C.
 2. **Depth vs speed** — deep (more blocks, ≥3 checks each) or fast (fewer
    blocks, 1-2 checks each) or balanced (2 blocks per major concept)? Default: deep.
+   *(Note: YAML length is unlimited — multi-turn / multi-step generation is fully supported
+   so no concepts or code explanations are ever rushed or cut short).*
 3. **Prioritize / skip** — which sections/examples of this chapter matter most?
    Any to skip (e.g. Windows-only notes, C++ tangents)? Default: keep all,
    skip platform tangents.

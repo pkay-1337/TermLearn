@@ -101,6 +101,7 @@ Footer {
     border: round $surface-0;
     padding: 1 2;
     margin-bottom: 1;
+    height: auto;
 }
 
 .details-header {
@@ -173,6 +174,13 @@ OptionList:focus > .option-list--option-highlighted {
 .study-container {
     padding: 1 2;
     height: 1fr;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#body {
+    width: 100%;
+    height: auto;
 }
 
 .study-header-bar {
@@ -189,6 +197,7 @@ OptionList:focus > .option-list--option-highlighted {
     border: round $surface-0;
     padding: 1 2;
     margin-bottom: 1;
+    height: auto;
 }
 
 .study-example-box {
@@ -215,6 +224,8 @@ OptionList:focus > .option-list--option-highlighted {
    Quiz & Question Widgets
    -------------------------------------------------------------------------- */
 QuestionWidget {
+    width: 100%;
+    height: auto;
     background: $base;
     border: round $surface-0;
     padding: 1 2;
@@ -226,6 +237,9 @@ QuestionWidget:focus-within {
 }
 
 .question-prompt {
+    width: 100%;
+    height: auto;
+    text-wrap: wrap;
     text-style: bold;
     color: $accent-cyan;
     margin-bottom: 1;

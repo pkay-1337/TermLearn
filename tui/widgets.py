@@ -135,7 +135,7 @@ class ChoiceCard(Static):
         self.raw_text = text
 
     def compose(self) -> ComposeResult:
-        yield Label(f"({self.index})  {self.raw_text}", classes="choice-card-text")
+        yield Static(f"({self.index})  {self.raw_text}", classes="choice-card-text")
 
     def on_click(self) -> None:
         self.post_message(self.Selected(self.index - 1))
@@ -170,7 +170,7 @@ class QuestionWidget(Static):
 
     def compose(self) -> ComposeResult:
         ck = self.check
-        yield Label(f"[{ck.get('kind', '?').upper()}] {ck.get('q', '')}", classes="question-prompt")
+        yield Static(f"[{ck.get('kind', '?').upper()}] {ck.get('q', '')}", classes="question-prompt")
         if ck.get("code"):
             try:
                 from textual.widgets import Syntax

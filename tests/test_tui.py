@@ -265,3 +265,33 @@ async def test_cards_vim_space_flip(tmp_path, monkeypatch):
         con.close()
         assert n >= 1
 
+
+async def test_small_terminal_wrapping_and_scrolling(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import QuizScreen
+    from tui.widgets import ChoiceCard
+    app = LearnApp()
+    async with app.run_test(size=(40, 12)) as pilot:
+        quiz = QuizScreen("extreme-c", "ch04")
+        quiz.idx = 1  # MCQ question
+        app.push_screen(quiz)
+        for _ in range(8):
+            await pilot.pause()
+        sc = app.screen.query_one(".study-container")
+        assert sc.max_scroll_y > 0
+        prompt = app.screen.query_one(".question-prompt")
+        assert prompt.size.height >= 2
+        cards = list(app.screen.query(ChoiceCard))
+        assert len(cards) >= 2
+        assert cards[0].size.height >= 2
+        # Scroll down with j
+        assert sc.scroll_y == 0
+        await pilot.press("j")
+        await pilot.pause()
+        assert sc.scroll_y > 0
+        # Scroll up with k
+        await pilot.press("k")
+        await pilot.pause()
+        assert sc.scroll_y == 0
+
+

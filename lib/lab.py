@@ -98,6 +98,124 @@ def exec_runner(runner: Path, src: Path, expect: str, timeout: int,
         return res
 
 
+def get_runner_verbs(runner: Path) -> list[str]:
+    """RUNNER-VERBS query (SPEC-RUNNER-002)."""
+    try:
+        pr = subprocess.run([str(runner), "verbs"], capture_output=True, text=True,
+                            timeout=5, cwd=str(runner.parent))
+        if pr.returncode == 0:
+            data, _ = _parse_json_blob(pr.stdout, "verbs")
+            if data and isinstance(data.get("verbs"), list):
+                return [str(v) for v in data["verbs"]]
+    except Exception:
+        pass
+    return ["check", "exec"]
+
+
+def inspect_runner(runner: Path, src: Path, mode: str = "symbols", timeout: int = 10) -> dict:
+    """RUNNER-INSPECT verb (SPEC-RUNNER-002)."""
+    try:
+        pr = subprocess.run([str(runner), "inspect", str(src), "--mode", mode],
+                            capture_output=True, text=True, timeout=timeout, cwd=str(src.parent))
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "diagnostics": "runner timed out on inspect", "mode": mode, "content": "", "format": "text"}
+    except OSError as e:
+        return {"ok": False, "diagnostics": f"runner not executable: {e}", "mode": mode, "content": "", "format": "text"}
+    if pr.returncode != 0:
+        return {"ok": False, "diagnostics": f"runner exit {pr.returncode}: {(pr.stderr or '')[:300]}", "mode": mode, "content": "", "format": "text"}
+    data, err = _parse_json_blob(pr.stdout, "inspect")
+    if err:
+        return {"ok": False, "diagnostics": err, "mode": mode, "content": "", "format": "text"}
+    return {
+        "ok": bool(data.get("ok")),
+        "diagnostics": str(data.get("diagnostics", "")),
+        "mode": str(data.get("mode", mode)),
+        "content": str(data.get("content", "")),
+        "format": str(data.get("format", "text"))
+    }
+
+
+def lint_runner(runner: Path, src: Path, timeout: int = 10) -> dict:
+    """RUNNER-LINT verb (SPEC-RUNNER-002)."""
+    try:
+        pr = subprocess.run([str(runner), "lint", str(src)],
+                            capture_output=True, text=True, timeout=timeout, cwd=str(src.parent))
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "diagnostics": [{"message": "runner timed out on lint"}]}
+    except OSError as e:
+        return {"ok": False, "diagnostics": [{"message": f"runner not executable: {e}"}]}
+    if pr.returncode != 0:
+        return {"ok": False, "diagnostics": [{"message": f"runner exit {pr.returncode}: {(pr.stderr or '')[:300]}"}]}
+    data, err = _parse_json_blob(pr.stdout, "lint")
+    if err or not isinstance(data, dict):
+        return {"ok": False, "diagnostics": [{"message": err or "malformed lint response"}]}
+    return {"ok": bool(data.get("ok")), "diagnostics": data.get("diagnostics", [])}
+
+
+def inspect_c(code: str, mode: str = "symbols") -> dict:
+    """Built-in pilot inspector for C code using host gcc, nm, objdump, readelf."""
+    if not gcc_available():
+        return {"ok": False, "diagnostics": "gcc not found on PATH", "mode": mode, "content": "", "format": "text"}
+    with tempfile.TemporaryDirectory(prefix="termlearn-cinsp-") as td:
+        src = Path(td) / "code.c"
+        obj = Path(td) / "code.o"
+        src.write_text(code, encoding="utf-8")
+        cr = subprocess.run(["gcc", "-c", "-Wall", "-std=c99", "-O0", str(src), "-o", str(obj)],
+                            capture_output=True, text=True, timeout=10)
+        if cr.returncode != 0:
+            return {"ok": False, "diagnostics": f"Compilation failed:\n{cr.stderr}", "mode": mode, "content": "", "format": "text"}
+        if mode == "symbols":
+            cmd = ["nm", "-C", str(obj)]
+            fmt = "text"
+        elif mode == "disasm":
+            cmd = ["objdump", "-d", "-M", "intel", str(obj)]
+            fmt = "asm"
+        elif mode == "sections":
+            cmd = ["readelf", "-S", str(obj)]
+            fmt = "text"
+        else:
+            return {"ok": False, "diagnostics": f"Unknown inspect mode: {mode!r}", "mode": mode, "content": "", "format": "text"}
+        tool = cmd[0]
+        if not shutil.which(tool):
+            return {"ok": False, "diagnostics": f"Tool '{tool}' not found on host", "mode": mode, "content": "", "format": fmt}
+        try:
+            ir = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
+            if ir.returncode != 0:
+                return {"ok": False, "diagnostics": f"{tool} failed: {ir.stderr}", "mode": mode, "content": "", "format": fmt}
+            return {"ok": True, "diagnostics": "", "mode": mode, "content": ir.stdout, "format": fmt}
+        except Exception as e:
+            return {"ok": False, "diagnostics": f"Error running {tool}: {e}", "mode": mode, "content": "", "format": fmt}
+
+
+def inspect_code(book: str | None, code: str, lang: str = "c", mode: str = "symbols", packs_root=None) -> dict:
+    """High-level inspector dispatcher. Resolves runner or pilot C fallback."""
+    lang = (lang or "c").lower()
+    if book:
+        from lib.pack import load_book_toolchain
+        try:
+            tc = load_book_toolchain(book, packs_root)
+            rel = (tc or {}).get("runner", "")
+            if rel:
+                from pathlib import Path as _P
+                _root = _P(packs_root) if packs_root else _P(__file__).resolve().parents[1] / "packs"
+                runner = _root / book / rel
+                if runner.exists() and os.access(str(runner), os.X_OK):
+                    verbs = get_runner_verbs(runner)
+                    if "inspect" in verbs:
+                        ext = EXT_BY_LANG.get(lang, "src")
+                        with tempfile.TemporaryDirectory(prefix="termlearn-rinsp-") as td:
+                            src = Path(td) / f"prog.{ext}"
+                            src.write_text(code, encoding="utf-8")
+                            return inspect_runner(runner, src, mode=mode)
+        except Exception:
+            pass
+    if lang in ("c", "cpp"):
+        return inspect_c(code, mode=mode)
+    return {"ok": False, "diagnostics": f"Inspector mode '{mode}' not available for language '{lang}' without a runner.",
+            "mode": mode, "content": "", "format": "text"}
+
+
+
 def run_via_runner(book: str, code: str, lang: str,
                    tests: list[dict] | None = None, timeout: int = 2,
                    packs_root=None) -> dict:

@@ -12,8 +12,9 @@ CHAPTER_REQUIRED_TOP = {"meta", "objectives", "blocks"}
 CHAPTER_KNOWN_TOP = {"meta", "objectives", "blocks", "cards", "lab", "test", "draft"}
 BLOCK_TYPES = {"model", "syntax", "design", "algorithm"}
 CHECK_KINDS = {"predict", "why-fails", "mcq", "fillblank", "order",
-               "eipe", "choose-better", "micro-lab"}
-CHOICE_KINDS = {"predict", "why-fails", "mcq", "eipe", "choose-better"}
+               "eipe", "choose-better", "micro-lab",
+               "trace", "spot-bug"}
+CHOICE_KINDS = {"predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug"}
 DENYLIST = ["rm -rf", "curl", "wget", "ssh", "mkfs", ":(){", "dd if=", "chmod 777"]
 
 #: Network-capable constructs (FR-TEST-004, D-18). Regexes, case-sensitive;
@@ -102,6 +103,18 @@ def suggest_fixes(data: dict) -> list[str]:
                                      + (f"; out of range {bad}" if bad else ""))
             if ck["kind"] == "fillblank" and not str(ck.get("answer_text", "")).strip():
                 hints.append(f"HINT: {cloc}: add 'answer_text:' with the exact token")
+            if ck["kind"] == "order" and ck.get("faded") is True and not ck.get("blanks"):
+                hints.append(f"HINT: {cloc}: faded order check needs 'blanks:' with line_idx and answer_text")
+            if ck["kind"] == "trace":
+                if "trace" not in ck or not isinstance(ck.get("trace"), dict):
+                    hints.append(f"HINT: {cloc}: trace check needs 'trace:' with headers and rows")
+                if "target" not in ck:
+                    hints.append(f"HINT: {cloc}: trace check needs 'target:' with row and col")
+            if ck["kind"] == "spot-bug":
+                if "diagnostic_log" not in ck:
+                    hints.append(f"HINT: {cloc}: spot-bug check needs 'diagnostic_log:' with compiler/sanitizer report")
+                if "code" not in ck:
+                    hints.append(f"HINT: {cloc}: spot-bug check needs 'code:' snippet")
     return hints
 
 
@@ -237,9 +250,20 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
             errors.append(_err("BLOCK-CHECKS", f"{loc} checks must be non-empty list"))
             continue
         ex = b.get("example")
-        if isinstance(ex, dict) and ex.get("code"):
-            if len(str(ex["code"]).splitlines()) > 80:
+        if isinstance(ex, dict):
+            if ex.get("code") and len(str(ex["code"]).splitlines()) > 80:
                 warnings.append(_err("EX-LONG", f"{loc} example >80 lines; keep terminal-readable (FR-PACK-005)"))
+            if "subgoals" in ex:
+                sgs = ex.get("subgoals")
+                if not isinstance(sgs, list) or not sgs:
+                    errors.append(_err("SUBGOAL-SHAPE", f"{loc} example subgoals must be non-empty list"))
+                else:
+                    code_len = len(str(ex.get("code", "")).splitlines())
+                    for sgi, sg in enumerate(sgs):
+                        if not isinstance(sg, dict) or not sg.get("label") or not isinstance(sg.get("lines"), list):
+                            errors.append(_err("SUBGOAL-SHAPE", f"{loc} example subgoals[{sgi}] needs label and lines list"))
+                        elif code_len > 0 and any(not isinstance(ln, int) or ln < 1 or ln > code_len for ln in sg.get("lines", [])):
+                            errors.append(_err("SUBGOAL-SPAN", f"{loc} example subgoals[{sgi}] lines out of bounds (1..{code_len})"))
         if b.get("type") == "model" and "viz" not in b:
             warnings.append(_err("MODEL-NOVIZ", f"{loc} model block without viz; SHOULD add ascii-memory (MAP-001)"))
         for ci, ck in enumerate(b["checks"]):
@@ -255,7 +279,7 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
                 errors.append(_err("CHECK-WHY", f"{cloc} missing required 'why' explanation"))
             else:
                 why_total += 1
-                if kind in ("predict", "why-fails", "eipe", "choose-better"):
+                if kind in ("predict", "why-fails", "eipe", "choose-better", "trace", "spot-bug"):
                     why_conceptual += 1
             if kind in CHOICE_KINDS:
                 chs = ck.get("choices")
@@ -273,9 +297,45 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
                       or len(set(ao)) != len(ao)
                       or not all(isinstance(i, int) and 0 <= i < len(lines) for i in ao)):
                     errors.append(_err("ORDER-PERM", f"{cloc} answer_order {ao!r} must list >=2 unique valid indices into lines (distractor lines are simply omitted)"))
+                if ck.get("faded") is True:
+                    blanks = ck.get("blanks")
+                    if not isinstance(blanks, list) or not blanks:
+                        errors.append(_err("FADED-BLANK", f"{cloc} faded order check requires non-empty 'blanks' list"))
+                    else:
+                        for bi, blk in enumerate(blanks):
+                            if not isinstance(blk, dict) or "line_idx" not in blk:
+                                errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] requires line_idx"))
+                            elif not isinstance(blk["line_idx"], int) or not (0 <= blk["line_idx"] < len(lines or [])):
+                                errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] line_idx out of bounds"))
+                            elif not blk.get("answer_text") and not blk.get("accepted"):
+                                errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] requires answer_text or accepted list"))
             if kind == "fillblank":
                 if "answer_text" not in ck or not str(ck["answer_text"]).strip():
                     errors.append(_err("FILL-ANSWER", f"{cloc} fillblank needs answer_text"))
+            if kind == "trace":
+                tr = ck.get("trace")
+                if not isinstance(tr, dict) or not isinstance(tr.get("headers"), list) or len(tr["headers"]) < 2:
+                    errors.append(_err("TRACE-SHAPE", f"{cloc} trace check requires 'trace.headers' list of >=2"))
+                elif not isinstance(tr.get("rows"), list) or len(tr["rows"]) < 1:
+                    errors.append(_err("TRACE-SHAPE", f"{cloc} trace check requires 'trace.rows' list of >=1"))
+                else:
+                    tgt = ck.get("target")
+                    if not isinstance(tgt, dict) or "row" not in tgt or "col" not in tgt:
+                        errors.append(_err("TRACE-TARGET", f"{cloc} trace check requires 'target' with row and col"))
+                    elif (not isinstance(tgt["row"], int) or not (0 <= tgt["row"] < len(tr["rows"]))
+                          or not isinstance(tgt["col"], int) or not (0 <= tgt["col"] < len(tr["headers"]))):
+                        errors.append(_err("TRACE-TARGET", f"{cloc} trace target row/col out of bounds"))
+                    has_txt = bool(str(ck.get("answer_text", "")).strip())
+                    chs = ck.get("choices")
+                    ans = ck.get("answer")
+                    has_choices = isinstance(chs, list) and len(chs) >= 2 and isinstance(ans, int) and (0 <= ans < len(chs))
+                    if not has_txt and not has_choices:
+                        errors.append(_err("TRACE-ANSWER", f"{cloc} trace check requires answer_text or choices+answer"))
+            if kind == "spot-bug":
+                if not str(ck.get("code", "")).strip():
+                    errors.append(_err("BUG-CODE", f"{cloc} spot-bug check requires 'code' snippet"))
+                if not str(ck.get("diagnostic_log", "")).strip():
+                    errors.append(_err("BUG-LOG", f"{cloc} spot-bug check requires 'diagnostic_log' report"))
             for ref in ("from_chapter", "from_block"):
                 pass
             if "from_chapter" in ck and known_chapters is not None:

@@ -33,7 +33,7 @@ async def _wait_body(app, pilot, tries=120):
 
 async def test_nav_home_to_study_and_help(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    from tui.screens import ChapterMenu, ChaptersScreen, HomeScreen
+    from tui.screens import ChapterMenu, ChaptersScreen, HomeScreen, StudyBlockListScreen
     from tui.practice import StudyScreen
     from tui.widgets import HelpModal
     app = LearnApp()
@@ -48,6 +48,9 @@ async def test_nav_home_to_study_and_help(tmp_path, monkeypatch):
         menu = await _wait_screen(app, pilot, ChapterMenu)
         assert (menu.book, menu.chapter) == ("extreme-c", "ch04")
         await pilot.press("1")
+        block_screen = await _wait_screen(app, pilot, StudyBlockListScreen)
+        assert block_screen.query_one("#block-list", OptionList).option_count >= 1
+        await pilot.press("enter")
         await _wait_screen(app, pilot, StudyScreen)
         await _wait_body(app, pilot)
         await pilot.press("question_mark")
@@ -55,6 +58,10 @@ async def test_nav_home_to_study_and_help(tmp_path, monkeypatch):
         assert isinstance(app.screen, HelpModal)
         await pilot.press("escape")
         await _wait_screen(app, pilot, StudyScreen)
+        await pilot.press("q")
+        await _wait_screen(app, pilot, StudyBlockListScreen)
+        await pilot.press("q")
+        await _wait_screen(app, pilot, ChapterMenu)
 
 
 async def test_quiz_parsons_scores_and_persists(tmp_path, monkeypatch):
@@ -293,5 +300,76 @@ async def test_small_terminal_wrapping_and_scrolling(tmp_path, monkeypatch):
         await pilot.press("k")
         await pilot.pause()
         assert sc.scroll_y == 0
+
+
+async def test_study_block_list_indicators_and_selection(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from lib import progress
+    from tui.screens import StudyBlockListScreen
+    from tui.practice import StudyScreen
+    from textual.widgets import OptionList, Markdown, Label
+
+    # Seed progress in DB:
+    # Mark block b1 completed explicitly
+    progress.mark_block_completed("extreme-c", "ch04", "b1")
+    # Partially answer block b2 (1 check)
+    con = progress.init_db()
+    con.execute("INSERT INTO answers(ts,book,chapter,block,check_idx,correct) VALUES(1,'extreme-c','ch04','b2',0,1)")
+    con.commit()
+    con.close()
+
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        screen = StudyBlockListScreen("extreme-c", "ch04")
+        app.push_screen(screen)
+        await _wait_screen(app, pilot, StudyBlockListScreen)
+        await pilot.pause()
+
+        lst = screen.query_one("#block-list", OptionList)
+        assert lst.option_count >= 3
+
+        # Verify indicators on options
+        opt0_prompt = str(lst.get_option_at_index(0).prompt)
+        opt1_prompt = str(lst.get_option_at_index(1).prompt)
+        opt2_prompt = str(lst.get_option_at_index(2).prompt)
+
+        assert "DONE" in opt0_prompt
+        assert "◐" in opt1_prompt
+        assert "TODO" in opt2_prompt
+
+        # Verify banner progress
+        banner = screen.query_one("#study-blocks-banner", Label)
+        assert "Completed: 1/" in str(banner.render())
+
+        # Verify dossier preview updates with block details
+        dossier = screen.query_one("#study-block-details-md", Markdown)
+        assert "b1" in str(dossier.source)
+
+        # Test Vim j navigation updates highlighted and dossier
+        await pilot.press("j")
+        await pilot.pause()
+        assert lst.highlighted == 1
+        assert "b2" in str(dossier.source)
+
+        # Test Tab to switch focus to dossier
+        await pilot.press("tab")
+        await pilot.pause()
+        assert screen._active_pane == "dossier"
+
+        # Tab back to list
+        await pilot.press("tab")
+        await pilot.pause()
+        assert screen._active_pane == "list"
+
+        # Press Enter on highlighted block (b2, index 1)
+        await pilot.press("enter")
+        study = await _wait_screen(app, pilot, StudyScreen)
+        assert study.bi == 1
+        await _wait_body(app, pilot)
+
+        # Press h to return to block list
+        await pilot.press("h")
+        await _wait_screen(app, pilot, StudyBlockListScreen)
+
 
 

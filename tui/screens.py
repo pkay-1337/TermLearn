@@ -532,7 +532,6 @@ class StudyBlockListScreen(_Base):
         self._apply_responsive_layout()
 
     def on_screen_resume(self) -> None:
-        super().on_screen_resume()
         self._refresh_blocks()
 
     def on_resize(self) -> None:
@@ -578,11 +577,19 @@ class StudyBlockListScreen(_Base):
         pct = int(100.0 * completed_count / total_count) if total_count else 0
         ch_title = data.get("meta", {}).get("title", self.chapter)
 
-        banner = self.query_one("#study-blocks-banner", Label)
-        banner.update(
-            f"📖  STUDY BLOCKS — {self.book} / {self.chapter}: {ch_title}  "
-            f"[Completed: {completed_count}/{total_count} blocks · {pct}%]"
-        )
+        try:
+            banner = self.query_one("#study-blocks-banner", Label)
+            banner.update(
+                f"📖  STUDY BLOCKS — {self.book} / {self.chapter}: {ch_title}  "
+                f"[Completed: {completed_count}/{total_count} blocks · {pct}%]"
+            )
+        except Exception:
+            pass
+
+        try:
+            lst = self.query_one("#block-list", OptionList)
+        except Exception:
+            return
 
         lst = self.query_one("#block-list", OptionList)
         prev_highlighted = lst.highlighted if lst.option_count > 0 else 0

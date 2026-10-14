@@ -1,9 +1,11 @@
 """Shared TUI widgets: help overlay + reusable question widget. (IF-TUI-003..005)"""
 from __future__ import annotations
 
-from textual import on
+from textual import events, on
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.containers import Vertical
+from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
 
@@ -11,6 +13,83 @@ GLOBAL_KEYS = [
     ("q", "back / quit"),
     ("?", "this help"),
 ]
+
+
+class VimScrollMixin:
+    """Provides standard Vim scrolling bindings for Textual screens/containers."""
+
+    VIM_BINDINGS = [
+        Binding("j", "vim_down", "Down (j)", show=False),
+        Binding("k", "vim_up", "Up (k)", show=False),
+        Binding("d", "vim_pagedown", "Half Down (d)", show=False),
+        Binding("u", "vim_pageup", "Half Up (u)", show=False),
+        Binding("ctrl+d", "vim_pagedown", "Half Down", show=False),
+        Binding("ctrl+u", "vim_pageup", "Half Up", show=False),
+        Binding("g", "vim_top", "Top (g)", show=False),
+        Binding("G", "vim_bottom", "Bottom (G)", show=False),
+    ]
+
+    def get_scroll_target(self):
+        from textual.containers import ScrollableContainer
+        for w in self.query(ScrollableContainer):
+            return w
+        return None
+
+    def action_vim_down(self) -> None:
+        focused = getattr(self.app, "focused", None)
+        from textual.widgets import Input, TextArea
+        if isinstance(focused, (Input, TextArea)):
+            return
+        tgt = self.get_scroll_target()
+        if tgt:
+            tgt.scroll_relative(y=2, animate=False)
+
+    def action_vim_up(self) -> None:
+        focused = getattr(self.app, "focused", None)
+        from textual.widgets import Input, TextArea
+        if isinstance(focused, (Input, TextArea)):
+            return
+        tgt = self.get_scroll_target()
+        if tgt:
+            tgt.scroll_relative(y=-2, animate=False)
+
+    def action_vim_pagedown(self) -> None:
+        focused = getattr(self.app, "focused", None)
+        from textual.widgets import Input, TextArea
+        if isinstance(focused, (Input, TextArea)):
+            return
+        tgt = self.get_scroll_target()
+        if tgt:
+            step = max(4, tgt.size.height // 2)
+            tgt.scroll_relative(y=step, animate=False)
+
+    def action_vim_pageup(self) -> None:
+        focused = getattr(self.app, "focused", None)
+        from textual.widgets import Input, TextArea
+        if isinstance(focused, (Input, TextArea)):
+            return
+        tgt = self.get_scroll_target()
+        if tgt:
+            step = max(4, tgt.size.height // 2)
+            tgt.scroll_relative(y=-step, animate=False)
+
+    def action_vim_top(self) -> None:
+        focused = getattr(self.app, "focused", None)
+        from textual.widgets import Input, TextArea
+        if isinstance(focused, (Input, TextArea)):
+            return
+        tgt = self.get_scroll_target()
+        if tgt:
+            tgt.scroll_home(animate=False)
+
+    def action_vim_bottom(self) -> None:
+        focused = getattr(self.app, "focused", None)
+        from textual.widgets import Input, TextArea
+        if isinstance(focused, (Input, TextArea)):
+            return
+        tgt = self.get_scroll_target()
+        if tgt:
+            tgt.scroll_end(animate=False)
 
 
 class HelpModal(ModalScreen):
@@ -38,10 +117,45 @@ class HelpModal(ModalScreen):
         self.app.pop_screen()
 
 
+class ChoiceCard(Static):
+    """A focusable, multi-line choice card that wraps cleanly across terminal widths."""
+
+    can_focus = True
+
+    class Selected(Message):
+        """Posted when card is selected by click, Enter, or Space."""
+
+        def __init__(self, index: int) -> None:
+            super().__init__()
+            self.index = index
+
+    def __init__(self, index: int, text: str, id: str | None = None) -> None:
+        super().__init__(id=id)
+        self.index = index
+        self.raw_text = text
+
+    def compose(self) -> ComposeResult:
+        yield Label(f"({self.index})  {self.raw_text}", classes="choice-card-text")
+
+    def on_click(self) -> None:
+        self.post_message(self.Selected(self.index - 1))
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key in ("enter", "space"):
+            event.stop()
+            self.post_message(self.Selected(self.index - 1))
+        elif event.key in ("j", "down"):
+            event.stop()
+            self.screen.focus_next()
+        elif event.key in ("k", "up"):
+            event.stop()
+            self.screen.focus_previous()
+
+
 class QuestionWidget(Static):
     """One check: prompt + answer controls + feedback + why.
 
-    Covers choice kinds (buttons + parent-forwarded 1-4), fillblank/order/
+    Covers choice kinds (ChoiceCards + parent-forwarded 1-4), fillblank/order/
     micro-lab (Input). Calls `on_done(ok: bool)` exactly once per question.
     Pure presentation — scoring facts come from the pack dict; persistence is
     the parent screen's job (same lib functions as the CLI).
@@ -66,7 +180,7 @@ class QuestionWidget(Static):
         kind = ck.get("kind")
         if kind in ("predict", "why-fails", "mcq", "eipe", "choose-better"):
             for i, opt in enumerate(ck.get("choices", []), 1):
-                yield Button(f"({i})  {opt}", id=f"opt-{i}", classes="question-opt-btn")
+                yield ChoiceCard(i, opt, id=f"opt-{i}")
         elif kind == "order":
             for i, line in enumerate(ck.get("lines", []), 1):
                 yield Static(f"  [{i}] {line}")
@@ -78,15 +192,27 @@ class QuestionWidget(Static):
                         id="micro-in", classes="question-input")
         yield Static("", id="feedback", classes="feedback-msg")
 
-    # -- answering API used by parent screens (buttons AND key aliases) --
+    # -- answering API used by parent screens (buttons, cards AND key aliases) --
     def answer_choice(self, pick: int) -> None:
         if self._done:
             return
         ans = int(self.check.get("answer", -1))
+        # Highlight selected card
+        try:
+            card = self.query_one(f"#opt-{pick + 1}", ChoiceCard)
+            card.add_class("choice-card-selected")
+        except Exception:
+            pass
         self._finish(pick == ans, f"answer was {ans + 1}" if pick != ans else "")
 
     def _feedback(self, text: str) -> None:
         self.query_one("#feedback", Static).update(text)
+
+    def _scroll_to_feedback(self) -> None:
+        try:
+            self.query_one("#feedback", Static).scroll_visible(animate=True, top=False)
+        except Exception:
+            pass
 
     def _finish(self, ok: bool, extra: str = "") -> None:
         self._done = True
@@ -102,7 +228,12 @@ class QuestionWidget(Static):
             fb.add_class("feedback-msg-error")
             prefix = "✖  "
         fb.update(f"{prefix}{mark}\n\nwhy: {why}")
+        self.call_after_refresh(self._scroll_to_feedback)
         self.on_done(ok)
+
+    @on(ChoiceCard.Selected)
+    def _card_selected(self, event: ChoiceCard.Selected) -> None:
+        self.answer_choice(event.index)
 
     @on(Button.Pressed)
     def _choice_pressed(self, event: Button.Pressed) -> None:
@@ -142,3 +273,4 @@ class QuestionWidget(Static):
             expect = str(ck.get("expect", ""))
             self._finish((raw == expect) if expect else True,
                          f"expected: {expect!r}" if expect and raw != expect else "")
+

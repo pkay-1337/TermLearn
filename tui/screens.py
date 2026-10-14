@@ -11,6 +11,8 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Label, Markdown, OptionList, Static
 from textual.widgets._option_list import Option
 
+from tui.widgets import VimScrollMixin
+
 
 class _Base(Screen):
     HELP_TITLE = "screen"
@@ -22,15 +24,26 @@ class _Base(Screen):
 
 class HomeScreen(_Base):
     HELP_TITLE = "books"
-    HELP_LINES = [("enter", "open book"), ("q", "quit")]
+    HELP_LINES = [("enter", "open book"), ("j/k", "move cursor / scroll"),
+                  ("l/tab", "dossier"), ("h", "back to list"), ("q", "quit")]
     BINDINGS = [
         Binding("q", "quit", "Quit"),
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("g", "cursor_home", "First", show=False),
+        Binding("G", "cursor_end", "Last", show=False),
+        Binding("d", "page_down", "Half Down", show=False),
+        Binding("u", "page_up", "Half Up", show=False),
+        Binding("l", "switch_right", "Dossier", show=False),
+        Binding("h", "switch_left", "List", show=False),
+        Binding("tab", "toggle_pane", "Toggle Pane", show=False),
         Binding("question_mark", "help", "Help"),
     ]
 
     def __init__(self) -> None:
         super().__init__()
         self._slugs: list[str] = []
+        self._active_pane: str = "list"
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="master-detail-row"):
@@ -46,6 +59,8 @@ class HomeScreen(_Base):
         from lib.books import discover_books
         from lib.progress import book_mastery
         lst = self.query_one("#book-list", OptionList)
+        dossier = self.query_one("#book-details", Vertical)
+        dossier.can_focus = True
         books = discover_books()
         for b in books:
             self._slugs.append(b["slug"])
@@ -61,6 +76,120 @@ class HomeScreen(_Base):
             lst.highlighted = 0
             self._update_details(self._slugs[0])
         lst.focus()
+        self._apply_responsive_layout()
+
+    def on_resize(self) -> None:
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        try:
+            width = self.size.width or 80
+            sidebar = self.query_one(".sidebar-pane")
+            dossier = self.query_one("#book-details")
+            if width < 70:
+                if self._active_pane == "dossier":
+                    sidebar.add_class("pane-hidden")
+                    sidebar.remove_class("pane-full")
+                    dossier.remove_class("pane-hidden")
+                    dossier.add_class("pane-full")
+                    dossier.focus()
+                else:
+                    sidebar.remove_class("pane-hidden")
+                    sidebar.add_class("pane-full")
+                    dossier.add_class("pane-hidden")
+                    dossier.remove_class("pane-full")
+                    self.query_one("#book-list").focus()
+            else:
+                sidebar.remove_class("pane-hidden")
+                sidebar.remove_class("pane-full")
+                dossier.remove_class("pane-hidden")
+                dossier.remove_class("pane-full")
+        except Exception:
+            pass
+
+    def action_switch_right(self) -> None:
+        self._active_pane = "dossier"
+        self._apply_responsive_layout()
+        try:
+            self.query_one("#book-details").focus()
+        except Exception:
+            pass
+
+    def action_switch_left(self) -> None:
+        self._active_pane = "list"
+        self._apply_responsive_layout()
+        try:
+            self.query_one("#book-list").focus()
+        except Exception:
+            pass
+
+    def action_toggle_pane(self) -> None:
+        if self._active_pane == "list":
+            self.action_switch_right()
+        else:
+            self.action_switch_left()
+
+    def action_cursor_down(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#book-details"):
+            try:
+                self.query_one("#book-details").scroll_relative(y=2, animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#book-list", OptionList).action_cursor_down()
+            except Exception:
+                pass
+
+    def action_cursor_up(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#book-details"):
+            try:
+                self.query_one("#book-details").scroll_relative(y=-2, animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#book-list", OptionList).action_cursor_up()
+            except Exception:
+                pass
+
+    def action_cursor_home(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#book-details"):
+            try:
+                self.query_one("#book-details").scroll_home(animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#book-list", OptionList).action_first()
+            except Exception:
+                pass
+
+    def action_cursor_end(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#book-details"):
+            try:
+                self.query_one("#book-details").scroll_end(animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#book-list", OptionList).action_last()
+            except Exception:
+                pass
+
+    def action_page_down(self) -> None:
+        try:
+            dossier = self.query_one("#book-details")
+            dossier.scroll_relative(y=max(4, dossier.size.height // 2), animate=False)
+        except Exception:
+            pass
+
+    def action_page_up(self) -> None:
+        try:
+            dossier = self.query_one("#book-details")
+            dossier.scroll_relative(y=-max(4, dossier.size.height // 2), animate=False)
+        except Exception:
+            pass
 
     def _update_details(self, slug: str) -> None:
         from lib.books import discover_books, discover_chapters
@@ -91,7 +220,7 @@ class HomeScreen(_Base):
             f"### 🗺️ Curriculum Roadmap ({len(chaps)} Chapters)\n\n"
             f"{curriculum_md}\n\n"
             f"---\n\n"
-            f"Press **Enter** to explore chapters, or **q** to quit."
+            f"Press **Enter** to explore chapters, **l/tab** to read roadmap, or **q** to quit."
         )
         try:
             self.query_one("#book-details-md", Markdown).update(md_text)
@@ -115,9 +244,19 @@ class HomeScreen(_Base):
 
 class ChaptersScreen(_Base):
     HELP_TITLE = "chapters"
-    HELP_LINES = [("enter", "open chapter"), ("q", "back")]
+    HELP_LINES = [("enter", "open chapter"), ("j/k", "move cursor / scroll"),
+                  ("l/tab", "dossier"), ("h", "back to list"), ("q", "back")]
     BINDINGS = [
         Binding("q", "back", "Back"),
+        Binding("j", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("g", "cursor_home", "First", show=False),
+        Binding("G", "cursor_end", "Last", show=False),
+        Binding("d", "page_down", "Half Down", show=False),
+        Binding("u", "page_up", "Half Up", show=False),
+        Binding("l", "switch_right", "Dossier", show=False),
+        Binding("h", "switch_left", "List", show=False),
+        Binding("tab", "toggle_pane", "Toggle Pane", show=False),
         Binding("question_mark", "help", "Help"),
     ]
 
@@ -125,6 +264,7 @@ class ChaptersScreen(_Base):
         super().__init__()
         self.book = book
         self._ch_ids: list[str] = []
+        self._active_pane: str = "list"
 
     def compose(self) -> ComposeResult:
         with Horizontal(classes="master-detail-row"):
@@ -140,6 +280,8 @@ class ChaptersScreen(_Base):
         from lib.books import discover_chapters
         from lib.progress import chapter_due_count, chapter_lab_state, chapter_status
         lst = self.query_one("#ch-list", OptionList)
+        dossier = self.query_one("#ch-details", Vertical)
+        dossier.can_focus = True
         chapters = discover_chapters(self.book)
         for ch in chapters:
             self._ch_ids.append(ch["id"])
@@ -161,6 +303,120 @@ class ChaptersScreen(_Base):
             lst.highlighted = 0
             self._update_details(self._ch_ids[0])
         lst.focus()
+        self._apply_responsive_layout()
+
+    def on_resize(self) -> None:
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        try:
+            width = self.size.width or 80
+            sidebar = self.query_one(".sidebar-pane")
+            dossier = self.query_one("#ch-details")
+            if width < 70:
+                if self._active_pane == "dossier":
+                    sidebar.add_class("pane-hidden")
+                    sidebar.remove_class("pane-full")
+                    dossier.remove_class("pane-hidden")
+                    dossier.add_class("pane-full")
+                    dossier.focus()
+                else:
+                    sidebar.remove_class("pane-hidden")
+                    sidebar.add_class("pane-full")
+                    dossier.add_class("pane-hidden")
+                    dossier.remove_class("pane-full")
+                    self.query_one("#ch-list").focus()
+            else:
+                sidebar.remove_class("pane-hidden")
+                sidebar.remove_class("pane-full")
+                dossier.remove_class("pane-hidden")
+                dossier.remove_class("pane-full")
+        except Exception:
+            pass
+
+    def action_switch_right(self) -> None:
+        self._active_pane = "dossier"
+        self._apply_responsive_layout()
+        try:
+            self.query_one("#ch-details").focus()
+        except Exception:
+            pass
+
+    def action_switch_left(self) -> None:
+        self._active_pane = "list"
+        self._apply_responsive_layout()
+        try:
+            self.query_one("#ch-list").focus()
+        except Exception:
+            pass
+
+    def action_toggle_pane(self) -> None:
+        if self._active_pane == "list":
+            self.action_switch_right()
+        else:
+            self.action_switch_left()
+
+    def action_cursor_down(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#ch-details"):
+            try:
+                self.query_one("#ch-details").scroll_relative(y=2, animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#ch-list", OptionList).action_cursor_down()
+            except Exception:
+                pass
+
+    def action_cursor_up(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#ch-details"):
+            try:
+                self.query_one("#ch-details").scroll_relative(y=-2, animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#ch-list", OptionList).action_cursor_up()
+            except Exception:
+                pass
+
+    def action_cursor_home(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#ch-details"):
+            try:
+                self.query_one("#ch-details").scroll_home(animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#ch-list", OptionList).action_first()
+            except Exception:
+                pass
+
+    def action_cursor_end(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#ch-details"):
+            try:
+                self.query_one("#ch-details").scroll_end(animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#ch-list", OptionList).action_last()
+            except Exception:
+                pass
+
+    def action_page_down(self) -> None:
+        try:
+            dossier = self.query_one("#ch-details")
+            dossier.scroll_relative(y=max(4, dossier.size.height // 2), animate=False)
+        except Exception:
+            pass
+
+    def action_page_up(self) -> None:
+        try:
+            dossier = self.query_one("#ch-details")
+            dossier.scroll_relative(y=-max(4, dossier.size.height // 2), animate=False)
+        except Exception:
+            pass
 
     def _update_details(self, cid: str) -> None:
         from lib.books import discover_chapters
@@ -200,7 +456,7 @@ class ChaptersScreen(_Base):
                 f"### Learning Objectives\n"
                 f"{objs_list}\n\n"
                 f"---\n\n"
-                f"Press **Enter** to launch learning modes for this chapter."
+                f"Press **Enter** to launch learning modes, **l/tab** to read objectives, or **q** to back."
             )
         try:
             self.query_one("#ch-details-md", Markdown).update(md_text)
@@ -230,9 +486,15 @@ class ChaptersScreen(_Base):
 
 class ChapterMenu(_Base):
     HELP_TITLE = "chapter menu"
-    HELP_LINES = [("1-8", "open mode"), ("enter", "open highlighted"), ("q", "back")]
+    HELP_LINES = [("1-8", "open mode"), ("j/k", "move cursor"), ("enter/l", "open mode"), ("q/h", "back")]
     BINDINGS = ([Binding(str(i), f"mode{i}", "", show=False) for i in range(1, 9)] +
-                [Binding("q", "back", "Back"),
+                [Binding("j", "cursor_down", "Down", show=False),
+                 Binding("k", "cursor_up", "Up", show=False),
+                 Binding("g", "cursor_first", "First", show=False),
+                 Binding("G", "cursor_last", "Last", show=False),
+                 Binding("l", "open_highlighted", "Open", show=False),
+                 Binding("h", "back", "Back", show=False),
+                 Binding("q", "back", "Back"),
                  Binding("question_mark", "help", "Help")])
     MODES = ["study", "revise", "quiz", "parsons", "lab", "test", "cards", "stats"]
     MODE_TITLES = {
@@ -270,6 +532,40 @@ class ChapterMenu(_Base):
         except Exception:
             pass
 
+    def action_cursor_down(self) -> None:
+        try:
+            self.query_one("#mode-list", OptionList).action_cursor_down()
+        except Exception:
+            pass
+
+    def action_cursor_up(self) -> None:
+        try:
+            self.query_one("#mode-list", OptionList).action_cursor_up()
+        except Exception:
+            pass
+
+    def action_cursor_first(self) -> None:
+        try:
+            self.query_one("#mode-list", OptionList).action_first()
+        except Exception:
+            pass
+
+    def action_cursor_last(self) -> None:
+        try:
+            self.query_one("#mode-list", OptionList).action_last()
+        except Exception:
+            pass
+
+    def action_open_highlighted(self) -> None:
+        try:
+            lst = self.query_one("#mode-list", OptionList)
+            if lst.highlighted is not None:
+                opt = lst.get_option_at_index(lst.highlighted)
+                if opt and opt.id:
+                    self._go(str(opt.id))
+        except Exception:
+            pass
+
     def _go(self, mode: str) -> None:
         from tui import practice
         from tui.screens import ReviseScreen, StatsScreen, TestScreen
@@ -299,11 +595,13 @@ class ChapterMenu(_Base):
         self.app.pop_screen()
 
 
-class ReviseScreen(_Base):
+class ReviseScreen(VimScrollMixin, _Base):
     HELP_TITLE = "revise"
-    HELP_LINES = [("q", "back")]
-    BINDINGS = [Binding("q", "back", "Back"),
-                Binding("question_mark", "help", "Help")]
+    HELP_LINES = [("j/k", "scroll 2 lines"), ("d/u", "half page"), ("g/G", "top / bottom"), ("q/h", "back")]
+    BINDINGS = ([Binding("q", "back", "Back"),
+                 Binding("h", "back", "Back", show=False),
+                 Binding("question_mark", "help", "Help")] +
+                VimScrollMixin.VIM_BINDINGS)
 
     def __init__(self, book: str, chapter: str) -> None:
         super().__init__()
@@ -335,11 +633,14 @@ class ReviseScreen(_Base):
         self.app.pop_screen()
 
 
-class StatsScreen(_Base):
+class StatsScreen(VimScrollMixin, _Base):
     HELP_TITLE = "stats"
-    HELP_LINES = [("q", "back")]
-    BINDINGS = [Binding("q", "back", "Back"),
-                Binding("question_mark", "help", "Help")]
+    HELP_LINES = [("j/k", "scroll / row"), ("tab", "toggle table"), ("d/u", "half page"), ("q/h", "back")]
+    BINDINGS = ([Binding("q", "back", "Back"),
+                 Binding("h", "back", "Back", show=False),
+                 Binding("tab", "switch_table", "Toggle Table", show=False),
+                 Binding("question_mark", "help", "Help")] +
+                VimScrollMixin.VIM_BINDINGS)
 
     def __init__(self, book: str) -> None:
         super().__init__()
@@ -402,15 +703,28 @@ class StatsScreen(_Base):
 
             yield Static(f"[bold cyan]SRS Due Queue:[/] [yellow]{due_count}[/] card(s) ready for review today.")
 
+    def action_switch_table(self) -> None:
+        try:
+            acc = self.query_one("#acc", DataTable)
+            concepts = self.query_one("#concepts", DataTable)
+            if getattr(self.app, "focused", None) == acc:
+                concepts.focus()
+            else:
+                acc.focus()
+        except Exception:
+            pass
+
     def action_back(self) -> None:
         self.app.pop_screen()
 
 
-class TestScreen(_Base):
+class TestScreen(VimScrollMixin, _Base):
     HELP_TITLE = "chapter test"
-    HELP_LINES = [("q", "back")]
-    BINDINGS = [Binding("q", "back", "Back"),
-                Binding("question_mark", "help", "Help")]
+    HELP_LINES = [("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
+    BINDINGS = ([Binding("q", "back", "Back"),
+                 Binding("h", "back", "Back", show=False),
+                 Binding("question_mark", "help", "Help")] +
+                VimScrollMixin.VIM_BINDINGS)
 
     def __init__(self, book: str, chapter: str) -> None:
         super().__init__()

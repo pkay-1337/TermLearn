@@ -337,6 +337,8 @@ The following interaction `kind`s **MUST** be supported by v0.3 unless marked OP
 | `order` (Parsons) | Order scrambled lines via `3 1 2 4`; distractors supported. | `syntax`, `algorithm` — sequencing without full authoring load. | **REQUIRED** |
 | `eipe` | Explain-in-Plain-English: choose best 1-sentence description from options (free-text OPTIONAL, matched by keywords). | `design`, `algorithm` — comprehension/transfer. | **REQUIRED** (options form); free-text scoring **OPTIONAL** |
 | `choose-better` | Two snippets, pick idiomatic/correct + why. | `design` — judgment. | **REQUIRED** |
+| `trace` | Stepped memory/state trace table; predict mutated cell value. | `model`, `algorithm` — Notional Machine tracing. | **REQUIRED** (v0.8+) |
+| `spot-bug` | Pinpoint buggy line and patch given compiler/sanitizer diagnostic log. | `model`, `syntax` — authentic debugging. | **REQUIRED** (v0.8+) |
 | `micro-lab` | Edit ≤15 lines in `$EDITOR` or inline, `r=run`, `t=test`. | Any type where execution cements the idea. | **REQUIRED** via `lab.py` |
 | `ascii-viz` | Stepwise `stack/heap/pointer` diagram rendered as text; `n=next` steps. | `model` — dual coding in terminal. | **REQUIRED** renderer; per-block diagrams **SHOULD** exist for `model` blocks |
 | `dialog-ask` | Constrained Q&A: tutor answers only from current + prerequisite blocks, then redirects to a check. | Remediation inside `study`. | **OPTIONAL** in v0.3 (stub allowed); **SHOULD** be a later enhancement |
@@ -397,17 +399,27 @@ blocks:                        # REQUIRED, >=1
       code: "..."              # verbatim or adapted:true
       adapted: false
       run_expected: "..."
+      subgoals:                # OPTIONAL, cognitive chunking for complex examples
+        - {label: "...", lines: [1,2]}
     viz:                       # SHOULD for model; otherwise OPTIONAL
       kind: ascii-memory
       steps: ["...","..."]
     checks:                    # REQUIRED, >=1 per block
-      - kind: predict          # REQUIRED, §4.7 vocabulary
+      - kind: predict          # REQUIRED, §4.7 vocabulary: predict|why-fails|mcq|fillblank|order|eipe|choose-better|trace|spot-bug
         q: "..."               # REQUIRED
         code: "..."            # OPTIONAL
         choices: [...]         # REQUIRED for choice kinds, 2-5 items (schema); GENERATE prefers 2-4
         answer: 1              # REQUIRED index (0-based) for choice kinds
         answer_order: [1,0,2]  # REQUIRED iff kind==order: >=2 unique valid line indices (distractors omitted)
-        answer_text: "&"       # REQUIRED iff kind==fillblank
+        faded: true            # OPTIONAL iff kind==order: enables faded Parsons problem
+        blanks: [{line_idx: 0, answer_text: "..."}] # REQUIRED iff kind==order and faded==true
+        answer_text: "&"       # REQUIRED iff kind==fillblank or kind==trace (text mode)
+        trace:                 # REQUIRED iff kind==trace
+          headers: ["Step", "Variable", "Address", "Value"]
+          rows: [{step: 1, line: 1, cells: ["..."]}]
+        target: {row: 2, col: 3} # REQUIRED iff kind==trace
+        diagnostic_log: "..."  # REQUIRED iff kind==spot-bug: compiler/sanitizer report
+        target_line: 3         # RECOMMENDED iff kind==spot-bug
         why: "..."             # REQUIRED for every check
         concept: "..."         # RECOMMENDED tag for telemetry
         from_chapter: ch00     # OPTIONAL, REQUIRED iff interleaved review
@@ -470,6 +482,14 @@ a runner that breaks the protocol fails validation like a broken pack.
 7. `RUNNER-VERSION`: `toolchain.version_cmd` (e.g. `[python3, --version]`)
    **SHOULD** be declared; `validate` runs it and prints the result for
    reproducibility diagnostics. Failure/missing command is non-fatal.
+8. `RUNNER-VERBS` (v0.8+): Invocation `run verbs` **SHOULD** print exactly one
+   JSON object: `{"verbs": ["check", "exec", ...]}`, declaring the capabilities
+   supported by the book's runner. Absent or failing command defaults to `["check", "exec"]`.
+9. `RUNNER-INSPECT` (v0.8+): Invocation `run inspect <source-file> --mode <symbols|disasm|sections|ast>`
+   **MAY** be implemented. Returns JSON `{"ok": bool, "mode": str, "content": "...", "format": "text|asm|json"}`.
+   The terminal app displays this in the live Toolchain Inspector tab (`i` hotkey).
+10. `RUNNER-LINT` (v0.8+): Invocation `run lint <source-file>` **MAY** be implemented.
+    Returns JSON `{"ok": bool, "diagnostics": [{"line": int, "col": int, "severity": "error|warning|note", "message": "..."}]}`.
 <!-- RUNNER-PROTOCOL-END -->
 
 ---

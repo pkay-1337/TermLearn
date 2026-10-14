@@ -593,3 +593,31 @@ Button:focus {
     text-style: bold;
     margin-top: 1;
 }
+
+/* --------------------------------------------------------------------------
+   Study Block Selection Screen
+   -------------------------------------------------------------------------- */
+.block-status-banner {
+    width: 100%;
+    height: 3;
+    content-align: center middle;
+    background: $mantle;
+    color: $accent-cyan;
+    text-style: bold;
+    border-bottom: solid $surface-0;
+}
+
+.badge-done {
+    color: $status-success;
+    text-style: bold;
+}
+
+.badge-prog {
+    color: $status-warning;
+    text-style: bold;
+}
+
+.badge-todo {
+    color: $text-muted;
+}
+

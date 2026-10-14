@@ -1,11 +1,36 @@
 # =============================================================================
 # INSTRUCTIONS FOR AI AGENTS & CODING ASSISTANTS:
 # TARGET OUTPUT FILE: packs/extreme-c/ch09.yaml
-# - If you have tools to create/write files (e.g. write_to_file, bash, fs tools):
-#   CREATE and write the generated YAML pack directly to `packs/extreme-c/ch09.yaml`.
-#   Then run: python main.py validate --book extreme-c --chapter ch09 --strict
-# - If you are in a chat-only interface without file-writing tools:
-#   Output the YAML in exactly ONE ```yaml``` block and direct the user to save it to `packs/extreme-c/ch09.yaml`.
+#
+# [MANDATORY DIRECTIVES — READ CAREFULLY BEFORE WRITING A SINGLE LINE]
+# 1. PUT ALL YOUR MIGHT & GO PLUS ULTRA (NO HALF-ASSING):
+#    The learner studies ONLY from your generated YAML, never from the book.
+#    Produce a masterwork of pedagogical engineering grounded in cognitive science.
+#    Zero placeholders (NO 'TODO', NO '/* rest of code */', NO lazy hand-waving).
+# 2. DO NOT WORRY ABOUT LENGTH — DEPTH AND CLARITY OVERRIDE BREVITY:
+#    Never rush, compress, or omit blocks to save tokens. An exhaustive, deeply explained
+#    pack with 8–15 blocks and 30+ checks is vastly superior to a short summary.
+# 3. MULTI-TURN / MULTI-STEP GENERATION SUPPORTED & ENCOURAGED:
+#    If the chapter is concept-dense or has many blocks, DO NOT attempt to crush everything
+#    into one rushed output. Write the file incrementally using your file tools (e.g.
+#    create skeleton + blocks 1–4, then append blocks 5–8, blocks 9–12, cards, lab, and test),
+#    or in sequential parts if in chat. Take as many turns/steps as needed to do it justice.
+# 4. COMPREHENSIVE CODE EXPLANATIONS & NOTIONAL MACHINE:
+#    Every single code snippet MUST be accompanied by an exhaustive, intuitive breakdown:
+#    line-by-line syntax, Notional Machine state transitions (stack, heap, pointers, registers),
+#    the architectural 'why' behind the design, and boundary failure traps.
+# 5. INTUITION-FIRST COMPREHENSIBILITY:
+#    Bridge technical jargon with intuitive mental models and physical analogies before
+#    introducing formal syntax. Make every concept deeply understandable for self-study.
+# 6. INTERACTIVE LEARNING INNOVATIONS (v0.8+):
+#    Elevate interactivity beyond basic MCQ: author `trace` checks for tricky pointer/state
+#    mutations, `faded: true` Parsons checks for scaffolded syntax construction, `spot-bug`
+#    checks for reading compiler/sanitizer diagnostics, and `subgoals` on complex code blocks.
+# 7. EXECUTION & VALIDATION PROTOCOL:
+#    - Autonomous Agents with Tools: Write/edit directly to `packs/extreme-c/ch09.yaml`.
+#      Then execute: python main.py validate --book extreme-c --chapter ch09 --strict
+#    - Chat-Only Interfaces: Output in ```yaml``` fenced blocks (or sequential parts) and
+#      direct the user to save to `packs/extreme-c/ch09.yaml`.
 # =============================================================================
 
 
@@ -82,6 +107,126 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   `example`, turned into a check (predict/order/fillblank/micro-lab), or
   deferred with reason. Count them and say the count in the audit trail.
 
+### 0.2 Put All Your Might — Go Plus Ultra (Never Half-Ass) (MUST)
+
+- **The Plus Ultra Standard**: Treat the authoring of this chapter pack as a
+  masterwork of pedagogical engineering. The learner studies SOLELY from your
+  YAML, without the original book open. Every sentence of explanation and every
+  check must carry maximal clarity, depth, and instructional power.
+- **Zero Half-Assing & No Placeholders**:
+  - NEVER emit placeholders (`TODO`, `...`, `/* rest of code here */`, `etc.`).
+  - NEVER write lazy, hand-waving, or dismissive explanations (e.g. "This sets x to 5",
+    "Self-explanatory boilerplate", "Standard syntax").
+  - NEVER skip code boxes, exercises, diagrams, or tricky corner cases.
+  - Dedicate full cognitive and pedagogical might to every single block, code
+    example, visualizer, diagnostic check, distractor rationale, and remediation.
+
+### 0.3 Never Worry About Length — Multi-Turn / Multi-Step Protocol (MUST)
+
+- **Length Independence**: Do NOT worry about the length or character count of
+  the YAML file! Thoroughness, depth, and pedagogical completeness strictly
+  override brevity. A chapter with 8–15 richly explained blocks, deep code breakdowns,
+  and 30+ diagnostic checks is vastly superior to a rushed 3-block summary.
+- **Never Truncate to Save Tokens**: Never rush, combine distinct concepts, or
+  cut code examples to fit into a single response context.
+- **Multi-Turn Generation Protocol**:
+  - **Autonomous AI Agents (with file-creation / terminal tools)**: If a chapter
+    is large or concept-dense, do NOT attempt to rush everything into one tool call.
+    Write the initial skeleton and first batch of blocks (e.g. `meta`, `objectives`,
+    blocks `b1`–`b4`) to `packs/<slug>/<id>.yaml`. In subsequent turns or tool
+    calls, append/insert blocks `b5`–`b8`, `b9`–`b12`, `cards`, `lab`, and `test`.
+    Finally run `python main.py validate --book <slug> --chapter <id> --strict`.
+  - **Chat-Only Models (no file tools)**: If the chapter is too large to emit in
+    one message without hitting token limits, notify the user:
+    *"This chapter is being generated in sequential parts to ensure exhaustive,
+    untruncated depth."* Emit Part 1 (Meta + Blocks 1–4), then Part 2 (Blocks 5–8),
+    then Part 3 (remaining blocks, cards, lab, test). Direct the user to assemble
+    them into `packs/<slug>/<id>.yaml`.
+
+### 0.4 Evidence-Based Learning Science & Cognitive Architecture (MUST)
+
+Every instructional decision in this course pack is grounded in peer-reviewed
+learning science, cognitive psychology, and computing education research (CER):
+
+1. **Cognitive Load Theory (CLT) & Working Memory Limits** (Sweller 1988, 2011;
+   van Merriënboer & Sweller 2005):
+   - Novice working memory is strictly limited to 3–4 novel interacting elements.
+   - *Intrinsic Load*: The inherent complexity of technical logic (e.g. pointer indirection,
+     concurrency, stack layout). Managed by breaking the chapter into single-concept blocks.
+   - *Extraneous Load*: Mental waste caused by poor presentation, split attention,
+     and jargon without grounding. Minimized by keeping code and explanation spatially
+     contiguous, self-contained, and crystal clear.
+   - *Germane Load*: Productive mental effort devoted to schema acquisition.
+     Maximized through deliberate retrieval practice, contrasting cases, and prediction.
+
+2. **The Notional Machine** (du Boulay 1986; Sorva 2013; Fincher et al.):
+   - A Notional Machine is the explicit, conceptual model of the underlying computer
+     that executes the code: the call stack, stack frames, heap memory, registers,
+     instruction pointer, pointers/addresses, and variable lifetimes.
+   - *Novice Failure Mode*: Beginners fail not because of syntax, but because they hold
+     vague, magical, or anthropomorphic mental models of execution.
+   - *Rule*: Every block MUST make the Notional Machine explicit. Whenever code is
+     introduced, explain the physical/virtual state transitions taking place inside
+     the machine.
+
+3. **The Block Model for Program Comprehension** (Schulte 2008):
+   - Novices comprehend programs across three orthogonal dimensions:
+     (a) **Text Surface**: Language syntax, tokens, and grammar.
+     (b) **Execution Semantics**: Dynamic runtime operations, state changes, memory mutation.
+     (c) **Purpose / Subgoal**: What functional goal this code accomplishes and why it was chosen.
+   - Explanations MUST systematically address all three dimensions, never stopping at
+     mere surface syntax.
+
+4. **Concrete-Representational-Abstract (CRA) & Dual Coding** (Paivio 1986; Mayer 2009):
+   - Connect abstract syntax to visual memory step-throughs (`viz`) and intuitive,
+     physical mental models before formalizing abstract syntax and mathematical constraints.
+
+5. **Desirable Difficulties & Retrieval Practice** (Bjork & Bjork 1992; Karpicke & Blunt 2011, Science):
+   - Active retrieval practice produces 200%–300% higher long-term retention and conceptual
+     transfer than passive reading or highlighting.
+   - Interleaving (`from_chapter`) forces discriminative contrast between similar concepts
+     (e.g., `*p++` vs `(*p)++`, pass-by-value vs pass-by-reference).
+   - Generation effect: filling a blank or ordering scrambled code builds stronger,
+     more durable neural schemas than passively observing a solution.
+
+6. **Subgoal Learning & Schema Acquisition** (Catrambone 1998; Margulieux et al. 2016):
+   - Novices organize memory around functional goal labels ("Acquire dynamic buffer via address"),
+     not mechanical operations ("Call malloc"). Block titles and explanation headers MUST
+     be functional subgoal labels.
+
+7. **Spatial Contiguity & Avoiding Split Attention** (Mayer & Moreno 2003):
+   - Explanations of code must be immediately adjacent to or integrated with the code,
+     so the learner never has to jump back and forth across distant paragraphs.
+
+### 0.5 Comprehensive Code Block Explanations & Notional Machine Walkthroughs (MUST)
+
+- **No Code Without Deep Explanation**: Every single code snippet in `example`,
+  `explain_md`, `checks`, or `lab` MUST be accompanied by an exhaustive, intuitive breakdown.
+- **Mandatory Explanation Components for Every Code Block**:
+  1. **Line-by-Line / Construct Walkthrough**: What each line, keyword, type declaration,
+     or expression does in human terms.
+  2. **Notional Machine State Transitions**: What happens in memory (stack frames, heap,
+     pointers, CPU registers) when this code runs.
+  3. **The "Why" Behind the Design**: Why this specific implementation was chosen
+     over plausible alternatives (e.g., why pass by address vs by value; why `#define`
+     vs `const`; why NULL check before dereference).
+  4. **Boundary Conditions & Failure Traps**: What happens if a line is removed, reordered,
+     or executed with boundary values (NULL, 0, -1, uninitialized memory, buffer boundaries).
+
+### 0.6 Intuition-First Comprehensibility (MUST)
+
+- **Teach for True Comprehension**: Write with crystal clarity, warmth, and intellectual
+  rigor for an ambitious learner studying alone in a terminal.
+- **Bridge Jargon with Intuition First**: Introduce difficult concepts (e.g., pointer indirection,
+  memory alignment, race conditions, vtables, recursion) by first establishing an intuitive,
+  physical mental model (e.g., mailboxes, address books, shared whiteboards) BEFORE
+  introducing the formal keywords and syntax.
+- **Never Hand-Wave**: Ban phrases like "it is obvious that...", "simply...", or "clearly...".
+  If a step is subtle or tricky, slow down and unpack it step-by-step.
+- **Address Misconceptions Head-On**: Explicitly name and dismantle the classic
+  misconceptions that trip up learners (e.g. confusing the address of a pointer with the address
+  it points to).
+
 ## 1. Fidelity (MUST)
 
 - Use ONLY concepts/APIs present in the pasted chapter. External knowledge
@@ -104,8 +249,25 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
 
 - Split the chapter into concept-dependency order: each block teaches exactly
   ONE new falsifiable skill (e.g. `& takes an address`, not `pointers`).
-- Block shape: `id, type, title, explain_md (5-15 lines Markdown, ≤120 cols),
-  example? (≤30 lines, ≤80 cols), viz? (for model), checks[>=1], common_bugs?`.
+- Block shape: `id, type, title, explain_md, example?, viz?, checks[>=1], common_bugs?`.
+  - `explain_md`: Typically 10–25 lines of crystal-clear, comprehensible Markdown (≤120 cols).
+    MUST thoroughly unpack the concept, bridge technical jargon with intuitive mental models,
+    and walk through the example code and Notional Machine state changes. Never abbreviate or
+    cut short to save space; depth and conceptual clarity are paramount.
+  - `example`: Verified code snippet (≤35 lines, ≤80 cols), runnable where applicable.
+    Every code example MUST have an accompanying breakdown of its lines, memory mutations,
+    and design rationale in `explain_md` or check `why`.
+    - `subgoals` (OPTIONAL but HIGHLY RECOMMENDED for complex multi-step examples):
+      Break code into purposeful functional steps:
+      ```yaml
+      subgoals:
+        - label: "Acquire & Guard Invariant"
+          lines: [1, 2]
+        - label: "Mutate State"
+          lines: [3, 4]
+      ```
+      [Research: Margulieux & Catrambone 2016 — grouping code lines into functional subgoals
+      boosts learner problem-solving transfer by up to 40% and reduces cognitive split-attention.]
 - `type` MUST be one of `model | syntax | design | algorithm` (meanings in the docs/SRS.md §4.6 table).
 - Each block title MUST be a functional subgoal label, NOT a comment:
   [Research: subgoal labels group procedure steps under their purpose, cut
@@ -196,6 +358,27 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   schema, not one puzzle solution.
 - Order tasks MUST follow a worked `example` of the same pattern earlier in
   the block (fade: study intact → assemble scrambled → write in lab).
+- **Faded Parsons (`faded: true`)**:
+  [Research: Fromont et al. 2023 — Faded Parsons problems require learners to arrange
+  lines AND fill in missing critical tokens, providing an optimal intermediate fade
+  before authoring code from scratch.]
+  ```yaml
+  - kind: order
+    faded: true
+    q: "Order the lines and fill in the missing allocation size argument:"
+    lines:
+      - "car_t* car = (car_t*)malloc(_____);"
+      - "if (!car) return NULL;"
+      - "car->speed = 0;"
+      - "return car;"
+    answer_order: [0, 1, 2, 3]
+    blanks:
+      - line_idx: 0
+        token: "_____"
+        answer_text: "sizeof(car_t)"
+        accepted: ["sizeof(car_t)", "sizeof(*car)"]
+    why: "car_malloc must allocate the byte size of car_t before initializing attributes."
+  ```
 
 ### 3.5 `eipe` — relational answers only (SHOULD for design/algorithm)
 
@@ -285,7 +468,68 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   Include `why/when` cards ("WHEN must a pointer be NULL-initialized?")
   alongside `what` cards. No multi-part cards, no "list all…" cards.
 
-### 3.10 `why` + interleaving on every check (MUST)
+### 3.10 `trace` — stepped Notional Machine memory & state tables (MUST for model/algorithm)
+
+- [Research: Sorva 2013; Lister et al. 2004 — novice programmers fail because they lack
+  an accurate mental model of the Notional Machine (invisible memory state, stack frames,
+  and pointers). Step-by-step state tracing is the single strongest predictor of programming
+  competence.]
+- Every `trace` check presents an executable code snippet and a structured table matrix
+  tracking variable and memory states across execution lines.
+- Schema:
+  ```yaml
+  - kind: trace
+    q: "Trace pointer mutations across execution steps. What is the value at address 0x7ffd01 after Step 3?"
+    code: |
+      int a = 10;
+      int *p = &a;
+      *p = 25;
+    trace:
+      headers: ["Step", "Line", "Variable / Target", "Address", "Value"]
+      rows:
+        - step: 1
+          line: 1
+          cells: ["1", "1", "a", "0x7ffd01", "10"]
+        - step: 2
+          line: 2
+          cells: ["2", "2", "p", "0x7ffd08", "0x7ffd01"]
+        - step: 3
+          line: 3
+          cells: ["3", "3", "*p (a)", "0x7ffd01", "???"]
+    target: {row: 2, col: 4}
+    answer_text: "25"                         # text input mode OR
+    choices: ["10", "25", "0x7ffd01", "NULL"] # choice mode
+    answer: 1
+    why: "Dereferencing *p accesses the memory at &a (0x7ffd01) and mutates the integer stored there from 10 to 25."
+    concept: "pointer-deref-state"
+  ```
+
+### 3.11 `spot-bug` — authentic diagnostic debugging (MUST for boundary failure modes)
+
+- [Research: Kalyuga et al. — authentic troubleshooting schemata require reading diagnostic
+  signals (compiler errors, AddressSanitizer output, stack traces) and mapping them to source lines.]
+- Schema:
+  ```yaml
+  - kind: spot-bug
+    q: "Analyze the code and AddressSanitizer report. Which line triggers the heap-use-after-free, and why?"
+    code: |
+      car_t* c = car_malloc();
+      car_free(c);
+      c->speed = 100;
+    diagnostic_log: |
+      ==12345==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010
+      WRITE of size 4 at 0x602000000010 thread T0
+    target_line: 3
+    choices:
+      - "Line 1: Allocation size was insufficient"
+      - "Line 2: car_free called on uninitialized pointer"
+      - "Line 3: Mutating field through dangling pointer after memory was freed"
+    answer: 2
+    why: "AddressSanitizer detects memory write to 0x602000000010 after that address was returned to the heap allocator in line 2."
+    concept: "use-after-free"
+  ```
+
+### 3.12 `why` + interleaving on every check (MUST)
 
 - `why` is elaborated feedback, not answer reveal [Research: response-specific
   elaborated feedback beats verification-only (Shute 2008; Corbett &
@@ -369,9 +613,12 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
 # The AI MUST ask these BEFORE emitting YAML. MUST NOT emit final YAML until
 # the user answers or says `use defaults`.
 #
-# IMPORTANT: When authoring quizzes, checks, and questions, NEVER refer to
-# questions or exercises in the book (e.g. never say "refer to question 3 in book").
-# Always put the whole question with complete, self-contained context and code.
+# IMPORTANT: When authoring quizzes, checks, and questions:
+# 1. NEVER refer to questions or exercises in the book (e.g. never say "refer to question 3 in book").
+#    Always put the whole question with complete, self-contained context and code.
+# 2. NEVER worry about YAML length — multi-turn generation across sequential steps is supported.
+# 3. Always include thorough, line-by-line explanations for every code block and reveal the Notional Machine.
+# 4. Put all your might and go Plus Ultra — zero half-assing, no placeholders.
 
 Ask (compact, one message, numbered):
 
@@ -380,6 +627,8 @@ Ask (compact, one message, numbered):
    Default: comfortable-in-C.
 2. **Depth vs speed** — deep (more blocks, ≥3 checks each) or fast (fewer
    blocks, 1-2 checks each) or balanced (2 blocks per major concept)? Default: deep.
+   *(Note: YAML length is unlimited — multi-turn / multi-step generation is fully supported
+   so no concepts or code explanations are ever rushed or cut short).*
 3. **Prioritize / skip** — which sections/examples of this chapter matter most?
    Any to skip (e.g. Windows-only notes, C++ tangents)? Default: keep all,
    skip platform tangents.
@@ -448,17 +697,27 @@ blocks:                        # REQUIRED, >=1
       code: "..."              # verbatim or adapted:true
       adapted: false
       run_expected: "..."
+      subgoals:                # OPTIONAL, cognitive chunking for complex examples
+        - {label: "...", lines: [1,2]}
     viz:                       # SHOULD for model; otherwise OPTIONAL
       kind: ascii-memory
       steps: ["...","..."]
     checks:                    # REQUIRED, >=1 per block
-      - kind: predict          # REQUIRED, §4.7 vocabulary
+      - kind: predict          # REQUIRED, §4.7 vocabulary: predict|why-fails|mcq|fillblank|order|eipe|choose-better|trace|spot-bug
         q: "..."               # REQUIRED
         code: "..."            # OPTIONAL
         choices: [...]         # REQUIRED for choice kinds, 2-5 items (schema); GENERATE prefers 2-4
         answer: 1              # REQUIRED index (0-based) for choice kinds
         answer_order: [1,0,2]  # REQUIRED iff kind==order: >=2 unique valid line indices (distractors omitted)
-        answer_text: "&"       # REQUIRED iff kind==fillblank
+        faded: true            # OPTIONAL iff kind==order: enables faded Parsons problem
+        blanks: [{line_idx: 0, answer_text: "..."}] # REQUIRED iff kind==order and faded==true
+        answer_text: "&"       # REQUIRED iff kind==fillblank or kind==trace (text mode)
+        trace:                 # REQUIRED iff kind==trace
+          headers: ["Step", "Variable", "Address", "Value"]
+          rows: [{step: 1, line: 1, cells: ["..."]}]
+        target: {row: 2, col: 3} # REQUIRED iff kind==trace
+        diagnostic_log: "..."  # REQUIRED iff kind==spot-bug: compiler/sanitizer report
+        target_line: 3         # RECOMMENDED iff kind==spot-bug
         why: "..."             # REQUIRED for every check
         concept: "..."         # RECOMMENDED tag for telemetry
         from_chapter: ch00     # OPTIONAL, REQUIRED iff interleaved review
@@ -521,6 +780,14 @@ a runner that breaks the protocol fails validation like a broken pack.
 7. `RUNNER-VERSION`: `toolchain.version_cmd` (e.g. `[python3, --version]`)
    **SHOULD** be declared; `validate` runs it and prints the result for
    reproducibility diagnostics. Failure/missing command is non-fatal.
+8. `RUNNER-VERBS` (v0.8+): Invocation `run verbs` **SHOULD** print exactly one
+   JSON object: `{"verbs": ["check", "exec", ...]}`, declaring the capabilities
+   supported by the book's runner. Absent or failing command defaults to `["check", "exec"]`.
+9. `RUNNER-INSPECT` (v0.8+): Invocation `run inspect <source-file> --mode <symbols|disasm|sections|ast>`
+   **MAY** be implemented. Returns JSON `{"ok": bool, "mode": str, "content": "...", "format": "text|asm|json"}`.
+   The terminal app displays this in the live Toolchain Inspector tab (`i` hotkey).
+10. `RUNNER-LINT` (v0.8+): Invocation `run lint <source-file>` **MAY** be implemented.
+    Returns JSON `{"ok": bool, "diagnostics": [{"line": int, "col": int, "severity": "error|warning|note", "message": "..."}]}`.
 <!-- RUNNER-PROTOCOL-END -->
 
 ---

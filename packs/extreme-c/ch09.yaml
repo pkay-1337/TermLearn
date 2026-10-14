@@ -1,0 +1,885 @@
+meta:
+  book: extreme-c
+  chapter_id: ch09
+  title: 'Chapter 06 — OOP and Encapsulation'
+  source_ref: 'Ch.6 (Text/oop_and_encapsulation.xhtml)'
+  level: core
+  prereqs: [ch08]
+objectives:
+  - 'Map mental concepts and mind maps to runtime object models in program memory'
+  - 'Define object state, manage mutability, and preserve referential integrity across links'
+  - 'Contrast prototype-based runtime evolution with class-based compiled template construction'
+  - 'Encapsulate attributes in C structs and behaviors in struct-pointer functions'
+  - 'Enforce information hiding via opaque structs, separate compilation, and swappable builds'
+blocks:
+  - id: b1
+    type: model
+    title: 'Map mental concepts to runtime objects'
+    explain_md: |
+      Object-oriented thinking is how human cognition naturally processes reality: when you observe a vase sitting on a wooden table, your mind immediately perceives the vase and the table as two distinct entities with a clear physical boundary separating them. If you paint the vase blue, you intuitively understand that the table remains entirely unchanged.
+
+      In cognitive computing, we formalize this intuitive perception through a strict correspondence:
+      1. **Human Mind vs. Computer Memory**: Concepts exist as thoughts inside a living mind; objects exist as data structures simulated inside program memory.
+      2. **Mind Map vs. Object Model**: The mental graph of related concepts you form while understanding a problem translates into the runtime object model maintained by the software.
+      3. **Speed, Precision, and Persistence**: Human memory is volatile, prone to emotion, and easily forgets complex relation graphs. A computer executes the simulation with mathematical speed, absolute precision, and the ability to persist the entire object model to non-volatile disk.
+
+      **The Notional Machine — Objects Are Not In Code**:
+      A foundational trap for beginners is believing that objects exist inside the C source code they type on their screen. **They do not.** Source code stored on disk contains only static instructions—blueprints specifying how to construct, manipulate, relate, and destroy objects later. Objects come into existence **only** when the compiled program is loaded into RAM and the CPU executes memory allocation instructions. When the process terminates, all objects vanish from memory while the code blueprint remains on disk. Planning these runtime structures before they exist is called **Object-Oriented Design (OOD)**.
+
+      **Line-by-Line Code Walkthrough (Example 1)**:
+      In the code example below, we declare four separate arrays to hold records for 10 students:
+      - Lines 2–5 declare four arrays on the stack: `student_first_names` (array of 10 string pointers), `student_surnames` (array of 10 string pointers), `student_ages` (array of 10 integers), and `student_marks` (array of 10 doubles).
+      - In memory, the C runtime allocates four disconnected blocks of stack storage. C has no internal concept of a "student"; it sees only four unrelated symbols in the compiler's symbol table.
+      - We group them under the concept of "student" solely through naming conventions (`student_*`). If a programmer instead names them `aaa`, `bbb`, `ccc`, and `ddd`, the CPU executes the exact same machine code, but the human mind loses the mental map, multiplying cognitive load and defect rates.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        int main(void) {
+          char* student_first_names[10];
+          char* student_surnames[10];
+          int student_ages[10];
+          double student_marks[10];
+          (void)student_first_names;
+          (void)student_surnames;
+          (void)student_ages;
+          (void)student_marks;
+          return 0;
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Human Mind: Mental concepts of students and chairs with sitting-on relationships'
+        - 'Source Code on Disk: Static text blueprint; exactly 0 runtime objects exist'
+        - 'Process Launch (RAM): Memory allocates array storage; object simulation active'
+        - 'Process Exit: Stack memory reclaimed; runtime objects destroyed; blueprint remains on disk'
+    checks:
+      - kind: predict
+        q: 'Trace line by line, tracking objects vs source code: before `main` runs (at edit time), and then while `main` runs in RAM, how many student objects exist?'
+        choices:
+          - 'Zero before running; up to 10 slots of student data while running in memory'
+          - '10 student objects before running; zero while running'
+          - 'One object per source code line at all times'
+        answer: 0
+        why: 'Principle: objects exist strictly in a running program (Ch.6 Objects-are-not-in-code); code on disk holds instructions/blueprints. Choice B confuses design blueprints with execution; Choice C confuses source text lines with memory instances.'
+        concept: objects-are-runtime
+      - kind: why-fails
+        q: 'A developer renames the four student arrays to `aaa`, `bbb`, `ccc`, and `ddd`, arguing that since the compiler emits identical assembly, naming does not matter. Why does the chapter reject this argument?'
+        choices:
+          - 'Ad hoc naming severs the link between code variables and the mental concept of a student, drastically increasing human reasoning errors and troubleshooting time'
+          - 'The C compiler flags variable names shorter than four characters as syntax errors'
+          - 'Short variable names cause pipeline stalls and degrade CPU execution throughput'
+        answer: 0
+        why: 'Principle: variable names carry the mental concepts and relationships required for human comprehension (Code Boxes 6-1 and 6-2). Choice B is a false compiler restriction; Choice C is a performance myth.'
+        concept: naming-concepts
+      - kind: eipe
+        q: 'A program simulates five students and five chairs with sitting-on relationships, running precisely and persisting data to disk. In one sentence, what is this code FOR?'
+        choices:
+          - 'It translates a volatile, fragile mental mind map into a fast, precise, and persistent object model executed by the computer'
+          - 'It allocates four arrays on the stack and immediately returns zero'
+          - 'It demonstrates that computer processors experience human classroom emotions'
+        answer: 0
+        why: 'Principle: OO programs simulate mind maps as memory object models for speed, precision, and persistence (Ch.6 Mind maps and object models). Choice B is a multistructural line-reading paraphrase; Choice C is anthropomorphic confusion.'
+        concept: mindmap-to-model
+    common_bugs:
+      - 'Believing objects exist inside source text before execution'
+      - 'Using ad hoc, cryptic variable names that obscure the underlying domain concepts'
+  - id: b2
+    type: model
+    title: 'Define object state within domain boundaries'
+    explain_md: |
+      Every mental concept and simulated object possesses specific properties called **attributes**. For example, in our classroom description, a chair concept carries an attribute named `color`, with the value `brown`. A 2D graphics pixel concept carries attributes `x`, `y`, `red`, `green`, and `blue`.
+
+      **State and Mutability**:
+      The collection of specific values assigned to an object's attributes at any point in time constitutes the **state** of that object.
+      - **Mutable Objects**: An object whose attribute values can change during its lifetime. Modifying an attribute alters its state.
+      - **Immutable Objects**: An object whose state is permanently determined upon construction and cannot be modified afterward. A classic example is the mathematical number 2: there is only one concept of the number 2 in the universe; altering it means it is no longer 2.
+      - **Stateless Objects**: An object that carries no attributes/state at all. A stateless object is functionally immutable because it has no state to alter.
+      - **Thread Safety Advantage**: In multithreaded systems, immutable and stateless objects can be safely shared across concurrent execution threads without locks, mutexes, or race conditions.
+
+      **The Domain Boundary and Glossary**:
+      Every software system operates inside a specific **domain**—the real-world or theoretical problem space defining its requirements and scope.
+      - A domain establishes a mandatory, predetermined **glossary** (terminology).
+      - In the **banking domain**, the glossary includes: `account`, `credit`, `balance`, `transfer`, `loan`, and `interest`. Concepts like `patient`, `medicine`, and `dosage` do NOT belong in banking.
+      - If code introduces concepts outside its domain, software complexity explodes, boundaries blur, and maintainability degrades.
+
+      **Notional Machine Walkthrough (Example 2)**:
+      - Line 1 defines `pixel_t` with 5 integer fields (20 bytes of contiguous memory on 32/64-bit systems).
+      - Lines 3–4 construct `p1` and `p2` on the stack: `p1` receives state `{53, 345, 120, 45, 178}`; `p2` receives state `{53, 346, 79, 162, 23}`.
+      - Each struct occupies its own distinct stack memory address. If code modifies `p1.red = 200`, the byte sequence at `p1`'s address changes, while `p2`'s memory remains completely untouched.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        typedef struct { int x; int y; int red; int green; int blue; } pixel_t;
+        int main(void) {
+          pixel_t p1 = {53, 345, 120, 45, 178};
+          pixel_t p2 = {53, 346, 79, 162, 23};
+          p1.red = 200;
+          (void)p1; (void)p2;
+          return 0;
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Stack Frame: p1 at 0x7ffd00 = {x:53, y:345, red:120, green:45, blue:178}'
+        - 'Stack Frame: p2 at 0x7ffd14 = {x:53, y:346, red:79, green:162, blue:23}'
+        - 'Mutation: p1.red = 200 updates 0x7ffd08 to 200; p2 at 0x7ffd14 untouched'
+        - 'Immutable Shared State: Read-only memory can be read by multiple threads without data races'
+    checks:
+      - kind: predict
+        q: 'Trace line by line, tracking `p1` and `p2`: after executing `p1.red = 200;`, what are the values of `p1.red` and `p2.red`?'
+        choices:
+          - '`p1.red = 200` and `p2.red = 79`'
+          - '`p1.red = 120` and `p2.red = 79`'
+          - '`p1.red = 200` and `p2.red = 200`'
+        answer: 0
+        why: 'Principle: state belongs to individual object instances; mutating an attribute of p1 updates only p1 in memory, leaving p2 unchanged (Ch.6 Object attributes). Choice B assumes writes do not persist; Choice C confuses distinct instances with shared memory.'
+        concept: object-state
+      - kind: why-fails
+        q: 'A teammate shares a mutable pixel object across multiple concurrent threads without synchronization and claims sharing is safe. Why does the chapter advocate immutable or stateless objects for multithreading?'
+        choices:
+          - 'Immutable objects have unalterable state, making data races physically impossible during concurrent reads'
+          - 'The CPU automatically caches immutable objects in register files'
+          - 'Operating systems terminate any thread that accesses a mutable object'
+        answer: 0
+        why: 'Principle: unchangeable state eliminates concurrency race conditions because no thread can mutate the data while another reads it (Ch.6 attributes note). Choice B is hardware fiction; Choice C is a false OS policy.'
+        concept: immutability
+      - kind: mcq
+        q: 'Which set of terms constitutes the valid predetermined glossary for the banking domain according to the chapter?'
+        choices:
+          - '`account`, `credit`, `balance`, `transfer`, `loan`, `interest`'
+          - '`patient`, `medicine`, `dosage`, `prescription`, `triage`'
+          - '`pixel`, `polygon`, `shader`, `vertex`, `texture`'
+        answer: 0
+        why: 'Principle: a domain is defined by its specific glossary; banking relies on financial transaction terminology and strictly excludes healthcare or graphics terms (Ch.6 Domain).'
+        concept: domain-glossary
+    common_bugs:
+      - 'Confusing the attribute definition (slot name) with the object state (current values)'
+      - 'Polluting a clean domain model with concepts belonging to alien glossaries'
+  - id: b3
+    type: model
+    title: 'Link objects and preserve referential integrity'
+    explain_md: |
+      Isolated objects are rarely useful on their own. In any meaningful system, objects refer to each other to represent relationships (e.g. `student4` sits on `chair3`).
+
+      **How Relationships Alter Object State**:
+      Objects establish relationships by holding **referring attributes** (in C, pointers to other structs).
+      - Consider two independent pixels: `p1` at `{x: 53, y: 345}` and `p2` at `{x: 53, y: 346}`.
+      - Because their vertical coordinates differ by 1 unit, they are vertically adjacent.
+      - To model this link, `p1` gains an attribute `adjacent_down` pointing to `p2`, and `p2` gains `adjacent_up` pointing to `p1`.
+      - **Critical Rule**: Establishing or removing a relationship alters the state of both objects! The relationship itself becomes part of each object's state.
+
+      **Referential Integrity and Destruction Protocol**:
+      When an object's lifecycle ends, it must be destroyed and its memory deallocated. However, if other objects still hold pointers referencing the doomed object, those pointers become **dangling references**.
+      - Reading or writing through a dangling reference causes **use-after-free**, memory corruption, miscalculations, and segmentation faults.
+      - **Referential Integrity**: An object model possesses referential integrity if and only if no attribute references a non-existent or destroyed object.
+      - **Safe Teardown Sequence**:
+        1. Break and clear all referring links from peer objects (set referring pointers to `NULL`).
+        2. Release any internal resources owned by the object.
+        3. Deallocate the object's own memory.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        #include <stdlib.h>
+        typedef struct pixel_t {
+          int x, y;
+          struct pixel_t* adjacent_down;
+          struct pixel_t* adjacent_up;
+        } pixel_t;
+        int main(void) {
+          pixel_t* p1 = (pixel_t*)malloc(sizeof(pixel_t));
+          pixel_t* p2 = (pixel_t*)malloc(sizeof(pixel_t));
+          p1->x = 53; p1->y = 345; p1->adjacent_down = p2; p1->adjacent_up = NULL;
+          p2->x = 53; p2->y = 346; p2->adjacent_down = NULL; p2->adjacent_up = p1;
+          p1->adjacent_down = NULL;
+          free(p2);
+          free(p1);
+          return 0;
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Heap Allocation: p1 allocated at 0x2000, p2 allocated at 0x3000'
+        - 'Linking: p1->adjacent_down = 0x3000; p2->adjacent_up = 0x2000 (both states altered)'
+        - 'Unlinking: p1->adjacent_down = NULL (severing reference to p2 before deallocation)'
+        - 'Deallocation: free(p2) followed by free(p1); referential integrity preserved'
+    checks:
+      - kind: predict
+        q: 'Trace line by line, tracking pointer attributes: after `p1->adjacent_down = p2;` and `p2->adjacent_up = p1;`, what does `p1->adjacent_down->y` evaluate to?'
+        choices:
+          - '346 (the y attribute of object p2)'
+          - '345 (the y attribute of object p1)'
+          - 'NULL (uninitialized pointer)'
+        answer: 0
+        why: 'Principle: p1->adjacent_down stores the address of p2; dereferencing it accesses p2->y, which holds 346 (Ch.6 Relations among objects). Choice B accesses p1 itself; Choice C ignores the assignment.'
+        concept: referring-attributes
+      - kind: why-fails
+        q: 'A programmer frees object `p2` directly without clearing `p1->adjacent_down`. Later, code reads `p1->adjacent_down->y`. Why is this a severe defect?'
+        choices:
+          - 'It causes a use-after-free error by dereferencing a dangling pointer to deallocated memory, violating referential integrity'
+          - 'The compiler automatically nullifies all pointers across the entire process'
+          - 'Freeing an object automatically deallocates every object pointing to it'
+        answer: 0
+        why: 'Principle: referential integrity requires clearing all references to an object before destroying it; dangling pointers lead to memory corruption or crashes (Ch.6 destruction). Choices B and C describe impossible automatic behaviors.'
+        concept: referential-integrity
+      - kind: order
+        q: 'Assemble the safe object destruction sequence that preserves referential integrity (drop the dangerous distractor):'
+        lines:
+          - 'p1->adjacent_down = NULL;'
+          - 'free(p2);'
+          - 'free(p1);'
+          - 'read p1->adjacent_down->y after freeing p2;'
+        answer_order: [0, 1, 2]
+        distractor_why:
+          'read p1->adjacent_down->y after freeing p2;': 'Illegal use-after-free read: accesses a destroyed object through an uncleared dangling pointer.'
+        hint: 'First sever the reference to p2 so nobody points to it, then deallocate p2, then deallocate p1.'
+        why: 'Ordering principle: sever incoming links first, deallocate target memory, then clean up remaining storage (Ch.6 destruction).'
+        concept: teardown-order
+    common_bugs:
+      - 'Failing to realize that establishing a relationship mutates the state of both participating objects'
+      - 'Leaving dangling references in peer objects when destroying a shared instance'
+  - id: b4
+    type: design
+    title: 'Contrast prototype and class construction models'
+    explain_md: |
+      In object-oriented engineering, we must distinguish between two terms that are frequently conflated:
+      - **Creation**: The physical allocation of raw memory bytes for an object (e.g. `malloc()` on the heap or a variable declaration on the stack).
+      - **Construction**: The initialization of the allocated memory attributes into valid, meaningful starting values. Memory allocation without construction leaves attributes holding uninitialized garbage.
+
+      **Two Construction Paradigms**:
+      Across programming languages, object construction follows one of two distinct philosophical and mechanical approaches:
+      1. **Prototype-Based Construction**:
+         - Objects are constructed ex nihilo (empty or with minimal attributes). Attributes and methods are dynamically added, modified, or removed at runtime from an internal dictionary/hash map.
+         - Two instances constructed from the same code path may end up with completely different sets of attributes in their states.
+         - Exemplified by JavaScript, Ruby, Python (via `__dict__`), and PHP.
+         - *Philosophical Analogy*: The existentialist principle **"Existence precedes essence"** (Jean-Paul Sartre): the entity exists first in the world, and acquires its defining character through runtime experience.
+      2. **Class-Based Construction**:
+         - The list of attributes is strictly predetermined up front in a compiled template called a **class**.
+         - No attributes can be added or removed at runtime; all instances share the exact same structural shape throughout execution. Only the attribute values may change (if mutable).
+         - Exemplified by Java, C++, and C struct patterns.
+         - *Philosophical Analogy*: The classical essence-first model: the complete form is defined before the instance is brought into existence.
+
+      **References vs. Instances**:
+      - An **instance** (or object) is the actual memory block holding attribute values.
+      - A **reference** (in C, a pointer) is an address label that refers to that memory. Many references may point to the exact same object. Stack objects are named variables; heap objects are nameless and accessed exclusively via pointers.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        #include <stdlib.h>
+        typedef struct { int x; int y; } point_t;
+        void point_construct(point_t* p, int x, int y) { p->x = x; p->y = y; }
+        int main(void) {
+          point_t stack_pt;
+          point_construct(&stack_pt, 10, 20);
+          point_t* heap_pt = (point_t*)malloc(sizeof(point_t));
+          point_construct(heap_pt, 30, 40);
+          free(heap_pt);
+          return 0;
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Prototype (JS/Python): var o = {} -> o.x = 10 -> o.y = 20 (dynamic hash table growth)'
+        - 'Class-Based (C/C++): struct point_t compiled with fixed {int x, int y} template'
+        - 'Stack Instance: stack_pt at 0x7ffd00 has fixed 8-byte layout, initialized by point_construct'
+        - 'Heap Instance: heap_pt stores pointer 0x2000; nameless block allocated and constructed'
+    checks:
+      - kind: eipe
+        q: 'A C++ class predefines `name` and `surname` attributes, compiling them into a fixed template from which all instances are instantiated. In one sentence, what is this class template FOR?'
+        choices:
+          - 'It predetermines the complete structural attribute shape of all future objects at compile time so every instance is constructed with uniform layout'
+          - 'It allows arbitrary attributes to be added dynamically to individual objects during execution'
+          - 'It invokes malloc to allocate raw heap bytes without initializing them'
+        answer: 0
+        why: 'Principle: class-based OOP fixes the attribute layout at compile time in a class template (Code Box 6-6; Ch.6 Object-oriented operations). Choice B describes prototype-based OOP; Choice C confuses class templates with raw creation.'
+        concept: class-based
+      - kind: why-fails
+        q: 'A programmer calls `malloc(sizeof(point_t))` and asserts that the object has been constructed. Why does the chapter correct this terminology?'
+        choices:
+          - '`malloc` performs memory creation (allocation); construction requires initializing the attributes to valid starting values'
+          - '`malloc` is exclusively a destruction operator in modern C'
+          - 'The terms creation and construction are forbidden by the ANSI C standard'
+        answer: 0
+        why: 'Principle: creation allocates storage, while construction initializes attributes (Ch.6 construction note). Memory allocated by malloc contains uninitialized data until constructed. Choice B and C are false statements.'
+        concept: creation-vs-construction
+      - kind: mcq
+        q: 'Self-contained review from Chapter 01: when executing `int var = 42; int* ptr = &var;`, what relationship does `ptr` establish with `var`?'
+        choices:
+          - '`ptr` stores the memory address of `var`, acting as a reference alias that accesses `var` through `*ptr`'
+          - '`ptr` creates an independent copy of the value 42 on the heap'
+          - '`ptr` and `var` become two names for separate, disconnected storage locations'
+        answer: 0
+        why: 'Principle: pointers act as references in C, storing the address of an existing instance to create an alias (Ch.6 reference note; Essential Features & and *). Choice B and C misunderstand pointer semantics.'
+        concept: reference-alias
+        from_chapter: ch04
+        from_block: b2
+    common_bugs:
+      - 'Equating raw heap allocation (`malloc`) with object construction'
+      - 'Attempting to dynamically attach novel attributes to C struct instances at runtime'
+  - id: b5
+    type: syntax
+    title: 'Encapsulate attributes in a C struct type'
+    explain_md: |
+      In procedural code, developers often group related variables using common name prefixes (e.g., `pixel_p1_x`, `pixel_p1_y`, `pixel_p2_x`). This is **implicit encapsulation**: the grouping exists solely in the developer's mind. The C compiler treats them as ten completely independent variables. Even assembly language can name variables with prefixes, so this does not constitute real language-level encapsulation.
+
+      **Explicit Attribute Encapsulation via `struct`**:
+      Real encapsulation requires that **both the developer and the compiler** recognize the capsule.
+      - In C, explicit attribute encapsulation is achieved using structures (`struct`).
+      - By packaging related attributes into a `typedef struct`, we create a brand new data type (conventionally suffixed with `_t`, e.g. `pixel_t`).
+      - **Key Principle**: Encapsulation always creates a new type! In C, types dictate the attributes of their objects: every instance of `pixel_t` possesses exactly the fields defined in the struct template.
+
+      **Syntax of Field Access**:
+      - **Dot Operator (`.`)**: Used when accessing an attribute directly on an object variable:
+        `p1.x = 56;` (read as: *"the x attribute in the p1 object"*).
+      - **Arrow Operator (`->`)**: Used when accessing an attribute indirectly through a pointer storing the object's address:
+        `ptr->x = 56;` (syntactic sugar for `(*ptr).x`).
+
+      **A C Struct Is Not a Class**:
+      A class in OOP literature encapsulates **both attributes and behaviors**. Because a standard C structure stores only data attributes and cannot contain function bodies, a C struct is only the attribute component of a class. The full class in C remains implicit, formed by the struct plus its companion functions.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        typedef struct {
+          int x, y;
+          int red, green, blue;
+        } pixel_t;
+        int main(void) {
+          pixel_t p1, p2;
+          p1.x = 56;
+          p1.y = 34;
+          p1.red = 123;
+          p1.green = 37;
+          p1.blue = 127;
+          p2.x = 212;
+          p2.y = 994;
+          p2.red = 127;
+          p2.green = 127;
+          p2.blue = 0;
+          return (int)(p1.x + p2.x - 268);
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Type Registration: typedef struct defines pixel_t layout (5 contiguous ints = 20 bytes)'
+        - 'Variable Declaration: pixel_t p1, p2 allocates two 20-byte blocks on stack'
+        - 'Direct Write via Dot: p1.x = 56 writes to offset +0 of p1; p1.y = 34 writes to offset +4'
+        - 'Pointer Write via Arrow: pixel_t* ptr = &p1; ptr->x = 100 dereferences ptr and writes offset +0'
+    checks:
+      - kind: fillblank
+        q: 'Complete the statement to assign 56 to the `x` attribute of the stack object `p1`: `p1___x = 56;`'
+        code: 'pixel_t p1; p1___x = 56;'
+        answer_text: .
+        why: 'Rule: the dot operator (.) accesses struct attributes directly on an object variable, whereas the arrow operator (->) accesses attributes through a pointer (Code Box 6-4 notes).'
+        concept: struct-dot-syntax
+      - kind: order
+        q: 'Assemble the explicit attribute encapsulation sequence (drop the implicit naming distractor):'
+        lines:
+          - 'typedef struct { int x, y; int red, green, blue; } pixel_t;'
+          - 'pixel_t p1, p2;'
+          - 'p1.x = 56;'
+          - 'int pixel_p1_x = 56;'
+        answer_order: [0, 1, 2]
+        distractor_why:
+          'int pixel_p1_x = 56;': 'Implicit name-prefix grouping: does not create a new type and leaves variables disconnected in the compiler symbol table.'
+        hint: 'First define the new struct type, then instantiate objects of that type, then assign attributes via the dot operator.'
+        why: 'Ordering principle: type definition must precede object instantiation, which precedes field assignment (Code Boxes 6-3 and 6-4).'
+        concept: explicit-encapsulation
+      - kind: why-fails
+        q: 'A teammate states that defining a `struct pixel_t` in C is completely equivalent to defining a `class Pixel` in C++. Why does the chapter disagree?'
+        choices:
+          - 'A C struct encapsulates only data attributes; it cannot contain member functions, so the OOP class in C remains an implicit combination of struct plus external functions'
+          - 'C structures are prohibited from storing integer types'
+          - 'C structures cannot be allocated on the stack'
+        answer: 0
+        why: 'Principle: in OOP, a class bundles attributes AND behaviors; C structs hold only attributes, meaning behavior encapsulation must be handled through external functions (Code Box 6-4 notes). Choices B and C are absurd falsehoods.'
+        concept: struct-vs-class
+    common_bugs:
+      - 'Confusing implicit name-prefix grouping with true language-level encapsulation'
+      - 'Using the arrow operator (->) on a direct struct instance instead of the dot operator (.)'
+  - id: b6
+    type: design
+    title: 'Encapsulate behavior using struct-pointer functions'
+    explain_md: |
+      An object is more than passive data—it exhibits **behaviors** that perform operations and alter its state. In OOP terminology, behaviors attached to an object are called **methods**.
+      - In prototype-based languages (e.g. JavaScript, Code Box 6-5), an anonymous function is assigned directly to an object property: `clientObj.orderBankAccount = function() { ... };`.
+      - In class-based languages (e.g. C++, Code Box 6-6), methods are declared directly inside the class body as member functions: `class Client { void orderBankAccount(); };`.
+
+      **The C Implicit Encapsulation Technique**:
+      Because C does not support functions declared inside structs, mature C projects (like `libcurl`, Linux kernel, OpenSSL) use a standardized, disciplined pattern:
+      1. **Attribute Structure**: Define a struct to hold all data attributes (e.g., `typedef struct { char name[32]; double speed; double fuel; } car_t;`).
+      2. **Behavior Functions**: Implement normal C functions that represent object behaviors.
+      3. **First Argument Pointer**: Every behavior function **MUST** accept a pointer to the attribute struct as its first parameter (e.g., `void car_accelerate(car_t* car);`). This pointer allows the function to inspect and mutate that specific object's state.
+      4. **Class Prefix Naming**: Prefix every behavior function with the class name (e.g., `car_construct`, `car_accelerate`, `car_brake`, `car_refuel`) to signify membership in the implicit class.
+      5. **Header File Grouping**: Declare the attribute struct and all associated behavior prototypes in a single declaration header (`car.h`).
+
+      **The Shared Behavior Principle**:
+      In memory, **each object has its own unique attribute struct variable** (allocating separate memory on the stack or heap), but **ALL objects share the exact same behavior functions in the executable's code segment**! Calling `car_accelerate(&c1)` and `car_accelerate(&c2)` executes the identical machine instructions, passing different memory addresses as the first argument.
+
+      Procedural `car_accelerate(&car)` is functionally and semantically identical to object-oriented `car.accelerate()`.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        #include <stdio.h>
+        typedef struct {
+          char name[32];
+          double speed;
+          double fuel;
+        } car_t;
+        void car_construct(car_t* car, const char* name) {
+          car->speed = 0.0; car->fuel = 0.0;
+        }
+        void car_accelerate(car_t* car) {
+          car->speed += 0.05; car->fuel -= 1.0;
+        }
+        int main(void) {
+          car_t c1, c2;
+          car_construct(&c1, "Renault");
+          car_construct(&c2, "Peugeot");
+          c1.fuel = 10.0; c2.fuel = 20.0;
+          car_accelerate(&c1);
+          return (int)(c1.speed * 100);
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Code Segment (.text): One single compiled body of car_accelerate() instructions'
+        - 'Stack Frame: c1 at 0x7ffd00 (speed: 0.0, fuel: 10.0); c2 at 0x7ffd28 (speed: 0.0, fuel: 20.0)'
+        - 'Execution: car_accelerate(&c1) passes 0x7ffd00 into rdi register -> updates c1 to speed: 0.05'
+        - 'Isolation: c1.speed becomes 0.05 while c2.speed remains 0.0; state remains strictly isolated'
+    checks:
+      - kind: eipe
+        q: 'A C function signature is declared as `void car_accelerate(car_t* car);`. In one sentence, what is the first parameter `car` FOR?'
+        choices:
+          - 'It passes the address of the target object so the shared behavior function can inspect and mutate that specific instance state'
+          - 'It creates an entirely new car object on the heap every time the function is called'
+          - 'It informs the operating system to allocate hardware CPU registers for the car'
+        answer: 0
+        why: 'Principle: in C behavior encapsulation, the first argument pointer supplies the target object instance whose state the function modifies (Ch.6 Behavior encapsulation). Choice B confuses modification with creation; Choice C is hardware nonsense.'
+        concept: behavior-signature
+      - kind: predict
+        q: 'Trace line by line, tracking `c1` and `c2`: after `c1.fuel = 10.0; c2.fuel = 20.0; car_accelerate(&c1);`, what is `c2.fuel`?'
+        choices:
+          - '20.0 (untouched because car_accelerate received &c1)'
+          - '19.0 (decremented by 1.0)'
+          - '0.0 (reset by car_construct)'
+        answer: 0
+        why: 'Principle: each object carries independent attribute storage; calling car_accelerate(&c1) mutates c1.fuel, leaving c2.fuel at 20.0 (Code Boxes 6-7 to 6-9). Choice B incorrectly mutates c2; Choice C confuses construction with acceleration.'
+        concept: instance-isolation
+      - kind: why-fails
+        q: 'A programmer writes a function `void accelerate(void)` that modifies a global variable instead of taking a `car_t*` pointer. Why does the chapter reject this as an object behavior?'
+        choices:
+          - 'Without receiving an object pointer, the function operates on global state rather than encapsulating behavior for specific object instances'
+          - 'Global variables are prohibited by the C99 standard'
+          - 'Functions without arguments cannot be called from main'
+        answer: 0
+        why: 'Principle: a function without a struct pointer parameter is an ordinary procedural function, not an object behavior tied to an instance (Ch.6 Behavior encapsulation). Choices B and C are false statements.'
+        concept: behavior-vs-procedural
+      - kind: choose-better
+        q: 'Which function signature best adheres to the chapter convention for an object behavior that refuels a `car_t` object with a specified amount?'
+        choices:
+          - '`void car_refuel(car_t* car, double amount);`'
+          - '`void refuel(double amount);`'
+        answer: 0
+        why: 'Principle: behavior functions should prefix the class name (`car_`) and take the object attribute struct pointer as their first argument (Code Box 6-7). Option B lacks class prefixing and instance targeting.'
+        concept: behavior-naming-convention
+    common_bugs:
+      - 'Omitting the struct pointer argument from behavior functions, making them unable to target specific instances'
+      - 'Believing that each object creates a separate copy of the behavior function machine code in memory'
+  - id: b7
+    type: model
+    title: 'Bridge procedural execution to object-oriented models'
+    explain_md: |
+      A profound question emerges in system programming: **Why is C not an object-oriented language?**
+      The answer is not historical age. The real reason is architectural:
+      - Human programmers naturally conceptualize complex systems in terms of **object-oriented models** (entities, boundaries, relationships).
+      - The physical CPU, however, executes purely **procedural machine instructions**: loading registers, performing arithmetic, branching, and jumping to subroutine memory addresses.
+      - **C occupies the critical boundary layer** between human object-oriented abstractions and procedural hardware execution. Without a language at this boundary, high-level object-oriented languages (C++, Java JVM, Python) could not translate their abstract models down to machine execution.
+
+      **How C++ Implements OOP Under the Hood**:
+      When you write C++ code like `car.Accelerate()`, the C++ compiler transforms it directly into the procedural C equivalent:
+      1. It looks up the function `Car::Accelerate(Car* this)`.
+      2. It automatically injects the address of the caller (`&car`) into the implicit **`this` pointer** parameter (typically passed in CPU register `rdi` on x86-64).
+      3. The method body operates on `this->speed` and `this->fuel`.
+
+      **Automatic Destructors vs. Manual C Cleanup**:
+      In C++, constructors (`Car()`) and destructors (`~Car()`) are first-class language constructs:
+      - When a C++ stack object exits its enclosing scope, the compiler **automatically emits a call to its destructor**. This pattern—**RAII (Resource Acquisition Is Initialization)**—ensures that allocated memory, open file descriptors, and sockets are guaranteed to be released.
+      - In C, **there is zero automatic destruction**. The developer must remember to explicitly call `car_destruct(&car)` before the object goes out of scope. If a C object owns heap allocations and the developer forgets the destructor call, memory leaks permanently.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        typedef struct { int dummy; } car_t;
+        void car_destruct(car_t* c) { (void)c; }
+        int main(void) {
+          car_t c;
+          car_destruct(&c);
+          return 0;
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'High-Level OOP (C++): car.Accelerate() -> clean human-centric syntax'
+        - 'Compiler Translation: Car::Accelerate(Car* const this = &car) -> injects implicit pointer'
+        - 'Procedural C Equivalent: car_accelerate(&car) -> explicit address passing'
+        - 'Machine Code: mov rdi, [rsp+8]; call car_accelerate -> raw CPU subroutine jump'
+    checks:
+      - kind: eipe
+        q: 'High-level OOP languages translate `object.method(arg)` into `func(object_ptr, arg)` at compile time. In one sentence, what is C situated on this boundary FOR?'
+        choices:
+          - 'C acts as the foundational structural layer that bridges human object-oriented mental models into procedural CPU instructions'
+          - 'C forces all programmers to avoid object-oriented thinking permanently'
+          - 'C was designed exclusively to simulate electronic vacuum tubes'
+        answer: 0
+        why: 'Principle: C sits on the barrier between object orientation and procedural CPU execution, providing the low-level translation bridge for high-level languages (Ch.6 C is not object-oriented). Choices B and C are absurd.'
+        concept: c-as-boundary
+      - kind: why-fails
+        q: 'A C developer allocates internal heap memory inside an object constructor but forgets to call the object destructor before the stack frame exits. Why does this defect not happen automatically in C++?'
+        choices:
+          - 'C++ enforces RAII by automatically invoking the destructor `~Car()` whenever a stack object exits its enclosing scope, whereas C lacks language-level destructor triggers'
+          - 'C++ operating systems run garbage collectors on all raw C pointers'
+          - 'C memory leaks are automatically repaired by the CPU hardware'
+        answer: 0
+        why: 'Principle: C++ automatically invokes destructors on stack unwinding (RAII); C lacks automatic destructor triggers, making manual destructor invocation mandatory to prevent leaks (Ch.6 Code Box 6-12 notes). Choices B and C describe non-existent mechanisms.'
+        concept: raii-vs-manual-destruct
+      - kind: predict
+        q: 'In C++, `car.Accelerate()` is called. What does the compiler pass under the hood as the implicit `this` pointer?'
+        choices:
+          - 'The memory address of the calling instance `&car`'
+          - 'A copy of the string name of the car'
+          - 'A null pointer'
+        answer: 0
+        why: 'Principle: member function calls in C++ pass the address of the invoking instance as the hidden this pointer, exactly mirroring car_accelerate(&car) in C (Ch.6 Code Box 6-11 notes). Choice B and C are incorrect.'
+        concept: this-pointer-translation
+    common_bugs:
+      - 'Forgetting to explicitly call destructor functions in C before instances leave scope'
+      - 'Assuming that C++ member functions incur runtime overhead compared to passing a C struct pointer'
+  - id: b8
+    type: design
+    title: 'Hide private state behind opaque struct headers'
+    explain_md: |
+      Encapsulation bundles attributes and behaviors into a capsule; **Information Hiding** restricts visibility into that capsule from the outer world.
+
+      **The Danger of Leaking Implementation Details**:
+      In Example 6.1, `main()` was able to directly read and modify `car.fuel` and `car.speed` because the struct fields were declared openly in the header file. This makes all attributes **public**.
+      - **Tight Coupling**: If consumer code directly accesses internal fields, it becomes coupled to your exact implementation choices.
+      - **Breaking Backward Compatibility**: If you later decide to calculate speed from wheel RPM or change `fuel` from a `double` to an integer percentage, every line of external client code will fail to compile.
+      - **Golden Rule**: Treat all attributes and internal helper functions as **private by default**. Expose only the minimal necessary public API.
+
+      **The Opaque Struct Technique in C**:
+      How can C hide struct attributes when C lacks `private` and `public` access keywords?
+      The solution is the **opaque pointer pattern (incomplete type)**:
+      1. **Public Header (`list.h`)**:
+         - Declare the struct tag with **no fields**: `struct list_t;`
+         - This introduces `struct list_t` as an **incomplete type**. The compiler knows the tag exists, but does not know its size or field layout.
+         - Declare public behavior prototypes taking pointers: `int list_add(struct list_t* list, int item);`.
+      2. **Private Source (`list.c`)**:
+         - Define the full structure definition: `typedef struct { size_t size; int* items; } list_t;`.
+         - Only code inside `list.c` knows the field layout.
+      3. **Why `list_malloc()` Is Mandatory**:
+         - Client code (`main.c`) includes `list.h`. Because `struct list_t` is incomplete in `main.c`, client code **CANNOT** write `sizeof(struct list_t)` or `malloc(sizeof(struct list_t))`—the compiler emits an error because the byte size is unknown!
+         - Therefore, the module must export an allocation function (`struct list_t* list_malloc(void);`) defined inside `list.c` where `sizeof(list_t)` is known.
+      4. **Private Behaviors**:
+         - Internal helpers like `__list_is_full` and `__check_index` are prefixed with `__`, defined solely inside `list.c`, and completely omitted from `list.h`.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        #include <stdlib.h>
+        struct list_t;
+        struct list_t* list_malloc(void);
+        void list_free(struct list_t* l);
+        typedef struct list_impl {
+          size_t size;
+          int items[10];
+        } list_t;
+        list_t* my_list_malloc(void) {
+          return (list_t*)malloc(sizeof(list_t));
+        }
+        int main(void) {
+          list_t* l = my_list_malloc();
+          free(l);
+          return 0;
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Public Header (main.c view): struct list_t; -> Incomplete Type (fields hidden, size unknown)'
+        - 'Pointer Legal: struct list_t* ptr; is allowed (pointer size is always 8 bytes on 64-bit)'
+        - 'Field Access / sizeof Illegal: ptr->size and sizeof(struct list_t) fail compilation'
+        - 'Private Source (list.c view): struct list_t { size_t size; int* items; } fully defined'
+    checks:
+      - kind: fillblank
+        q: 'Complete the forward declaration in a public header that declares an opaque struct type named `list_t` without exposing its fields: `______ list_t;`'
+        code: '______ list_t;'
+        answer_text: struct
+        why: 'Rule: forward declaring `struct tag;` introduces an incomplete type, allowing external code to handle pointers without exposing internal attributes (Code Box 6-13).'
+        concept: opaque-struct-declaration
+      - kind: why-fails
+        q: 'Client code includes an opaque header declaring `struct list_t;` and attempts to execute `malloc(sizeof(struct list_t))`. Why does the compiler reject this?'
+        choices:
+          - '`struct list_t` is an incomplete type in client code, so `sizeof` cannot compute its byte size at compile time'
+          - 'The `malloc` function cannot allocate memory for structures in C'
+          - 'Client code is prohibited from calling standard library functions'
+        answer: 0
+        why: 'Principle: sizeof requires a complete type definition; because fields are hidden in list.c, client code cannot determine struct size and must use a provider allocation function like list_malloc() (Ch.6 Information hiding; Code Box 6-13 notes). Choices B and C are false.'
+        concept: incomplete-sizeof
+      - kind: predict
+        q: 'Client code includes an opaque header containing `struct list_t;` and attempts: `struct list_t* l = list_malloc(); l->size = 0;`. What happens at compile time?'
+        choices:
+          - 'Compilation fails with an error: dereferencing pointer to incomplete type `struct list_t`'
+          - 'Compilation succeeds and writes 0 into the first struct field'
+          - 'The compiler automatically creates a global variable named size'
+        answer: 0
+        why: 'Principle: client code has no access to struct members of an incomplete type, guaranteeing true information hiding at compile time (Ch.6 Information hiding). Choice B and C violate compiler type checking.'
+        concept: opaque-field-protection
+      - kind: choose-better
+        q: 'Which approach best preserves backward compatibility when designing a reusable library module in C?'
+        choices:
+          - 'Declare an opaque struct in the header and provide allocation/accessor functions, keeping all fields private in the .c file'
+          - 'Declare all struct fields openly in the public header so clients can directly read and mutate internal data'
+        answer: 0
+        why: 'Principle: hiding implementation behind opaque structs insulates clients from internal layout changes, preserving backward compatibility (Ch.6 Information hiding). Option B couples clients to internal representation.'
+        concept: public-api-design
+    common_bugs:
+      - 'Attempting to evaluate `sizeof` on an opaque incomplete struct in client code'
+      - 'Exposing internal helper functions or struct fields in public headers, creating tight external coupling'
+  - id: b9
+    type: algorithm
+    title: 'Decouple builds and link swappable implementations'
+    explain_md: |
+      Information hiding through opaque types enables one of the most powerful architectural capabilities in software engineering: **independent module compilation and swappable implementations**.
+
+      **Separate Compilation Mechanics**:
+      Consider our List module split into files:
+      - `list.h`: Contains public opaque declarations (`struct list_t;`, function prototypes).
+      - `private.c`: Defines the full struct and implements functions (`list_malloc`, `list_add`, etc.).
+      - `main.c`: The client driver containing `main()` and higher-level logic (e.g. `reverse()`).
+      To build the system, we compile the source files independently using `gcc -c`:
+      ```bash
+      gcc -c private.c -o private.o
+      gcc -c main.c -o main.o
+      ```
+      *Note*: We **never** compile header files directly. The declarations in `list.h` are expanded into `main.o` and `private.o` during preprocessing.
+
+      **The Linking Phase and Symbol Resolution**:
+      If you attempt to link `main.o` alone:
+      ```bash
+      gcc main.o -o ex6_3.out
+      ```
+      The linker (`ld`) aborts with errors: `undefined reference to 'list_malloc'`, `undefined reference to 'list_add'`.
+      *Why?* The compiler accepted `main.c` because the header promised those functions existed. But `main.o` contains only unresolved symbol requests. The linker must join `main.o` with `private.o` to satisfy those promises:
+      ```bash
+      gcc main.o private.o -o ex6_3.out
+      ```
+
+      **Swapping Implementations Without Recompiling Clients**:
+      Suppose we replace the fixed-array implementation in `private.c` with a high-performance doubly linked list in `private2.c`.
+      - We compile `private2.c` to `private2.o`.
+      - **`main.o` requires ZERO recompilation!** Because `main.o` depends strictly on the invariant public API, we simply relink:
+        `gcc main.o private2.o -o ex6_3.out`
+      - If packaged into a shared library (`.so`), the implementation can even be swapped at runtime without relinking (as taught in Chapter 3).
+
+      **The Unsigned Loop Underflow Trap**:
+      In the chapter's `reverse()` algorithm, code copies elements backward from `source` into `dest`.
+      - Novices often write: `for (size_t i = list_size(source) - 1; i >= 0; i--)`
+      - **CRITICAL BUG**: Because `size_t` is an **unsigned integer**, the condition `i >= 0` is **ALWAYS true**! When `i` reaches 0, executing `i--` underflows to `SIZE_MAX` (e.g. 18,446,744,073,709,551,615), creating an infinite loop that crashes with a segmentation fault!
+      - **The Safe Idiom**: `for (size_t i = list_size(source); i-- > 0;)`: Here, `i` is decremented *before* the body executes, correctly terminating when `i` reaches 0 without underflow.
+    example:
+      lang: c
+      adapted: true
+      code: |
+        #include <stdlib.h>
+        typedef struct { size_t size; int items[10]; } list_t;
+        int list_add(list_t* l, int v) {
+          if (l->size >= 10) return -1;
+          l->items[l->size++] = v;
+          return 0;
+        }
+        int list_get(list_t* l, size_t i, int* out) {
+          if (i >= l->size) return -1;
+          *out = l->items[i];
+          return 0;
+        }
+        void reverse_copy(list_t* s, list_t* d) {
+          d->size = 0;
+          for (size_t i = s->size; i-- > 0;) {
+            int val;
+            list_get(s, i, &val);
+            list_add(d, val);
+          }
+        }
+        int main(void) {
+          list_t src = {0, {0}}, dst = {0, {0}};
+          list_add(&src, 4); list_add(&src, 6); list_add(&src, 1); list_add(&src, 5);
+          reverse_copy(&src, &dst);
+          return (int)(dst.items[0] - 5);
+        }
+    viz:
+      kind: ascii-memory
+      steps:
+        - 'Compilation: gcc -c main.c -> main.o (has unresolved symbol references to list_*)'
+        - 'Compilation: gcc -c private.c -> private.o (exports defined symbols for list_*)'
+        - 'Link Phase: gcc main.o private.o -o ex6_3.out binds symbol references to code addresses'
+        - 'Implementation Swap: gcc main.o private2.o -o ex6_3.out links new logic without touching main.o'
+    checks:
+      - kind: order
+        q: 'Assemble the correct multi-file build sequence to produce an executable (drop the incomplete link distractor):'
+        lines:
+          - 'gcc -c private.c -o private.o'
+          - 'gcc -c main.c -o main.o'
+          - 'gcc main.o private.o -o ex6_3.out'
+          - 'gcc main.o -o ex6_3.out'
+        answer_order: [0, 1, 2]
+        distractor_why:
+          'gcc main.o -o ex6_3.out': 'Fails at link time with undefined reference errors because private definition symbols are missing.'
+        hint: 'First compile both C sources into object files with -c, then link the object files together.'
+        why: 'Ordering principle: source files are compiled separately into object files, which are subsequently combined by the linker (Shell Boxes 6-1 to 6-3).'
+        concept: build-order
+      - kind: predict
+        q: 'Trace line by line, tracking the link phase: a developer executes `gcc main.o -o ex6_3.out` without providing `private.o`. What is the result?'
+        choices:
+          - 'The linker aborts with undefined reference errors for list functions, producing no executable'
+          - 'The compiler automatically locates private.c and compiles it in the background'
+          - 'The program links successfully and silently substitutes empty stub functions'
+        answer: 0
+        why: 'Principle: the linker requires object files containing definitions to satisfy external symbol references declared in headers (Shell Box 6-2). Choices B and C describe impossible build behaviors.'
+        concept: link-needs-defs
+      - kind: why-fails
+        q: 'A programmer writes a countdown loop as `for (size_t i = size - 1; i >= 0; i--)`. Why does this loop never terminate?'
+        choices:
+          - 'Because `size_t` is an unsigned integer type, `i >= 0` is mathematically always true; decrementing 0 underflows to `SIZE_MAX`, causing an infinite loop'
+          - 'The compiler disallows decrement operations on `size_t` variables'
+          - 'The loop index `i` is automatically reset to `size` on each iteration'
+        answer: 0
+        why: 'Principle: unsigned integer underflow makes i >= 0 an infinite loop; the safe countdown pattern is `for (size_t i = size; i-- > 0;)` (Ch.6 Reverse loop caveat). Choices B and C are false.'
+        concept: unsigned-loop-underflow
+      - kind: mcq
+        q: 'Self-contained review from Chapter 01: in C, when passing an argument to a function via `func(x)`, what mechanism does C use to pass the value?'
+        choices:
+          - 'Pass-by-value: the argument value is copied into the callee local parameter frame, leaving the caller variable unchanged'
+          - 'Pass-by-reference: the function directly binds to the caller storage location'
+          - 'Pass-by-name: the argument expression is re-evaluated inside the callee'
+        answer: 0
+        why: 'Principle: C supports strictly pass-by-value; caller variables remain unaltered unless an explicit address pointer is passed (Essential Features Example 1.17). Choices B and C do not exist in C.'
+        concept: pass-by-value
+        from_chapter: ch04
+        from_block: b3
+    common_bugs:
+      - 'Attempting to compile header files directly rather than including them in source files'
+      - 'Writing `for (size_t i = n - 1; i >= 0; i--)` with unsigned `size_t`, causing infinite underflow loops'
+cards:
+  - front: 'When do objects exist in object-oriented programming, and what does code hold prior to that?'
+    back: 'Objects exist strictly in RAM during program execution. Prior to runtime, code on disk holds static instructions (blueprints) to allocate, initialize, relate, and destroy them.'
+    concept: objects-are-runtime
+  - front: 'What is the precise distinction between an object attribute and object state?'
+    back: 'An attribute is a designated parameter/slot (e.g. `color`); state is the specific set of values assigned to those attributes at any given moment.'
+    concept: object-state
+  - front: 'Why are immutable and stateless objects preferred in multithreaded systems?'
+    back: 'Because their state cannot be altered after creation, eliminating data races during concurrent read access across multiple threads without locks.'
+    concept: immutability
+  - front: 'What defines a software domain, and why is its glossary critical?'
+    back: 'A domain defines the functional boundaries and requirements of software. Its predetermined glossary ensures terminology matches the problem space and prevents complexity bloat.'
+    concept: domain-glossary
+  - front: 'How is a relationship between two objects represented in memory, and how does it affect state?'
+    back: 'By storing referring attributes (pointers) inside the objects. Establishing or severing a link mutates the state of both participating objects.'
+    concept: referring-attributes
+  - front: 'What is referential integrity during object destruction?'
+    back: 'The guarantee that no attribute references a non-existent or destroyed object. Incoming links must be severed before memory is deallocated to prevent dangling pointers.'
+    concept: referential-integrity
+  - front: 'What is the fundamental difference between object creation and object construction?'
+    back: 'Creation allocates raw memory bytes (e.g. `malloc`); construction initializes those allocated attributes into a valid starting state.'
+    concept: creation-vs-construction
+  - front: 'Contrast prototype-based construction with class-based construction.'
+    back: 'Prototype-based starts empty and dynamically adds attributes at runtime (existence precedes essence); class-based enforces a fixed, predesigned template compiled up front.'
+    concept: class-based
+  - front: 'Why does explicit encapsulation in C always create a new data type?'
+    back: 'Because C uses `typedef struct` to package attributes, and types dictate the structural attributes that instances of that type will possess.'
+    concept: explicit-encapsulation
+  - front: 'What is the standard convention for behavior encapsulation in procedural C?'
+    back: 'Write standalone functions prefixed with the class name (`car_`) that accept a pointer to the attribute struct (`car_t*`) as their first argument.'
+    concept: behavior-signature
+  - front: 'In C behavior encapsulation, do separate instances duplicate function code in memory?'
+    back: 'No. Each instance has its own attribute struct in RAM, but all instances share the single copy of compiled behavior functions in the code segment (.text).'
+    concept: instance-isolation
+  - front: 'How does C++ translate member function calls like `car.Accelerate()` under the hood?'
+    back: 'It rewrites the call to `Car::Accelerate(&car)`, passing the instance address into the hidden `this` pointer parameter.'
+    concept: this-pointer-translation
+  - front: 'How is information hiding achieved in C using opaque structures?'
+    back: 'Declare `struct tag;` with no fields in the public header (incomplete type) and define the full struct solely inside the private `.c` implementation file.'
+    concept: opaque-struct-declaration
+  - front: 'Why can client code not call `sizeof` on an opaque struct declared in a header?'
+    back: 'Because the struct is an incomplete type in client code; the compiler does not know its field layout and cannot compute its size at compile time.'
+    concept: incomplete-sizeof
+lab:
+  lang: c
+  title: 'Opaque list with private guards and reverse'
+  prompt_md: |
+    Implement an encapsulated, information-hiding List module in C that mirrors the chapter architecture.
+    The module defines an internal fixed-size store (`MAX_SIZE 10`) hidden behind an opaque structure.
+    
+    You must implement four functions in `starter.c`:
+    1. `int __list_is_full(list_t* l)`: Private guard returning 1 if `l->size == MAX_SIZE`, else 0.
+    2. `int list_add(list_t* l, int v)`: Public behavior that appends `v` to `l->items` and increments `l->size`. Returns -1 if full, else 0.
+    3. `int list_get(list_t* l, int i, int* o)`: Public behavior that checks if `0 <= i < l->size`. If valid, writes `l->items[i]` to `*o` and returns 0; else returns -1.
+    4. `int reverse_list(list_t* s, list_t* d)`: Reverses elements from `s` into `d` using **ONLY** the public API (`list_clear`, `list_size`, `list_get`, `list_add`). Avoid unsigned loop underflow!
+    
+    When run, `main()` must output:
+    ```
+    [4 6 1 5 ]
+    [5 1 6 4 ]
+    ```
+  starter_c: |
+    #include <stdio.h>
+    #define MAX_SIZE 10
+    typedef struct { unsigned size; int items[10]; } list_t;
+    int __list_is_full(list_t *l) { return 0; }
+    int list_add(list_t *l, int v) { (void)l; (void)v; return -1; }
+    int list_get(list_t *l, int i, int *o) { (void)l; (void)i; (void)o; return -1; }
+    void list_clear(list_t *d) { d->size = 0; }
+    unsigned list_size(list_t *s) { return s->size; }
+    int reverse_list(list_t *s, list_t *d) { (void)s; (void)d; return -1; }
+    void list_print(list_t *l) {
+      printf("[");
+      for (unsigned i = 0; i < l->size; i++) printf("%d ", l->items[i]);
+      printf("]\n");
+    }
+    int main(void) {
+      list_t a = {0, {0}}, b = {0, {0}};
+      list_add(&a, 4); list_add(&a, 6); list_add(&a, 1); list_add(&a, 5);
+      reverse_list(&a, &b);
+      list_print(&a); list_print(&b);
+      return 0;
+    }
+  tests_sh: 'gcc -Wall -std=c99 starter.c -o t && ./t | grep -q "\[4 6 1 5 \]" && ./t | grep -q "\[5 1 6 4 \]"'
+  hints:
+    - 'Where to look: implement only the four TODO function bodies; list_clear, list_size, list_print, and main are already complete.'
+    - 'What rule applies: __list_is_full checks l->size == MAX_SIZE; list_get verifies 0 <= i && (unsigned)i < l->size.'
+    - 'What shape: list_add stores at l->items[l->size++] and returns 0 on success; list_get writes *o = l->items[i] and returns 0.'
+    - 'Bottom-out snippet for reverse_list: call list_clear(d); then loop for (unsigned i = list_size(s); i-- > 0;) { int val; list_get(s, (int)i, &val); list_add(d, val); } return 0;'
+test:
+  gates:
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8, b9]
+      min_quiz: 80
+  final_checks:
+    - kind: predict
+      q: 'Trace the struct instantiation: after `pixel_t p1, p2; p1.x = 56;`, what is the value of `p2.x`?'
+      choices:
+        - '0 (or default unassigned value, independent of p1)'
+        - '56 (shared attribute across all instances)'
+        - 'Undefined alias of p1.x'
+      answer: 0
+      why: 'Separate objects carry separate, independent state allocated in distinct memory locations (Code Box 6-4).'
+    - kind: why-fails
+      q: 'A client source file includes a header declaring `struct list_t;` without fields, yet the final linked program executes flawlessly. Why does this design succeed?'
+      choices:
+        - 'The linker binds public function declarations in the client object file to the complete private struct definitions in the implementation object file'
+        - 'The C preprocessor automatically copies private C files into headers at compile time'
+        - 'Incomplete types are executed directly by the CPU without machine code definitions'
+      answer: 0
+      why: 'The linker resolves external symbol references at link time, allowing client code to rely strictly on public declarations while private implementations remain decoupled (Shell Boxes 6-1 to 6-3).'

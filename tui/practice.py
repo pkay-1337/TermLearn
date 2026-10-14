@@ -41,19 +41,20 @@ class _Base(Screen):
 class StudyScreen(VimScrollMixin, _Base):
     HELP_TITLE = "study"
     HELP_LINES = [("n", "next"), ("p", "previous block"), ("r", "run example"),
-                  ("j/k", "scroll"), ("d/u", "half page"), ("q", "back")]
+                  ("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
     BINDINGS = ([Binding("n", "next", "Next"),
                  Binding("p", "prev", "Previous"),
                  Binding("r", "run_ex", "Run"),
                  Binding("q", "back", "Back"),
+                 Binding("h", "back", "Back", show=False),
                  Binding("question_mark", "help", "Help")] +
                 VimScrollMixin.VIM_BINDINGS)
 
-    def __init__(self, book: str, chapter: str) -> None:
+    def __init__(self, book: str, chapter: str, start_block: int = 0) -> None:
         super().__init__()
         self.book = book
         self.chapter = chapter
-        self.bi = 0
+        self.bi = max(0, start_block)
         self.stage = "explain"  # explain | viz | check-i | done
         self.vi = 0
 
@@ -62,6 +63,8 @@ class StudyScreen(VimScrollMixin, _Base):
         from lib.srs import init_db
         self.data = load_chapter(self.book, self.chapter)
         self.blocks = self.data.get("blocks", [])
+        if self.blocks:
+            self.bi = max(0, min(self.bi, len(self.blocks) - 1))
         self._con = init_db()
         with ScrollableContainer(classes="study-container"):
             yield Vertical(id="body")
@@ -133,6 +136,14 @@ class StudyScreen(VimScrollMixin, _Base):
     def _next_btn(self) -> None:
         self.action_next()
 
+    def _mark_current_block_done(self) -> None:
+        from lib.progress import mark_block_completed
+        try:
+            b = self._block()
+            mark_block_completed(self.book, self.chapter, b.get("id", "?"))
+        except Exception:
+            pass
+
     def action_next(self) -> None:
         b = self._block()
         checks = b.get("checks", []) or []
@@ -143,19 +154,29 @@ class StudyScreen(VimScrollMixin, _Base):
             elif checks:
                 self.stage = "check-0"
             else:
+                self._mark_current_block_done()
                 self._advance_block()
         elif self.stage == "viz":
             self.vi += 1
             if self.vi >= len(steps):
-                self.stage = "check-0" if checks else "done"
+                if checks:
+                    self.stage = "check-0"
+                else:
+                    self.stage = "done"
+                    self._mark_current_block_done()
         elif self.stage.startswith("check"):
             i = int(self.stage.split("-")[1]) + 1
-            self.stage = f"check-{i}" if i < len(checks) else "done"
+            if i < len(checks):
+                self.stage = f"check-{i}"
+            else:
+                self.stage = "done"
+                self._mark_current_block_done()
         elif self.stage == "done":
             self._advance_block()
         self._show_body()
 
     def _advance_block(self) -> None:
+        self._mark_current_block_done()
         if self.bi + 1 < len(self.blocks):
             self.bi += 1
             self.stage = "explain"

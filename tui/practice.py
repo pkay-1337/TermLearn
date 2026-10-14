@@ -16,7 +16,7 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, DataTable, Input, Label, Markdown, Static
 
-from tui.widgets import QuestionWidget
+from tui.widgets import QuestionWidget, VimScrollMixin
 
 CHOICE_KINDS = ("predict", "why-fails", "mcq", "eipe", "choose-better")
 
@@ -38,15 +38,16 @@ class _Base(Screen):
             self._con = None
 
 
-class StudyScreen(_Base):
+class StudyScreen(VimScrollMixin, _Base):
     HELP_TITLE = "study"
     HELP_LINES = [("n", "next"), ("p", "previous block"), ("r", "run example"),
-                  ("q", "back")]
-    BINDINGS = [Binding("n", "next", "Next"),
-                Binding("p", "prev", "Previous"),
-                Binding("r", "run_ex", "Run"),
-                Binding("q", "back", "Back"),
-                Binding("question_mark", "help", "Help")]
+                  ("j/k", "scroll"), ("d/u", "half page"), ("q", "back")]
+    BINDINGS = ([Binding("n", "next", "Next"),
+                 Binding("p", "prev", "Previous"),
+                 Binding("r", "run_ex", "Run"),
+                 Binding("q", "back", "Back"),
+                 Binding("question_mark", "help", "Help")] +
+                VimScrollMixin.VIM_BINDINGS)
 
     def __init__(self, book: str, chapter: str) -> None:
         super().__init__()
@@ -120,6 +121,13 @@ class StudyScreen(_Base):
         body = self.query_one("#body", Vertical)
         body.mount(Button("Next Question (n)", id="next-btn"))
         body.query_one("#next-btn", Button).focus()
+        self.call_after_refresh(self._scroll_to_next)
+
+    def _scroll_to_next(self) -> None:
+        try:
+            self.query_one("#next-btn").scroll_visible(animate=True, top=False)
+        except Exception:
+            pass
 
     @on(Button.Pressed, "#next-btn")
     def _next_btn(self) -> None:
@@ -185,13 +193,15 @@ class StudyScreen(_Base):
         self.app.pop_screen()
 
 
-class QuizScreen(_Base):
+class QuizScreen(VimScrollMixin, _Base):
     HELP_TITLE = "quiz"
-    HELP_LINES = [("1-4", "answer choice"), ("n", "next"), ("q", "back")]
+    HELP_LINES = [("1-4", "answer choice"), ("n", "next"), ("j/k", "scroll / nav"),
+                  ("d/u", "half page"), ("q", "back")]
     BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 5)] +
                 [Binding("n", "next", "Next"),
                  Binding("q", "back", "Back"),
-                 Binding("question_mark", "help", "Help")])
+                 Binding("question_mark", "help", "Help")] +
+                VimScrollMixin.VIM_BINDINGS)
 
     def __init__(self, book: str, chapter: str, kind: str | None = None) -> None:
         super().__init__()
@@ -252,6 +262,13 @@ class QuizScreen(_Base):
         self.results.append((str(ck.get("concept", "")), bool(ok)))
         self.query_one("#body", Vertical).mount(Button("Next Question (n)", id="next-btn"))
         self.query_one("#next-btn", Button).focus()
+        self.call_after_refresh(self._scroll_to_next)
+
+    def _scroll_to_next(self) -> None:
+        try:
+            self.query_one("#next-btn").scroll_visible(animate=True, top=False)
+        except Exception:
+            pass
 
     @on(Button.Pressed, "#next-btn")
     def _next_btn(self) -> None:
@@ -338,9 +355,15 @@ class EditCardModal(ModalScreen):
 
 class CardsScreen(_Base):
     HELP_TITLE = "srs cards"
-    HELP_LINES = [("f", "flip"), ("e", "edit card"), ("1-4", "grade"), ("q", "back")]
+    HELP_LINES = [("space/f", "flip"), ("1-4/hjkl", "grade"), ("e", "edit card"), ("q", "back")]
     BINDINGS = ([Binding(str(i), f"grade{i}", "", show=False) for i in range(1, 5)] +
                 [Binding("f", "flip", "Flip"),
+                 Binding("space", "flip_or_space", "Flip", show=False),
+                 Binding("enter", "flip_or_enter", "Flip", show=False),
+                 Binding("l", "key_l", "", show=False),
+                 Binding("h", "key_h", "", show=False),
+                 Binding("j", "key_j", "", show=False),
+                 Binding("k", "key_k", "", show=False),
                  Binding("e", "edit", "Edit"),
                  Binding("n", "next", "Next"),
                  Binding("q", "back", "Back"),
@@ -386,10 +409,46 @@ class CardsScreen(_Base):
         card_box = Vertical(
             Label(f"🏷️  CARD {self.idx + 1} OF {len(self.due)} · DUE TODAY", classes="card-tag"),
             Static(f"Q: {card['front']}", classes="card-content"),
-            Static("Press [bold cyan]f[/] to flip card · [bold cyan]e[/] to edit · [bold cyan]q[/] to back", classes="card-hint"),
+            Static("Press [bold cyan]Space / f[/] to flip card · [bold cyan]e[/] to edit · [bold cyan]q[/] to back", classes="card-hint"),
             classes="flashcard-frame"
         )
         body.mount(card_box)
+
+    def action_flip_or_space(self) -> None:
+        if not self.flipped:
+            self.action_flip()
+
+    def action_flip_or_enter(self) -> None:
+        if not self.flipped:
+            self.action_flip()
+
+    def action_key_l(self) -> None:
+        if not self.flipped:
+            self.action_flip()
+        else:
+            self._grade_digit(4)
+
+    def action_key_h(self) -> None:
+        if self.flipped:
+            self._grade_digit(1)
+
+    def action_key_j(self) -> None:
+        if self.flipped:
+            self._grade_digit(2)
+        else:
+            try:
+                self.query_one(".flashcard-frame").scroll_relative(y=2, animate=False)
+            except Exception:
+                pass
+
+    def action_key_k(self) -> None:
+        if self.flipped:
+            self._grade_digit(3)
+        else:
+            try:
+                self.query_one(".flashcard-frame").scroll_relative(y=-2, animate=False)
+            except Exception:
+                pass
 
     def action_flip(self) -> None:
         if self.idx < len(self.due) and not self.flipped:
@@ -402,12 +461,13 @@ class CardsScreen(_Base):
                 classes="flashcard-frame flashcard-flipped"
             )
             body.mount(ans_box)
+            deck_class = "grade-deck-grid" if getattr(self, "size", None) and self.size.width < 70 else "grade-deck"
             deck = Horizontal(
                 Button("[1] Again (<10m)", id="grade-1", classes="btn-grade-1"),
                 Button("[2] Hard (1d)", id="grade-2", classes="btn-grade-2"),
                 Button("[3] Good (3d)", id="grade-3", classes="btn-grade-3"),
                 Button("[4] Easy (6d)", id="grade-4", classes="btn-grade-4"),
-                classes="grade-deck"
+                classes=deck_class
             )
             body.mount(deck)
 
@@ -493,10 +553,11 @@ class CardsScreen(_Base):
 class LabScreen(_Base):
     HELP_TITLE = "lab"
     HELP_LINES = [("r", "run"), ("t", "hidden tests + snapshot"), ("h", "hint"),
-                  ("q", "back")]
+                  ("tab", "switch pane"), ("q", "back")]
     BINDINGS = [Binding("r", "run_code", "Run"),
                 Binding("t", "run_tests", "Tests"),
                 Binding("h", "hint", "Hint"),
+                Binding("tab", "switch_pane", "Switch Pane", show=False),
                 Binding("q", "back", "Back"),
                 Binding("question_mark", "help", "Help")]
 
@@ -505,6 +566,16 @@ class LabScreen(_Base):
         self.book = book
         self.chapter = chapter
         self.hint_idx = 0
+
+    def action_switch_pane(self) -> None:
+        try:
+            code = self.query_one("#lab-code")
+            if getattr(self.app, "focused", None) == code:
+                self.query_one("#lab-scroll").focus()
+            else:
+                code.focus()
+        except Exception:
+            pass
 
     def compose(self) -> ComposeResult:
         from textual.widgets import TextArea

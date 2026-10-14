@@ -1,0 +1,50 @@
+#!/usr/bin/env python3
+"""Fixture generated runner (good): py_compile check + subprocess exec, §4.9 JSON."""
+import json
+import subprocess
+import sys
+
+
+def main(argv):
+    if len(argv) < 3:
+        print(json.dumps({"error": "usage: run (check|exec) SRC ..."}))
+        return 2
+    verb, src = argv[1], argv[2]
+    rest = argv[3:]
+    if verb == "check":
+        try:
+            with open(src) as f:
+                compile(f.read(), src, "exec")
+            print(json.dumps({"ok": True, "diagnostics": ""}))
+        except (SyntaxError, OSError) as e:
+            print(json.dumps({"ok": False, "diagnostics": str(e)}))
+    elif verb == "exec":
+        timeout, expect_file, stdin_file = 2, None, None
+        i = 0
+        while i < len(rest):
+            if rest[i] == "--expect":
+                expect_file = rest[i + 1]; i += 2
+            elif rest[i] == "--timeout":
+                timeout = int(rest[i + 1]); i += 2
+            elif rest[i] == "--stdin":
+                stdin_file = rest[i + 1]; i += 2
+            else:
+                i += 1
+        try:
+            inp = open(stdin_file) if stdin_file else open("/dev/null")
+            with inp as f:
+                pr = subprocess.run([sys.executable, src], stdin=f,
+                                    capture_output=True, text=True,
+                                    timeout=timeout)
+            print(json.dumps({"passed": True, "output": pr.stdout,
+                              "timed_out": False, "returncode": pr.returncode}))
+        except subprocess.TimeoutExpired:
+            print(json.dumps({"passed": False, "output": "",
+                              "timed_out": True, "returncode": None}))
+    else:
+        print(json.dumps({"error": f"unknown verb {verb}"}))
+        return 1
+    return 0
+
+
+sys.exit(main(sys.argv))

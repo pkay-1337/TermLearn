@@ -1,0 +1,12 @@
+# termlearn runtime deps (see SRS CR-DES-005, IF-SW-001)
+rich>=13.7
+typer>=0.9
+pyyaml>=6.0
+ebooklib>=0.18
+beautifulsoup4>=4.12
+# textual is OPTIONAL in v0.1, REQUIRED for later TUI port (IF-TUI-001)
+textual>=0.60
+# test deps
+pytest>=8.0
+pytest-asyncio>=0.23
+pytest-cov>=4.0

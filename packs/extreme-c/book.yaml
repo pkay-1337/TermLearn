@@ -1,0 +1,32 @@
+book: {slug: extreme-c, title: 'Extreme C', authors: ['Kamran Amini'], source: books/extreme-c/source.epub}
+toolchain: {lang: c, compile: [gcc, -Wall, -std=c99, -O0], run: ['./prog'], timeout_s: 2}
+order: [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10, ch11, ch12, ch13, ch14, ch15, ch16, ch17, ch18, ch19, ch20, ch21, ch22, ch23, ch24, ch25, ch26, ch27, ch28]
+chapters:
+  - {id: ch01, title: 'Cover', source_ref: 'Text/cover.xhtml', prereqs: []}
+  - {id: ch02, title: 'Why subscribe?', source_ref: 'Text/title_page.xhtml', prereqs: [ch01]}
+  - {id: ch03, title: 'Preface', source_ref: 'Text/preface.xhtml', prereqs: [ch02]}
+  - {id: ch04, title: 'Chapter 01 — Essential Features', source_ref: 'Text/essential_features.xhtml', prereqs: [ch03]}
+  - {id: ch05, title: 'Chapter 02 — From Source to Binary', source_ref: 'Text/from_source_to_binary.xhtml', prereqs: [ch04]}
+  - {id: ch06, title: 'Chapter 03 — Object Files', source_ref: 'Text/object_files.xhtml', prereqs: [ch05]}
+  - {id: ch07, title: 'Chapter 04 — Process Memory Structure', source_ref: 'Text/process_memory_structure.xhtml', prereqs: [ch06]}
+  - {id: ch08, title: 'Chapter 05 — Stack and Heap', source_ref: 'Text/stack_and_heap.xhtml', prereqs: [ch07]}
+  - {id: ch09, title: 'Chapter 06 — OOP and Encapsulation', source_ref: 'Text/oop_and_encapsulation.xhtml', prereqs: [ch08]}
+  - {id: ch10, title: 'Chapter 07 — Composition and Aggregation', source_ref: 'Text/composition_and_aggregation.xhtml', prereqs: [ch09]}
+  - {id: ch11, title: 'Chapter 08 — Inheritance and Polymorphism', source_ref: 'Text/inheritance_and_polymorphism.xhtml', prereqs: [ch10]}
+  - {id: ch12, title: 'Chapter 09 — Abstraction and OOP in C++', source_ref: 'Text/abstraction_and_oop_in_cplusplus.xhtml', prereqs: [ch11]}
+  - {id: ch13, title: 'Chapter 10 — Unix – History and Architecture', source_ref: 'Text/unix_-_history_and_architecture.xhtml', prereqs: [ch12]}
+  - {id: ch14, title: 'Chapter 11 — System Calls and Kernels', source_ref: 'Text/system_calls_and_kernels.xhtml', prereqs: [ch13]}
+  - {id: ch15, title: 'Chapter 12 — The Most Recent C', source_ref: 'Text/the_most_recent_c.xhtml', prereqs: [ch14]}
+  - {id: ch16, title: 'Chapter 13 — Concurrency', source_ref: 'Text/concurrency.xhtml', prereqs: [ch15]}
+  - {id: ch17, title: 'Chapter 14 — Synchronization', source_ref: 'Text/synchronization.xhtml', prereqs: [ch16]}
+  - {id: ch18, title: 'Chapter 15 — Thread Execution', source_ref: 'Text/thread_execution.xhtml', prereqs: [ch17]}
+  - {id: ch19, title: 'Chapter 16 — Thread Synchronization', source_ref: 'Text/thread_synchronization.xhtml', prereqs: [ch18]}
+  - {id: ch20, title: 'Chapter 17 — Process Execution', source_ref: 'Text/process_execution.xhtml', prereqs: [ch19]}
+  - {id: ch21, title: 'Chapter 18 — Process Synchronization', source_ref: 'Text/process_synchronization.xhtml', prereqs: [ch20]}
+  - {id: ch22, title: 'Chapter 19 — Single-Host IPC and Sockets', source_ref: 'Text/single-host_ipc_and_sockets.xhtml', prereqs: [ch21]}
+  - {id: ch23, title: 'Chapter 20 — Socket Programming', source_ref: 'Text/socket_programming.xhtml', prereqs: [ch22]}
+  - {id: ch24, title: 'Chapter 21 — Integration with Other Languages', source_ref: 'Text/integration_with_other_languages.xhtml', prereqs: [ch23]}
+  - {id: ch25, title: 'Chapter 22 — Unit Testing and Debugging', source_ref: 'Text/unit_testing_and_debugging.xhtml', prereqs: [ch24]}
+  - {id: ch26, title: 'Chapter 23 — Build Systems', source_ref: 'Text/build_systems.xhtml', prereqs: [ch25]}
+  - {id: ch27, title: 'Other Books You May Enjoy', source_ref: 'Text/other_books_you_may_enjoy.xhtml', prereqs: [ch26]}
+  - {id: ch28, title: 'Index', source_ref: 'Text/index.xhtml', prereqs: [ch27]}

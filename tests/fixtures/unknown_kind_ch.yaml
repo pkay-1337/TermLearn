@@ -1,0 +1,5 @@
+# unknown kind (CHECK-KIND) + unknown type would also fail
+meta: {book: t, chapter_id: ch01, title: T, source_ref: "Ch.1", level: intro, prereqs: []}
+objectives: ["o1"]
+blocks:
+  - {id: b1, type: model, title: B1, explain_md: "x", checks: [{kind: bogus-kind, q: "Q?", why: W}]}

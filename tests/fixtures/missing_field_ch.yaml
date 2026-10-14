@@ -1,0 +1,5 @@
+# missing meta.title (META-MISSING)
+meta: {book: t, chapter_id: ch01, source_ref: "Ch.1", level: intro, prereqs: []}
+objectives: ["o1"]
+blocks:
+  - {id: b1, type: model, title: B1, explain_md: "x", checks: [{kind: mcq, q: "Q?", choices: [A, B], answer: 0, why: W}]}

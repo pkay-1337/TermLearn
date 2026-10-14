@@ -1,0 +1,5 @@
+# answer index out of bounds (CHECK-ANSWER)
+meta: {book: t, chapter_id: ch01, title: T, source_ref: "Ch.1", level: intro, prereqs: []}
+objectives: ["o1"]
+blocks:
+  - {id: b1, type: syntax, title: B1, explain_md: "x", checks: [{kind: mcq, q: "Q?", choices: [A, B], answer: 5, why: W}]}

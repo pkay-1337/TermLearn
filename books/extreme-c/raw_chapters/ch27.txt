@@ -1,0 +1,47 @@
+# Other Books You May Enjoy
+
+<!-- source: Text/other_books_you_may_enjoy.xhtml | spine-id: other_books_you_may_enjoy.xhtml | chapter: ch27 -->
+
+# Other Books You May Enjoy
+
+If you enjoyed this book, you may be interested in these other books by Packt:
+
+![figure](../Images/9781788478120-original.jpg)
+
+C# 8.0 and .NET Core 3.0 – Modern Cross-Platform Development - Fourth Edition
+
+Mark J. Price
+
+ISBN: 978-1-78847-812-0
+
+- Build cross-platform applications for Windows, macOS, Linux, iOS, and Android
+- Explore application development with C# 8.0 and .NET Core 3.0
+- Explore ASP.NET Core 3.0 and create professional web applications
+- Learn object-oriented programming and C# multitasking
+- Query and manipulate data using LINQ
+- Use Entity Framework Core and work with relational databases
+- Discover Windows app development using the Universal Windows Platform and XAML
+- Build mobile applications for iOS and Android using Xamarin.Forms
+
+![figure](../Images/9781789133639-original.jpg)
+
+DevOps Paradox
+
+Viktor Farcic
+
+ISBN: 978-1-78913-363-9
+
+Expert opinions on:
+
+- Introducing DevOps into real-world, chaotic business environments
+- Deciding between adopting cutting edge tools or sticking with tried-and-tested methods
+- Initiating necessary business change without positional power
+- Managing and overcoming fear of change in DevOps implementations
+- Anticipating future trends in DevOps and how to prepare for them
+- Getting the most from Kubernetes, Docker, Puppet, Chef, and Ansible
+- Creating the right incentives for DevOps success across an organization
+- The impact of new techniques, such as Lambda, serverless, and schedulers, on DevOps practice
+
+# Leave a review - let other readers know what you think
+
+Please share your thoughts on this book with others by leaving a review on the site that you bought it from. If you purchased the book from Amazon, please leave us an honest review on this book’s Amazon page. This is vital so that other potential readers can see and use your unbiased opinion to make purchasing decisions, we can understand what our customers think about our products, and our authors can see your feedback on the title that they have worked with Packt to create. It will only take a few minutes of your time, but is valuable to other potential customers, our authors, and Packt. Thank you!

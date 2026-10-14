@@ -1,0 +1,212 @@
+{
+  "slug": "extreme-c",
+  "title": "Extreme C (for )",
+  "authors": [
+    "Kamran Amini"
+  ],
+  "language": "en-US",
+  "source_file": "source.epub",
+  "spine_count": 29,
+  "chapters": [
+    {
+      "id": "ch01",
+      "spine_id": "cover",
+      "file": "Text/cover.xhtml",
+      "title": "Cover",
+      "chars": 34
+    },
+    {
+      "id": "ch02",
+      "spine_id": "title_page.xhtml",
+      "file": "Text/title_page.xhtml",
+      "title": "Why subscribe?",
+      "chars": 5161
+    },
+    {
+      "id": "ch03",
+      "spine_id": "preface.xhtml",
+      "file": "Text/preface.xhtml",
+      "title": "Preface",
+      "chars": 19207
+    },
+    {
+      "id": "ch04",
+      "spine_id": "essential_features.xhtml",
+      "file": "Text/essential_features.xhtml",
+      "title": "Chapter 01 — Essential Features",
+      "chars": 94548
+    },
+    {
+      "id": "ch05",
+      "spine_id": "from_source_to_binary.xhtml",
+      "file": "Text/from_source_to_binary.xhtml",
+      "title": "Chapter 02 — From Source to Binary",
+      "chars": 86503
+    },
+    {
+      "id": "ch06",
+      "spine_id": "object_files.xhtml",
+      "file": "Text/object_files.xhtml",
+      "title": "Chapter 03 — Object Files",
+      "chars": 60072
+    },
+    {
+      "id": "ch07",
+      "spine_id": "process_memory_structure.xhtml",
+      "file": "Text/process_memory_structure.xhtml",
+      "title": "Chapter 04 — Process Memory Structure",
+      "chars": 53225
+    },
+    {
+      "id": "ch08",
+      "spine_id": "stack_and_heap.xhtml",
+      "file": "Text/stack_and_heap.xhtml",
+      "title": "Chapter 05 — Stack and Heap",
+      "chars": 77137
+    },
+    {
+      "id": "ch09",
+      "spine_id": "oop_and_encapsulation.xhtml",
+      "file": "Text/oop_and_encapsulation.xhtml",
+      "title": "Chapter 06 — OOP and Encapsulation",
+      "chars": 78786
+    },
+    {
+      "id": "ch10",
+      "spine_id": "composition_and_aggregation.xhtml",
+      "file": "Text/composition_and_aggregation.xhtml",
+      "title": "Chapter 07 — Composition and Aggregation",
+      "chars": 29622
+    },
+    {
+      "id": "ch11",
+      "spine_id": "inheritance_and_polymorphism.xhtml",
+      "file": "Text/inheritance_and_polymorphism.xhtml",
+      "title": "Chapter 08 — Inheritance and Polymorphism",
+      "chars": 52657
+    },
+    {
+      "id": "ch12",
+      "spine_id": "abstraction_and_oop_in_cplusplus.xhtml",
+      "file": "Text/abstraction_and_oop_in_cplusplus.xhtml",
+      "title": "Chapter 09 — Abstraction and OOP in C++",
+      "chars": 33229
+    },
+    {
+      "id": "ch13",
+      "spine_id": "unix_-_history_and_architecture.xhtml",
+      "file": "Text/unix_-_history_and_architecture.xhtml",
+      "title": "Chapter 10 — Unix – History and Architecture",
+      "chars": 62231
+    },
+    {
+      "id": "ch14",
+      "spine_id": "system_calls_and_kernels.xhtml",
+      "file": "Text/system_calls_and_kernels.xhtml",
+      "title": "Chapter 11 — System Calls and Kernels",
+      "chars": 60708
+    },
+    {
+      "id": "ch15",
+      "spine_id": "the_most_recent_c.xhtml",
+      "file": "Text/the_most_recent_c.xhtml",
+      "title": "Chapter 12 — The Most Recent C",
+      "chars": 30410
+    },
+    {
+      "id": "ch16",
+      "spine_id": "concurrency.xhtml",
+      "file": "Text/concurrency.xhtml",
+      "title": "Chapter 13 — Concurrency",
+      "chars": 52955
+    },
+    {
+      "id": "ch17",
+      "spine_id": "synchronization.xhtml",
+      "file": "Text/synchronization.xhtml",
+      "title": "Chapter 14 — Synchronization",
+      "chars": 91274
+    },
+    {
+      "id": "ch18",
+      "spine_id": "thread_execution.xhtml",
+      "file": "Text/thread_execution.xhtml",
+      "title": "Chapter 15 — Thread Execution",
+      "chars": 49163
+    },
+    {
+      "id": "ch19",
+      "spine_id": "thread_synchronization.xhtml",
+      "file": "Text/thread_synchronization.xhtml",
+      "title": "Chapter 16 — Thread Synchronization",
+      "chars": 57625
+    },
+    {
+      "id": "ch20",
+      "spine_id": "process_execution.xhtml",
+      "file": "Text/process_execution.xhtml",
+      "title": "Chapter 17 — Process Execution",
+      "chars": 66209
+    },
+    {
+      "id": "ch21",
+      "spine_id": "process_synchronization.xhtml",
+      "file": "Text/process_synchronization.xhtml",
+      "title": "Chapter 18 — Process Synchronization",
+      "chars": 73056
+    },
+    {
+      "id": "ch22",
+      "spine_id": "single-host_ipc_and_sockets.xhtml",
+      "file": "Text/single-host_ipc_and_sockets.xhtml",
+      "title": "Chapter 19 — Single-Host IPC and Sockets",
+      "chars": 96132
+    },
+    {
+      "id": "ch23",
+      "spine_id": "socket_programming.xhtml",
+      "file": "Text/socket_programming.xhtml",
+      "title": "Chapter 20 — Socket Programming",
+      "chars": 80625
+    },
+    {
+      "id": "ch24",
+      "spine_id": "integration_with_other_languages.xhtml",
+      "file": "Text/integration_with_other_languages.xhtml",
+      "title": "Chapter 21 — Integration with Other Languages",
+      "chars": 65120
+    },
+    {
+      "id": "ch25",
+      "spine_id": "unit_testing_and_debugging.xhtml",
+      "file": "Text/unit_testing_and_debugging.xhtml",
+      "title": "Chapter 22 — Unit Testing and Debugging",
+      "chars": 75043
+    },
+    {
+      "id": "ch26",
+      "spine_id": "build_systems.xhtml",
+      "file": "Text/build_systems.xhtml",
+      "title": "Chapter 23 — Build Systems",
+      "chars": 40542
+    },
+    {
+      "id": "ch27",
+      "spine_id": "other_books_you_may_enjoy.xhtml",
+      "file": "Text/other_books_you_may_enjoy.xhtml",
+      "title": "Other Books You May Enjoy",
+      "chars": 2184
+    },
+    {
+      "id": "ch28",
+      "spine_id": "index.xhtml",
+      "file": "Text/index.xhtml",
+      "title": "Index",
+      "chars": 25296
+    }
+  ],
+  "warnings": [
+    "near-empty chapter text (kept anyway): cover (Text/cover.xhtml)"
+  ],
+  "extracted_at": "2026-10-13T22:34:19"
+}

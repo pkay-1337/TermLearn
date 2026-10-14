@@ -1,0 +1,2179 @@
+# index
+
+<!-- source: Text/index.xhtml | spine-id: index.xhtml | chapter: ch28 -->
+
+Index
+
+A
+
+abstract classes 289, 307
+
+abstraction
+
+about 289, 290, 291, 292
+
+abstraction principle
+
+reference link 290
+
+Abstract Syntax Tree (AST) 80, 81, 82
+
+AF_INET6 socket 625
+
+AF_INET socket 625
+
+AF_LOCAL socket 625
+
+AF_UNIX socket 625
+
+aggregation relationship 249, 250, 252, 253, 254, 255
+
+anonymous structures
+
+about 388, 389
+
+anonymous unions
+
+about 388, 389
+
+APIs, SUS v4
+
+header interfaces 321
+
+scripting interface 322
+
+system interfaces 321
+
+utility interfaces 321, 322
+
+XCURSES interfaces 322
+
+Application Binary Interface (ABI)
+
+about 2, 3
+
+Application Programming Interface (API)
+
+exposing 320
+
+artifacts 83
+
+ASCII standard 381
+
+assembler
+
+about 82, 83
+
+assembler output (a.out) 4
+
+asynchronous function 35
+
+asynchronous I/O approach 634
+
+attribute encapsulation 216, 217, 218
+
+attribute structures 221
+
+Autotools
+
+about 765
+
+reference link 765
+
+average function 57, 58
+
+B
+
+Bazel
+
+about 773, 774, 776
+
+reference link 773
+
+BCPL 312
+
+behavior encapsulation 219, 220, 222, 224, 225, 226, 227, 228, 229
+
+behavior functions 221
+
+Bell Labs
+
+reference link 311
+
+Berkeley Software Distribution (BSD) 321
+
+Big-O functions 191
+
+binary content 70
+
+binary file 70
+
+binary semaphore 436
+
+binary semaphores 482, 492
+
+Bitbucket
+
+reference link 777
+
+blocking function 35
+
+blocking I/O approach 634
+
+Block Started by Symbol (BSS)
+
+about 138
+
+Boehm-Demers-Weiser garbage collector
+
+about 189
+
+reference link 189
+
+bounds-checking functions 379
+
+B Programming Language
+
+about 312
+
+flaws 313
+
+reference link 312
+
+breakpoint 165
+
+BSS segment
+
+about 138, 139, 140
+
+buffer overflow attack 170
+
+bug categories
+
+about 748
+
+concurrency bugs 748
+
+logical bugs 748
+
+memory bugs 748
+
+performance bugs 748
+
+bugs 185
+
+build script 759
+
+build script generators 765
+
+build system
+
+about 756, 757, 759
+
+comparing 776
+
+comparison, reference link 776
+
+build targets 757
+
+busy-waiting mode 430, 484
+
+busy-wait mode 484
+
+busy-waits 427, 429
+
+bytecode 678
+
+C
+
+C
+
+evolution 313, 314
+
+inheritance, implementing 51
+
+libraries, testing for 731, 732
+
+not an object-oriented language 215
+
+pointer, size 31
+
+C++
+
+integration with 687
+
+name mangling 98, 99, 100, 687, 688, 689
+
+object-oriented constructs 293
+
+C++ code
+
+writing 689, 691, 693, 694
+
+C11
+
+about 374
+
+defects, reference link 374
+
+issues, reference link 390
+
+reference link 374
+
+C17 374
+
+C18 374
+
+about 390
+
+cache coherency protocol 511
+
+cache-friendly algorithm 195
+
+cache hit 194
+
+cache miss 194
+
+calculator project
+
+about 636
+
+application protocol 642, 643, 644, 645
+
+building 641
+
+calculator service 651, 652, 653
+
+executing 642
+
+purpose 636
+
+request message 643
+
+serialization/deserialization library 646
+
+source code, reference link 637
+
+source hierarchy 637, 639, 640
+
+used, for achieving goals 636
+
+calculator protocol 642
+
+callback functions 648
+
+callback mechanism 34
+
+cancellation flag
+
+setting 564, 566, 567
+
+shared memory 559, 560, 561
+
+C build pipeline. See C compilation pipeline
+
+C/C++ project
+
+products 83
+
+C compilation pipeline
+
+about 54, 55, 56
+
+assembly 69, 70, 71
+
+compilation 65, 67, 68, 69
+
+components 54
+
+linking step 72
+
+preprocessing 63, 64
+
+C compilers
+
+reference link 55
+
+centralized process synchronization 588
+
+C files
+
+compiling 54
+
+cgo package 712
+
+circular wait 425
+
+class
+
+relationships between 239, 240
+
+versus object 240, 241, 242
+
+class-based approach 240
+
+class-based OOP 213
+
+clear and allocate (calloc) 179
+
+CMake
+
+about 765, 766, 767, 768, 769, 770
+
+reference link 770
+
+CMocka
+
+used, for writing unit tests 732, 734, 735, 736, 737, 738, 739, 740, 741
+
+Command Line Interface (CLI) 320
+
+Common Object File Format (COFF) 4
+
+communication protocols
+
+about 594, 595, 596
+
+companion function 462
+
+compilation 71
+
+compilation failure 54
+
+compilation unit 63
+
+compile error 59
+
+compiler
+
+about 79
+
+Abstract Syntax Tree (AST) 80, 81, 82
+
+compiler backend 80
+
+compiler frontend 80
+
+components, C compilation pipeline
+
+about 54
+
+assembler 82
+
+compiler 79
+
+linker 83
+
+preprocessor 75
+
+component testing
+
+about 729, 731
+
+composition relationship
+
+about 242, 243
+
+implementing 245, 247, 248
+
+computer networks
+
+about 611
+
+application layer 622
+
+link layer 612
+
+network layer 613, 614, 615, 616, 617
+
+physical layer 611
+
+transport layer 617
+
+concrete types 290
+
+concurrency
+
+about 392, 393, 394, 395
+
+using 400, 401, 402, 403, 404, 405, 406, 407
+
+concurrency bugs 748
+
+concurrency issues
+
+about 413, 414
+
+intrinsic concurrency issues 414, 415
+
+posts ynchronization issues 414, 425
+
+concurrency, POSIX
+
+about 446
+
+kernels 447, 448, 449
+
+conditional compilation 19, 21
+
+condition variables 438
+
+connectionless communication 635
+
+connection-less initialization sequences 621
+
+connection-less transport communication
+
+versus connection-oriented transport communication 619, 620
+
+connection-oriented communication 635
+
+connection-oriented initialization sequences 621, 622
+
+constrained environments
+
+memory management 190
+
+constraints 190
+
+contention 438
+
+contention time 437, 438
+
+context switches
+
+implementing, before constraint 398, 399, 400
+
+control mechanisms 547
+
+cpp tool (C Pre-Processor) 78
+
+C preprocessor 4
+
+C programming language 373
+
+C programs, unit tests
+
+reference link 731
+
+C project
+
+building 56
+
+example, building 61, 62, 63
+
+example source files 59, 60, 61
+
+executable object files 10
+
+header files, versus source files 56, 57, 58, 59
+
+rules 62
+
+critical section 421, 435
+
+cross-platform software 55
+
+C standard
+
+supported version, finding 374, 375, 376
+
+C standard library (libc) 323
+
+ctypes 708
+
+Cygwin 323
+
+reference link 517
+
+D
+
+dangling pointer 470
+
+dangling pointers 31, 32
+
+Database Management Systems (DBMS)
+
+network services 529
+
+datagram client 669, 671
+
+datagram connector sequence
+
+about 630
+
+datagram listener sequence
+
+about 629
+
+datagrams 635
+
+datagram server 664, 665, 668, 669
+
+data race 414
+
+example 476, 477, 479
+
+data race example
+
+demonstrating, with shared memories 536, 539, 540, 541
+
+data segment
+
+about 140, 141, 142, 143, 144, 145
+
+deadlock
+
+about 425
+
+reference link 425
+
+debugger 163
+
+debuggers
+
+about 749, 750
+
+features 749
+
+debuggers, list
+
+advanced Debugger (adb) 750
+
+GNU Debugger (gdb) 750
+
+Java Platform Debugger Architecture (JDPA) 750
+
+LLDB 750
+
+Microsoft Visual Studio Debugger 750
+
+OllyDbg 750
+
+Python debugger 750
+
+reference link 749
+
+debugging
+
+about 746, 747
+
+reference link 747
+
+declaration header 221
+
+de facto implementation 430
+
+delimiter 598
+
+denial of service (DOS) 379
+
+dependency management 757, 766
+
+deserialization 594
+
+deserializer object 644
+
+detached threads 465
+
+detach state 466
+
+directories, calculator project
+
+/calcser 639
+
+/calcsvc 639
+
+/client/slicore 640
+
+/client/tcp 641
+
+/client/udp 641
+
+/client/Unix/datagram 640
+
+/client/Unix/stream 640
+
+/server/srvcore 639
+
+/server/tcp 640
+
+/server/udp 640
+
+/server/Unix/datagram 640
+
+/server/Unix/stream 640
+
+distributed concurrency control
+
+about 587
+
+challenges 587, 588
+
+distributed multi-processing 545
+
+distributed (Peer-to-Peer) process synchronization 589
+
+Domain Name Service (DNS) 595
+
+domain-specific language (DSL) 731
+
+double free situation 189
+
+double inclusion
+
+preventing 89
+
+dynamic libraries
+
+about 24, 25, 26, 27, 28, 29
+
+dynamic linking 13
+
+dynamic loading
+
+reference link 26
+
+dynamic memory layout
+
+about 135, 147
+
+heap segment 154, 155, 156, 157, 158
+
+memory mappings 148, 149, 151, 152
+
+stack segment 153, 154
+
+dynamic race detectors 419
+
+E
+
+ELF binaries
+
+reference link 527
+
+encapsulation 293, 295, 296
+
+about 216
+
+attribute encapsulation 216, 217, 218
+
+behavior encapsulation 219, 220, 222, 224, 225, 226, 227, 229
+
+information hiding 230, 231, 233, 234, 235, 237
+
+encodings 382
+
+event loop 658
+
+event-oriented programming 35
+
+exec* functions 524
+
+Executable and Linking Format (ELF) 83
+
+about 3
+
+reference link 5
+
+executable binaries 61
+
+executable object file 55
+
+executable object files 10, 13, 14, 15
+
+extern 689
+
+F
+
+fiber distributed data interface (FDDI) 613
+
+field delimiter 644
+
+file descriptor 599
+
+finalizer methods 699
+
+finite-state machine 598
+
+First In, Last Out (FILO)
+
+about 154
+
+fopen function
+
+modifying 377, 378
+
+reference link 378
+
+fork function
+
+manual page, reference link 520
+
+ftruncate function 532
+
+function interposition 186
+
+function pointer 2
+
+function pointers 39, 40, 41
+
+functions
+
+reference link 223
+
+functions, C
+
+about 34
+
+anatomy 34
+
+importance, in design 35
+
+pass-by-value, versus pass-by-reference 36, 37, 38
+
+stack management 35, 36
+
+function signature 57
+
+G
+
+garbage collector 175
+
+general semaphores 492, 496, 499, 500
+
+generational garbage collection 186
+
+generic pointers 28, 29, 30
+
+gets function
+
+removing 376
+
+security consideration 376
+
+GNU C Library (glibc) 342
+
+Gnu Compiler Collection (GCC) 80
+
+GNU C Preprocessor Internals
+
+reference link 77
+
+GNU Make
+
+reference link 765
+
+Google Public DNS service
+
+reference link 617
+
+Google Test
+
+about 742, 744, 745, 746
+
+Go programming language (Golang)
+
+integration with 712, 714
+
+Graphical User interface (GUI) 320
+
+grep command
+
+about 4
+
+H
+
+hardware 335, 337
+
+hardware ring 516
+
+header files
+
+about 57
+
+versus source files 56, 57, 58, 59
+
+heap
+
+about 175
+
+features 175, 176
+
+heap memory
+
+advantages 175
+
+allocation 176, 177, 179, 180, 181, 182, 183, 184, 185
+
+deallocation 176, 177, 179, 180, 181, 182, 183, 184, 185
+
+disadvantages 175
+
+principles 186, 188, 189
+
+working with, guidelines 189
+
+heap segment
+
+about 154, 155, 156, 157, 158
+
+Helgrind (from Valgrind)
+
+about 752
+
+reference link 752
+
+Hello World system call
+
+writing, for Linux 348, 349, 350, 352, 353, 354, 355
+
+hit 194
+
+horizontal scaling 544
+
+host architecture 66
+
+human user 319
+
+Hyper Text Transfer Protocol (HTTP) 595
+
+I
+
+IBM International Components for Unicode (ICU) 381
+
+implicit encapsulation 221, 297
+
+Industrial Ethernet (IE) 613
+
+information hiding 230, 232, 233, 234, 235, 236, 237
+
+inheritance 297, 298, 299, 300, 301, 303
+
+about 258, 259, 260, 261
+
+approaches, comparing 274, 275
+
+approaches, in C 261, 262, 263, 264, 266, 267, 268, 269, 271, 272, 273, 274
+
+inode
+
+about 152
+
+instance-based approach 240
+
+Integrated Development Environment (IDE) 62
+
+integration
+
+with other programming languages 678
+
+Intel inspector 753
+
+interfaces 291
+
+interleaving 415, 419
+
+intermediate object files. See relocatable object files
+
+Internet Control Message Protocol (ICMP) 616
+
+Internet Protocol Suite (IPS) 623
+
+interpreter 708
+
+Inter-Process Communication (IPC)
+
+about 591
+
+interrupt signal 566
+
+intrinsic concurrency issues
+
+about 415, 417, 418, 419, 420, 421, 422, 423, 424
+
+invariant constraints 415
+
+IPC protocols, characteristics
+
+about 596
+
+content type 597
+
+message length 597, 598
+
+sequentiality 598, 599
+
+IPC techniques
+
+about 592
+
+IP version 4 (IPv4) 615
+
+IP version 6 (IPv6) 615
+
+J
+
+Java
+
+integration with 695
+
+native part, writing 700, 701, 702, 704, 707, 708
+
+part, writing 695, 696, 698, 699, 700
+
+Java Native Interface (JNI) 695
+
+Java Runtime Environment (JRE) 678
+
+JavaScript Object Notation (JSON) 211
+
+Java Standard Edition (Java SE) 678
+
+Java Virtual Machine (JVM) 215, 749
+
+about 133
+
+joinable thread 465
+
+JVM languages 695
+
+K
+
+kernel
+
+building 355, 356, 357, 359, 360, 361
+
+using 331, 332, 333, 334
+
+kernel development 346, 347
+
+kernel land
+
+versus user process 332
+
+kernel-level thread 458
+
+kernel modules
+
+about 364
+
+adding, to Linux 365, 366, 367, 368, 369, 370
+
+kernel process
+
+about 331
+
+versus user process 331, 332
+
+kernel space 332
+
+kernel thread 458
+
+L
+
+Last In, First Out (LIFO)
+
+about 154
+
+length-prefix framing 598
+
+libraries
+
+testing, for C 731, 732
+
+linkage error 92
+
+linkage failure 54
+
+linkage-specification 689
+
+linker
+
+about 55, 83, 84
+
+working 84, 85, 86, 87, 88, 89, 90, 91, 92, 93
+
+linking step, C compilation pipeline
+
+about 72, 73, 75
+
+error example 93, 94, 95, 96, 97, 98
+
+program, building for new architectures 72
+
+tools, for new architecture 73
+
+link time 84
+
+Linux
+
+Hello World system call, writing for 348, 349, 350, 352, 353, 354, 355
+
+kernel modules, adding to 365, 366, 367, 368, 369, 370
+
+system calls, adding to 346
+
+Linux kernel 363
+
+Linux memory allocator
+
+reference link 140
+
+listener-connector sequences
+
+about 627
+
+datagram connector sequence 630
+
+datagram listener sequence 629
+
+stream connector sequence 628
+
+stream listener sequence 627, 628
+
+LLVM AddressSanitizer (ASan) 751
+
+LLVM Address Sanitizer (ASAN) 185
+
+LLVM ThreadSanitizer (TSan) 753
+
+loader
+
+about 147
+
+Local Area Network (LAN) 612
+
+local variables 501
+
+lockable objects 437
+
+locks 430
+
+logical bugs 748
+
+loop unrolling 18
+
+Low Level Virtual Machine (LLVM) 80
+
+M
+
+macros
+
+about 4
+
+advantages 16, 17, 18
+
+applications 5
+
+defining 5, 6, 7, 8, 9, 10, 11, 12
+
+disadvantages 16, 17, 18
+
+variadic macros 12, 13, 15
+
+main thread 452, 457
+
+Make 755, 757, 758, 759, 760, 761, 762, 763, 764, 765
+
+Makefile 757
+
+marshaller object 697
+
+marshalling 594
+
+materials
+
+obtaining 679
+
+Maven 757
+
+media access control (MAC) 613
+
+memfd_create function 533
+
+memory allocate (malloc) 179
+
+memory bugs 748
+
+memory checkers
+
+about 750, 752
+
+features 750
+
+technique 751
+
+memory coherence protocol 439
+
+memory-constrained environments
+
+about 191
+
+compression 192
+
+external data storage 192, 193
+
+packed structures 192
+
+memory leakage 181
+
+memory leaks 175
+
+Memory Management unit (MMU) 334
+
+memory mappings
+
+about 148, 149, 151, 152
+
+address range 152
+
+description 152
+
+device 152
+
+inode 152
+
+offset 152
+
+pathname 152
+
+permissions 152
+
+memory pools
+
+using 199
+
+memory profiler 472
+
+memory structure
+
+about 135, 136
+
+Message Queue Middleware (MQM) 607
+
+method 34
+
+microkernels
+
+versus monolithic kernel 362, 363
+
+miss 194
+
+mmap function 532
+
+modularization 39
+
+monitor object 446
+
+Multics OS
+
+and Unix 310, 311, 312
+
+reference link 310
+
+versus Unix 311
+
+multiple processor units 439, 440, 441, 443
+
+multi-processing 455
+
+multiprocessing 447, 449, 451, 452
+
+multithreading 447, 452, 453, 543, 544
+
+about 390
+
+multithreading approach 457
+
+multithreading, versus multi-processing
+
+about 543, 544
+
+mutexes 434, 435, 437, 438
+
+mutex (mutual exclusion) 436
+
+mutual exclusion 492
+
+mutual exclusion property 445
+
+N
+
+named mutexes
+
+about 548, 553
+
+cancellation flag, setting 564, 566, 568
+
+examples 553, 554, 555, 556, 557
+
+global declarations 558, 559
+
+shared memory 562, 563, 564
+
+shared memory, of cancellation flag 559, 560, 561
+
+named POSIX semaphores
+
+about 548, 549
+
+named variable conditions 549, 550, 551, 552
+
+named variable conditions
+
+about 548, 568
+
+class of shared 32-bits integer counter 572, 574
+
+class of shared condition variable 577, 578, 581
+
+class of shared memory 569, 572
+
+class of shared mutex 574, 577
+
+main logic 581, 583, 584, 585, 586, 587
+
+name mangling, C++ 98, 99, 100
+
+Native POSIX Threading Library (NPTL) 460
+
+NB (New B) language 313
+
+nested structures 49, 50
+
+Network File System (NFS) 593
+
+Network File Systems (NFS) 530
+
+Network Interface Controller (NIC) 612
+
+network sockets
+
+about 635, 671
+
+TCP client 672, 673
+
+TCP server 671, 672
+
+UDP client 675
+
+UDP server 674, 675
+
+versus Unix domain sockets 635, 636
+
+Ninja
+
+about 771, 772
+
+non-blocking I/O approach 634
+
+no-return functions 379, 380
+
+O
+
+object
+
+versus classes 240, 241, 242
+
+object construction
+
+planning 212
+
+object file 69, 70, 83
+
+object file formats
+
+about 4, 5
+
+operating systems 4
+
+reference link 4
+
+object-oriented constructs, C++
+
+about 293
+
+abstract classes 307
+
+encapsulation 293, 295, 296
+
+inheritance 297, 298, 299, 300, 301, 303
+
+polymorphism 304, 305, 306
+
+object-oriented design (OOD) 208
+
+object-oriented thinking
+
+about 203
+
+domain 210
+
+mental concepts 204, 205
+
+mind maps 206, 207
+
+object attributes 209
+
+object behavior 214, 215
+
+object models 206, 207
+
+object-oriented operations 211, 212, 213, 214
+
+objects, avoiding in code 208, 209
+
+objects, relation 210, 211
+
+onion model, Unix architecture
+
+about 317, 319
+
+hardware 318, 335
+
+kernel 318, 331
+
+shell 318, 324, 325, 326, 327, 328, 329, 330
+
+User Applications 318
+
+Open System Interconnections (OSI) 623
+
+optimization 18
+
+over-abstraction 290
+
+owner 176
+
+ownership strategy 187
+
+P
+
+padding technique 47
+
+parallelism 393, 394
+
+parent thread 464
+
+parser 77
+
+pass-by-value
+
+versus pass-by-reference 36, 37, 38
+
+pattern matching feature 763
+
+performance bugs 748
+
+performance profilers
+
+about 753
+
+features 753
+
+programs and toolkits 753
+
+performance tuning 18
+
+performant environments
+
+about 193
+
+allocation and deallocation cost 198, 199
+
+cache-friendly code 194, 197, 198
+
+caching 193, 194
+
+memory pools 199
+
+pics utility 534
+
+platform 55
+
+pointer
+
+size 31
+
+POISX threading API
+
+about 460
+
+polling 430
+
+polymorphism 40, 304, 305, 306
+
+about 275, 276, 277, 278
+
+in C 280, 281, 282, 283, 284, 285, 286, 287
+
+need for 279
+
+Portable Execution (PE) 4
+
+Portable Operating System Interface (POSIX)
+
+about 323
+
+reference link 323
+
+position independent code (PIC) 26
+
+POSIX
+
+concurrency 446
+
+POSIX barriers
+
+using 489, 491, 492
+
+POSIX-compliant system
+
+methods, used for state transfer 458
+
+POSIX concurrency control 482
+
+POSIX condition variables 485, 487, 488, 489
+
+POSIX memory
+
+about 500
+
+heap memory 506, 508, 510, 511
+
+memory visibility 511, 513
+
+stack memory 501, 502, 503, 504, 505
+
+POSIX message queues
+
+about 606, 607, 609
+
+POSIX mutexes 482, 484
+
+POSIX pipes
+
+about 604, 605, 606
+
+POSIX-provided control mechanisms
+
+named mutexes 548
+
+named POSIX semaphores 548
+
+named variable conditions 548
+
+POSIX semaphores
+
+about 492
+
+binary semaphores 492, 494, 495
+
+general semaphores 496, 499, 500
+
+POSIX shared memory
+
+about 530, 531, 532, 533, 534, 536
+
+POSIX signals
+
+about 600, 601, 602, 603
+
+POSIX socket library
+
+about 625
+
+POSIX threading (pthread) library 456
+
+POSIX threads
+
+about 460
+
+reference link 459
+
+spawning 461, 462, 463, 464, 466
+
+POSIX threads 500
+
+post synchronization issues
+
+about 425, 426, 427
+
+deadlock 425
+
+new intrinsic issues 425
+
+priority inversion 425
+
+starvation 425
+
+preemption 437
+
+preprocessing 3, 4
+
+preprocessor
+
+about 75, 77, 78
+
+preprocessor directives
+
+about 3
+
+conditional compilation 19
+
+macros 4
+
+Primitive Data Types (PDTs) 42
+
+processes 397, 398
+
+process execution
+
+loader program, duties 527
+
+steps 527, 528
+
+process execution APIs
+
+about 515, 516, 517
+
+process creation, versus process execution 526
+
+used, for creating process 518, 519, 520, 521, 522, 523
+
+used, for executing process 523, 524, 525, 526
+
+Process Identifier (PID) 333
+
+about 134
+
+Process ID (PID) 457
+
+process image 523
+
+Process Management unit 334
+
+process memory layout
+
+about 134, 135
+
+procfs filesystem
+
+about 150
+
+products 83
+
+prototype-based 212
+
+pstree 518
+
+pthread_barrier_init function 491
+
+pthread_cond_signal function 489
+
+pthread library
+
+about 460
+
+Public Switched Telephone Network (PSTN) 618
+
+pull-based techniques
+
+about 528
+
+file system 529
+
+network services 529
+
+shared memory 529
+
+versus push-based techniques 593
+
+pull state 528
+
+pure virtual functions 307
+
+push-based techniques
+
+about 529
+
+Python
+
+integration with 708, 710, 711, 712
+
+R
+
+race condition
+
+example 467, 468, 469, 470, 472, 473, 474, 475, 476
+
+race detectors
+
+about 419
+
+using 419
+
+receive state 528
+
+references 22, 74
+
+Relational DBMSs example 530
+
+relocatable object files
+
+about 55, 61, 5, 6, 7, 9
+
+request for comments (RFC) 596
+
+Resource Acquisition Is Initialization (RAII) 189
+
+responsibilities, Unix kernnel
+
+device management 333
+
+Inter-Process Communication (IPC) 333
+
+memory management 333
+
+process management 332
+
+scheduling 333
+
+system startup 333
+
+retrieve state 528
+
+risks 185
+
+robust mutex 577
+
+Round-robin algorithm 448
+
+S
+
+scaling out 544
+
+scaling up 544
+
+scope 176
+
+Secure Shell (SSH) 322
+
+segment
+
+about 135
+
+semaphore
+
+about 434, 435, 436, 437, 438
+
+locking 437
+
+unlocking 437
+
+semi-deadlock situations 425
+
+sent state 528
+
+separator 598
+
+serialization 594
+
+serialization/deserialization library, calculator project
+
+about 646, 648
+
+client-side serializer/deserializer functions 650, 651
+
+server-side serializer/deserializer functions 648, 650
+
+server program
+
+example 402
+
+shared library files 55
+
+shared memories
+
+used, for demonstration of data race example 536, 539, 540, 541
+
+shared memory object
+
+versus file object in file system 541
+
+shared object files
+
+manual loading 31
+
+manual loading 29
+
+shared object files works
+
+reference link 26
+
+shared process mutex 577
+
+shared state 407, 408, 409, 410, 411
+
+shared states
+
+about 528
+
+file system 541, 543
+
+sharing techniques 528, 529
+
+shell 324, 325, 326, 327, 328, 329, 330
+
+short pointer
+
+about 22
+
+signal handler 565
+
+signaling behavior 581
+
+Simple Unix Specification (SUS) 318
+
+single-host communication
+
+about 599
+
+file descriptors 599
+
+POSIX message queues 606, 608, 609
+
+POSIX pipes 604, 605, 606
+
+POSIX signals 600, 601, 602, 603
+
+Unix domain sockets 610
+
+single-host concurrency control 548
+
+single-host multi-processing 544
+
+single-threaded program 452
+
+sleep function 325
+
+sleep/notify mechanism 430, 431, 433
+
+smashing 162
+
+socket
+
+about 624
+
+descriptors 630
+
+socket descriptors 457, 541
+
+socket object, attributes
+
+SOCK_DGRAM 626
+
+SOCK_RAW 626
+
+SOCK_STREAM 625
+
+socket programming
+
+about 610, 624
+
+socket programming
+
+channel, establishing 634
+
+overview 634, 635, 636
+
+pull-based techniques 634
+
+push-based techniques 634
+
+sockets 457
+
+using 634
+
+software system
+
+testing 718
+
+testing, levels 718, 720
+
+source control management (SCM) 768
+
+spinlock 484
+
+spin locking 437
+
+spinlock-related types and function 485
+
+spin locks
+
+about 427, 428, 429, 443
+
+condition variables 445, 446
+
+using 444
+
+stack 36
+
+about 162, 174
+
+probing 163, 164, 165, 166, 167, 168, 169, 170
+
+scope concept 170
+
+stack frame
+
+creating 470
+
+stack frames
+
+about 154
+
+stack library
+
+writing 680, 681, 683, 685, 686
+
+stack management 35, 36
+
+stack memory
+
+using 170, 171, 172, 173, 174
+
+stack overflow error 36
+
+stack segment
+
+about 147, 153, 154
+
+standard C library
+
+bypassing 341, 342, 343, 344
+
+starved tasks 414
+
+stateful service objects 653
+
+stateless service object 652
+
+static constructor 696
+
+static libraries 61
+
+static library
+
+about 15, 16, 17, 19, 21, 22, 23, 24
+
+static memory layout
+
+about 135, 136, 137, 138
+
+BSS segment 138, 139, 140
+
+data segment 140, 141, 142, 143, 144, 145
+
+text segment 145, 146, 147
+
+static race detectors 419
+
+stream client 661, 662, 663
+
+stream connector sequence
+
+about 628
+
+stream listener sequence 627, 628
+
+stream server 653, 654, 655, 656, 657, 658, 660, 661
+
+structure pointers 50, 51
+
+structures
+
+about 41, 42
+
+need for 42
+
+nested structures 49, 50
+
+tasks, performing 44
+
+User-Defined Types (UDTs) 42, 43
+
+structure variable
+
+memory variable 44, 45, 46, 47, 48
+
+symbols 85
+
+synchronization mechanisms 415
+
+synchronization techniques
+
+about 426, 427
+
+busy-waits 427, 428
+
+multiple processor units 439
+
+mutexes 434
+
+semaphores 434
+
+sleep/notify mechanism 430
+
+spin locks 427, 428
+
+syscall function 344, 345, 346
+
+system calls 325
+
+about 339, 340, 341
+
+adding, to Linux 346
+
+calling, directly 341, 342, 343, 344
+
+System V ABI, HTML version
+
+reference link 5
+
+System V semaphores, versus POSIX semaphores
+
+reference link 552
+
+T
+
+Tag-Value-Length (TLV) 598
+
+target architecture 66
+
+task 447
+
+task scheduler unit
+
+about 395
+
+facts 395, 396
+
+task scheduling 395
+
+TCP client 672, 673
+
+TCP server 671, 672
+
+technical debts 185
+
+techniques, for accessing shared state
+
+environment variables 452
+
+file system 450
+
+memory-mapped file 450
+
+message queue 452
+
+network 450
+
+pipes 451
+
+shared memory 451
+
+signals 451
+
+Unix domain sockets 451
+
+telephone networks
+
+analogy 618
+
+terminal 566
+
+testable code
+
+reference link 727
+
+test doubles
+
+about 728, 729
+
+reference link 729
+
+text segment
+
+about 145, 146, 147
+
+thread debuggers
+
+about 752
+
+Helgrind (from Valgrind) 752
+
+Intel inspector 753
+
+LLVM ThreadSanitizer (TSan) 753
+
+types 752
+
+Thread ID (TID) 457
+
+thread pool 543
+
+threads 397, 457, 458, 459
+
+thread safe library 459
+
+thread safe program 459
+
+time-sharing 448
+
+time utility 198
+
+transferred state 528
+
+translation unit 59, 63
+
+Transport Control Protocol (TCP) 619
+
+transport initialization sequences 620
+
+truss utility 326
+
+try-with-resources 700
+
+two-way channels 635
+
+two-way communication 635
+
+type generic macros 380
+
+U
+
+UDP client 675
+
+UDP server 674, 675
+
+Unicode 381, 383, 384, 386, 387, 388
+
+unit testing
+
+about 720, 721, 723, 724, 725, 726, 727, 728
+
+Unix
+
+and Multics OS 310, 311, 312
+
+architecture 314
+
+history 310
+
+Management (MM) 335
+
+onion model 317, 318, 319
+
+philosophy 315, 316, 317
+
+philosophy, reference link 315
+
+Scheduler 335
+
+Unix domain sockets
+
+about 610
+
+Unix domain sockets (UDS) 633
+
+about 635, 653
+
+datagram client 669, 670
+
+datagram server 664, 665, 666, 668, 669
+
+stream client 661, 662, 663
+
+stream server 653, 654, 655, 656, 657, 658, 660, 661
+
+versus network sockets 635
+
+Unix kernels
+
+monolithic kernel, versus microkernels 362, 363
+
+unmarshaling 594
+
+unnamed semaphores 494
+
+user applications 319, 320, 321, 322, 323
+
+User Datagram Protocol (UDP) 620
+
+User-Defined Types (UDTs) 42, 43
+
+user land 332
+
+user-level thread 458
+
+user process 331
+
+user space 332
+
+userspace terms 448
+
+UTF-16
+
+about 382, 388
+
+reference link 383
+
+UTF-18
+
+reference link 383
+
+UTF-32
+
+about 382, 388
+
+reference link 383
+
+V
+
+variable pointers
+
+about 22
+
+arithmetic operations, performing 24, 26, 28
+
+syntax 22, 23
+
+variadic macros 12, 14, 15
+
+vertical scaling 544
+
+virtual functions 40, 291
+
+virtual methods 305
+
+virtual table (vtable) 306
+
+volatile variable 513
+
+W
+
+wide characters 382
+
+Win32 API 460
+
+Windows threading API
+
+reference link 460
+
+Z
+
+zero-copy receive mechanism
+
+reference link 541

@@ -1,0 +1,16 @@
+meta: {book: t, chapter_id: ch01, title: T, source_ref: "Ch.1", level: intro, prereqs: []}
+objectives: ["o1"]
+blocks:
+  - id: b1
+    type: model
+    title: B1
+    explain_md: "Some *idea*."
+    example: {lang: c, code: "int main(void){return 0;}\n"}
+    viz: {kind: ascii-memory, steps: ["a", "b"]}
+    checks:
+      - {kind: predict, q: "Q1?", choices: [A, B], answer: 0, why: "W1"}
+      - {kind: why-fails, q: "Q2?", choices: [A, B], answer: 1, why: "W2", from_chapter: ch00, from_block: b9}
+      - {kind: order, q: "Q3?", lines: ["bogus();", "int x=1;", "return x;"], answer_order: [1, 2], why: "W3", from_chapter: ch00, from_block: b8}
+cards: [{front: f, back: b}]
+lab: {title: L, prompt_md: P, starter_c: "int main(void){return 0;}\n", tests_sh: "gcc -Wall -std=c99 starter.c -o t && ./t", hints: [h]}
+test: {gates: [{needs: [b1], min_quiz: 80}], final_checks: []}

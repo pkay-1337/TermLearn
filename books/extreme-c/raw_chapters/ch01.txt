@@ -1,0 +1,5 @@
+# cover
+
+<!-- source: Text/cover.xhtml | spine-id: cover | chapter: ch01 -->
+
+![cover.png](../Images/cover.png)

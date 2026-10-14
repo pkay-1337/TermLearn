@@ -1,0 +1,4 @@
+#!/bin/sh
+# Fixture generated runner (broken): violates the JSON protocol on purpose.
+echo "all good trust me"
+exit 0

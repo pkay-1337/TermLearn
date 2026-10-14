@@ -43,3 +43,57 @@ def test_picker_helpers(tmp_path, monkeypatch):
     progress.record_quiz("b", "ch01", 4, 4)
     assert progress.chapter_status("b", "ch01") == "studying"
     assert progress.book_mastery("b", 3) == "0/3"
+
+
+def test_block_progress_helpers(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    # 1. Unstarted block with 3 checks
+    s0 = progress.block_status("extreme-c", "ch04", "b1", n_checks=3)
+    assert s0["status"] == "not_started"
+    assert s0["completed"] is False
+    assert s0["attempted"] == 0
+
+    # 2. Block with 0 checks (pure viz/theory)
+    s_viz = progress.block_status("extreme-c", "ch04", "b_viz", n_checks=0)
+    assert s_viz["status"] == "not_started"
+    assert s_viz["completed"] is False
+    progress.mark_block_completed("extreme-c", "ch04", "b_viz")
+    s_viz_done = progress.block_status("extreme-c", "ch04", "b_viz", n_checks=0)
+    assert s_viz_done["status"] == "completed"
+    assert s_viz_done["completed"] is True
+
+    # 3. Partially attempted block
+    con = progress.init_db()
+    con.execute("INSERT INTO answers(ts,book,chapter,block,check_idx,correct) VALUES(1,'extreme-c','ch04','b1',0,1)")
+    con.commit()
+    con.close()
+    s_part = progress.block_status("extreme-c", "ch04", "b1", n_checks=3)
+    assert s_part["status"] == "in_progress"
+    assert s_part["completed"] is False
+    assert s_part["attempted"] == 1
+    assert s_part["correct"] == 1
+
+    # 4. Fully answered block
+    con = progress.init_db()
+    con.execute("INSERT INTO answers(ts,book,chapter,block,check_idx,correct) VALUES(2,'extreme-c','ch04','b1',1,0)")
+    con.execute("INSERT INTO answers(ts,book,chapter,block,check_idx,correct) VALUES(3,'extreme-c','ch04','b1',2,1)")
+    con.commit()
+    con.close()
+    s_full = progress.block_status("extreme-c", "ch04", "b1", n_checks=3)
+    assert s_full["status"] == "completed"
+    assert s_full["completed"] is True
+    assert s_full["attempted"] == 3
+    assert s_full["correct"] == 2
+
+    # 5. chapter_blocks_progress
+    blocks = [
+        {"id": "b1", "title": "Macros", "checks": [{}, {}, {}]},
+        {"id": "b_viz", "title": "Memory Layout", "checks": []},
+        {"id": "b2", "title": "Pointers", "checks": [{}]}
+    ]
+    all_p = progress.chapter_blocks_progress("extreme-c", "ch04", blocks)
+    assert len(all_p) == 3
+    assert all_p[0]["status"] == "completed"
+    assert all_p[1]["status"] == "completed"
+    assert all_p[2]["status"] == "not_started"
+

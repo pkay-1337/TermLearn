@@ -32,6 +32,10 @@ def init_db(db: Path | None = None) -> sqlite3.Connection:
     con.execute("""CREATE TABLE IF NOT EXISTS solutions(
       hash TEXT PRIMARY KEY, ts INTEGER, book TEXT, chapter TEXT,
       passed INTEGER, code TEXT)""")
+    con.execute("""CREATE TABLE IF NOT EXISTS block_progress(
+      id INTEGER PRIMARY KEY, ts INTEGER, book TEXT, chapter TEXT,
+      block TEXT, completed INTEGER DEFAULT 1,
+      UNIQUE(book, chapter, block))""")
     # migrate pre-concept databases (D-02/03/08): answers.concept, quiz_runs.items
     cols_a = [r[1] for r in con.execute("PRAGMA table_info(answers)").fetchall()]
     if "concept" not in cols_a:
@@ -223,3 +227,78 @@ def concept_stats(book: str) -> list[dict]:
         return out
     finally:
         con.close()
+
+
+def mark_block_completed(book: str, chapter: str, block: str) -> None:
+    """Record that a study block was completed by the user."""
+    con = _db_or_none()
+    if con is None:
+        return
+    try:
+        con.execute(
+            "INSERT INTO block_progress(ts, book, chapter, block, completed) "
+            "VALUES(?, ?, ?, ?, 1) "
+            "ON CONFLICT(book, chapter, block) DO UPDATE SET ts=excluded.ts, completed=1",
+            (int(time.time()), book, chapter, block),
+        )
+        con.commit()
+    finally:
+        con.close()
+
+
+def block_status(book: str, chapter: str, block_id: str, n_checks: int = 0) -> dict:
+    """Returns detailed completion status for a specific block."""
+    con = _db_or_none()
+    if con is None:
+        return {"status": "not_started", "completed": False, "attempted": 0, "correct": 0, "total": n_checks}
+    try:
+        bp = con.execute(
+            "SELECT completed FROM block_progress WHERE book=? AND chapter=? AND block=?",
+            (book, chapter, block_id)
+        ).fetchone()
+        is_done = bool(bp and bp[0])
+
+        rows = con.execute(
+            "SELECT check_idx, correct FROM answers WHERE book=? AND chapter=? AND block=?",
+            (book, chapter, block_id)
+        ).fetchall()
+        attempted_indices = {r[0] for r in rows}
+        correct_count = sum(1 for r in rows if r[1] == 1)
+
+        if n_checks > 0:
+            if is_done or len(attempted_indices) >= n_checks:
+                status = "completed"
+                completed = True
+            elif len(attempted_indices) > 0:
+                status = "in_progress"
+                completed = False
+            else:
+                status = "not_started"
+                completed = False
+        else:
+            status = "completed" if is_done else "not_started"
+            completed = is_done
+
+        return {
+            "status": status,
+            "completed": completed,
+            "attempted": len(attempted_indices),
+            "correct": correct_count,
+            "total": n_checks,
+        }
+    finally:
+        con.close()
+
+
+def chapter_blocks_progress(book: str, chapter: str, blocks: list[dict]) -> list[dict]:
+    """Batch-fetches progress status for all blocks in a chapter."""
+    out = []
+    for b in blocks:
+        bid = b.get("id", "?")
+        n_ck = len(b.get("checks", []) or [])
+        st = block_status(book, chapter, bid, n_ck)
+        st["id"] = bid
+        st["title"] = b.get("title", bid)
+        out.append(st)
+    return out
+

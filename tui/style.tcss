@@ -686,4 +686,146 @@ ConfirmDeleteModal {
     color: $crust;
 }
 
+/* -------------------------------------------------------------------------
+   Interactive Innovations: Bug Spotter, Trace Tables, Faded Parsons, Subgoals
+   ------------------------------------------------------------------------- */
+
+.bug-diag-box {
+    background: #2d1820;
+    color: $status-danger;
+    border: heavy $status-danger;
+    padding: 1 2;
+    margin-bottom: 1;
+    text-style: bold;
+}
+
+.faded-instruction {
+    color: $accent-cyan;
+    text-style: bold;
+    margin-bottom: 1;
+}
+
+#btn-submit-faded {
+    width: 100%;
+    margin-top: 1;
+    margin-bottom: 1;
+    background: $accent-primary;
+    color: $crust;
+    text-style: bold;
+}
+
+.trace-table-box {
+    background: $mantle;
+    border: round $accent-cyan;
+    padding: 1 2;
+    margin-bottom: 1;
+}
+
+.trace-nav-bar {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+    align: center middle;
+}
+
+#btn-trace-prev, #btn-trace-next {
+    margin-right: 2;
+    background: $surface-1;
+    color: $text-primary;
+}
+
+#btn-trace-prev:hover, #btn-trace-next:hover {
+    background: $accent-cyan;
+    color: $crust;
+}
+
+.subgoal-container {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1;
+}
+
+.subgoal-frame {
+    width: 100%;
+    height: auto;
+    border: round $surface-2;
+    background: $base;
+    margin-bottom: 1;
+    padding: 0 1;
+}
+
+.subgoal-header {
+    width: 100%;
+    color: $accent-secondary;
+    text-style: bold;
+    background: $surface-0;
+    padding: 0 1;
+}
+
+.subgoal-code {
+    max-height: 10;
+    margin: 0;
+}
+
+/* -------------------------------------------------------------------------
+   Toolchain Inspector Modal (RUNNER-INSPECT)
+   ------------------------------------------------------------------------- */
+
+#inspect-modal-box {
+    width: 90%;
+    max-width: 100;
+    height: 85%;
+    max-height: 36;
+    background: $base;
+    border: double $accent-primary;
+    padding: 1 2;
+    align: center middle;
+}
+
+#inspect-modal-title {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    color: $accent-primary;
+    margin-bottom: 1;
+}
+
+#inspect-tabs-bar {
+    width: 100%;
+    height: 3;
+    margin-bottom: 1;
+    align: center middle;
+}
+
+.inspect-tab-btn {
+    margin-right: 1;
+    background: $surface-1;
+    color: $text-primary;
+}
+
+.inspect-tab-btn:hover {
+    background: $accent-primary;
+    color: $crust;
+}
+
+#inspect-output-container {
+    width: 100%;
+    height: 1fr;
+    background: $mantle;
+    border: round $surface-0;
+    padding: 1;
+    overflow-y: auto;
+}
+
+#inspect-content {
+    color: $text-primary;
+}
+
+#inspect-close {
+    width: 100%;
+    margin-top: 1;
+    background: $surface-1;
+    color: $text-primary;
+}
+
 

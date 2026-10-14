@@ -41,10 +41,12 @@ class _Base(Screen):
 class StudyScreen(VimScrollMixin, _Base):
     HELP_TITLE = "study"
     HELP_LINES = [("n", "next"), ("p", "previous block"), ("r", "run example"),
+                  ("i", "inspect example (toolchain)"),
                   ("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
     BINDINGS = ([Binding("n", "next", "Next"),
                  Binding("p", "prev", "Previous"),
                  Binding("r", "run_ex", "Run"),
+                 Binding("i", "inspect_example", "Inspect"),
                  Binding("q", "back", "Back"),
                  Binding("h", "back", "Back", show=False),
                  Binding("question_mark", "help", "Help")] +
@@ -91,17 +93,21 @@ class StudyScreen(VimScrollMixin, _Base):
             body.mount(Markdown(str(b.get("explain_md", "")), classes="study-block-card"))
             ex = b.get("example") or {}
             if ex.get("code"):
-                try:
-                    from textual.widgets import Syntax
-                    body.mount(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai", classes="study-example-box"))
-                except Exception:
-                    body.mount(Static(ex["code"], classes="study-example-box"))
+                if ex.get("subgoals"):
+                    from tui.widgets import SubgoalCodeView
+                    body.mount(SubgoalCodeView(ex["code"], ex.get("lang", "c"), ex["subgoals"]))
+                else:
+                    try:
+                        from textual.widgets import Syntax
+                        body.mount(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai", classes="study-example-box"))
+                    except Exception:
+                        body.mount(Static(ex["code"], classes="study-example-box"))
             if (b.get("viz") or {}).get("steps"):
-                body.mount(Static("👉 Press [bold cyan]n[/] to step through memory visualization", classes="study-nav-box"))
+                body.mount(Static("👉 Press [bold cyan]n[/] to step through memory visualization · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
             elif (b.get("checks") or []):
-                body.mount(Static("👉 Press [bold cyan]n[/] to answer the checks", classes="study-nav-box"))
+                body.mount(Static("👉 Press [bold cyan]n[/] to answer the checks · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
             else:
-                body.mount(Static("👉 Press [bold cyan]n[/] to proceed to next block", classes="study-nav-box"))
+                body.mount(Static("👉 Press [bold cyan]n[/] to proceed to next block · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
         elif self.stage == "viz":
             steps = (b.get("viz") or {}).get("steps", [])
             body.mount(Static("\n".join(steps[:self.vi + 1]), classes="study-viz-box"))
@@ -209,6 +215,15 @@ class StudyScreen(VimScrollMixin, _Base):
         else:
             text = f"output:\n{r['output'][:2000]}"
         self.query_one("#body", Vertical).mount(Static(f"[bold cyan]Console Output:[/] {text}", classes="study-example-box"))
+
+    def action_inspect_example(self) -> None:
+        ex = (self._block().get("example") or {})
+        code = ex.get("code", "")
+        if not code:
+            self.app.notify("No code example in this block to inspect.")
+            return
+        from tui.widgets import ToolchainInspectModal
+        self.app.push_screen(ToolchainInspectModal(self.book, code, lang=ex.get("lang", "c")))
 
     def action_back(self) -> None:
         self.app.pop_screen()
@@ -573,10 +588,11 @@ class CardsScreen(_Base):
 
 class LabScreen(_Base):
     HELP_TITLE = "lab"
-    HELP_LINES = [("r", "run"), ("t", "hidden tests + snapshot"), ("h", "hint"),
-                  ("tab", "switch pane"), ("q", "back")]
+    HELP_LINES = [("r", "run"), ("t", "hidden tests + snapshot"), ("i", "inspect toolchain"),
+                  ("h", "hint"), ("tab", "switch pane"), ("q", "back")]
     BINDINGS = [Binding("r", "run_code", "Run"),
                 Binding("t", "run_tests", "Tests"),
+                Binding("i", "inspect_buffer", "Inspect"),
                 Binding("h", "hint", "Hint"),
                 Binding("tab", "switch_pane", "Switch Pane", show=False),
                 Binding("q", "back", "Back"),
@@ -616,6 +632,7 @@ class LabScreen(_Base):
             with Horizontal(classes="lab-actions-bar"):
                 yield Button("▶ Run (r)", id="lab-run")
                 yield Button("🧪 Hidden tests (t)", id="lab-tests")
+                yield Button("🔍 Inspect (i)", id="lab-inspect")
                 yield Button("💡 Hint (h)", id="lab-hint")
             with ScrollableContainer(classes="lab-console-pane"):
                 yield Label("Terminal Console Output:", classes="details-header")
@@ -678,5 +695,14 @@ class LabScreen(_Base):
     def _hint_btn(self) -> None:
         self.action_hint()
 
+    @on(Button.Pressed, "#lab-inspect")
+    def _inspect_btn(self) -> None:
+        self.action_inspect_buffer()
+
+    def action_inspect_buffer(self) -> None:
+        from tui.widgets import ToolchainInspectModal
+        self.app.push_screen(ToolchainInspectModal(self.book, self._code(), lang=self.lab.get("lang", "c")))
+
     def action_back(self) -> None:
         self.app.pop_screen()
+

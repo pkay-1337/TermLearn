@@ -4,7 +4,7 @@ from __future__ import annotations
 from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Vertical
+from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.message import Message
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Static
@@ -160,6 +160,127 @@ class ConfirmDeleteModal(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class SubgoalCodeView(Static):
+    """Renders a code block partitioned into labeled functional subgoals (SPEC-PED-001)."""
+
+    def __init__(self, code: str, lang: str = "c", subgoals: list[dict] | None = None) -> None:
+        super().__init__()
+        self.code = code
+        self.lang = lang
+        self.subgoals = subgoals or []
+
+    def compose(self) -> ComposeResult:
+        lines = self.code.splitlines()
+        with Vertical(classes="subgoal-container"):
+            for sg in self.subgoals:
+                label = sg.get("label", "Subgoal")
+                sg_lines = sg.get("lines", [])
+                sub_code = "\n".join(lines[i - 1] for i in sg_lines if 1 <= i <= len(lines))
+                with Vertical(classes="subgoal-frame"):
+                    yield Label(f"🎯  Subgoal: {label}", classes="subgoal-header")
+                    try:
+                        from textual.widgets import Syntax
+                        yield Syntax(sub_code, self.lang, theme="monokai", classes="subgoal-code")
+                    except Exception:
+                        yield Static(sub_code, classes="subgoal-code")
+
+
+class ToolchainInspectModal(ModalScreen):
+    """Live interactive toolchain inspector modal (nm, objdump, readelf, AST). (SPEC-RUNNER-002)"""
+
+    BINDINGS = [
+        Binding("1", "mode_symbols", "Symbols (1)", show=False),
+        Binding("2", "mode_disasm", "Disassembly (2)", show=False),
+        Binding("3", "mode_sections", "Sections (3)", show=False),
+        Binding("4", "mode_ast", "AST (4)", show=False),
+        Binding("j", "scroll_down", "Down", show=False),
+        Binding("k", "scroll_up", "Up", show=False),
+        Binding("escape", "close", "Close"),
+        Binding("q", "close", "Close"),
+    ]
+
+    def __init__(self, book: str | None, code: str, lang: str = "c") -> None:
+        super().__init__()
+        self.book = book
+        self.code = code
+        self.lang = lang
+        self.current_mode = "symbols"
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="inspect-modal-box"):
+            yield Label(f"🔍  Toolchain Inspector — Language: [bold cyan]{self.lang}[/]", id="inspect-modal-title")
+            with Horizontal(id="inspect-tabs-bar"):
+                yield Button("1. Symbols (nm)", id="tab-symbols", classes="inspect-tab-btn")
+                yield Button("2. Disassembly (objdump)", id="tab-disasm", classes="inspect-tab-btn")
+                yield Button("3. Sections (readelf)", id="tab-sections", classes="inspect-tab-btn")
+                yield Button("4. AST / Syntax", id="tab-ast", classes="inspect-tab-btn")
+            with ScrollableContainer(id="inspect-output-container"):
+                yield Static("Loading inspector output...", id="inspect-content")
+            yield Button("Close (q / Esc)", id="inspect-close")
+
+    def on_mount(self) -> None:
+        self._load_mode("symbols")
+
+    def _load_mode(self, mode: str) -> None:
+        self.current_mode = mode
+        from lib.lab import inspect_code
+        res = inspect_code(self.book, self.code, lang=self.lang, mode=mode)
+        out = self.query_one("#inspect-content", Static)
+        if res.get("ok"):
+            content = res.get("content", "") or "(No output generated)"
+            out.update(content)
+        else:
+            diag = res.get("diagnostics", "Inspector failed")
+            out.update(f"[bold red]Inspection Error:[/] {diag}")
+
+    @on(Button.Pressed, "#tab-symbols")
+    def _tab_symbols(self) -> None:
+        self._load_mode("symbols")
+
+    @on(Button.Pressed, "#tab-disasm")
+    def _tab_disasm(self) -> None:
+        self._load_mode("disasm")
+
+    @on(Button.Pressed, "#tab-sections")
+    def _tab_sections(self) -> None:
+        self._load_mode("sections")
+
+    @on(Button.Pressed, "#tab-ast")
+    def _tab_ast(self) -> None:
+        self._load_mode("ast")
+
+    @on(Button.Pressed, "#inspect-close")
+    def _close(self) -> None:
+        self.app.pop_screen()
+
+    def action_close(self) -> None:
+        self.app.pop_screen()
+
+    def action_mode_symbols(self) -> None:
+        self._load_mode("symbols")
+
+    def action_mode_disasm(self) -> None:
+        self._load_mode("disasm")
+
+    def action_mode_sections(self) -> None:
+        self._load_mode("sections")
+
+    def action_mode_ast(self) -> None:
+        self._load_mode("ast")
+
+    def action_scroll_down(self) -> None:
+        try:
+            self.query_one("#inspect-output-container").scroll_relative(y=3, animate=False)
+        except Exception:
+            pass
+
+    def action_scroll_up(self) -> None:
+        try:
+            self.query_one("#inspect-output-container").scroll_relative(y=-3, animate=False)
+        except Exception:
+            pass
+
+
 class ChoiceCard(Static):
     """A focusable, multi-line choice card that wraps cleanly across terminal widths."""
 
@@ -221,19 +342,101 @@ class QuestionWidget(Static):
             except Exception:
                 yield Static(ck["code"])
         kind = ck.get("kind")
-        if kind in ("predict", "why-fails", "mcq", "eipe", "choose-better"):
+        if kind in ("predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug"):
+            if kind == "spot-bug" and ck.get("diagnostic_log"):
+                yield Static(f"🚨  Diagnostic Log:\n{ck['diagnostic_log']}", classes="bug-diag-box")
             for i, opt in enumerate(ck.get("choices", []), 1):
                 yield ChoiceCard(i, opt, id=f"opt-{i}")
         elif kind == "order":
+            if ck.get("faded") is True:
+                yield Static("Faded Parsons: Order lines and fill in missing tokens:", classes="faded-instruction")
             for i, line in enumerate(ck.get("lines", []), 1):
                 yield Static(f"  [{i}] {line}")
             yield Input(placeholder="type line order e.g. 3 1 2", id="order-in", classes="question-input")
+            if ck.get("faded") is True:
+                for bi, blk in enumerate(ck.get("blanks", [])):
+                    l_idx = blk.get("line_idx", 0)
+                    yield Input(placeholder=f"Line {l_idx + 1} missing token", id=f"faded-blank-{bi}", classes="question-input")
+                yield Button("Submit Answer (Enter)", id="btn-submit-faded")
         elif kind == "fillblank":
             yield Input(placeholder="type the missing token", id="fill-in", classes="question-input")
+        elif kind == "trace":
+            tr = ck.get("trace", {})
+            self._trace_step = 1
+            self._max_trace_step = max((r.get("step", 1) for r in tr.get("rows", [])), default=1)
+            yield Static(self._render_trace_table(), id="trace-table-view", classes="trace-table-box")
+            with Horizontal(classes="trace-nav-bar"):
+                yield Button("◀ Prev Step (p)", id="btn-trace-prev")
+                yield Button("Next Step (n) ▶", id="btn-trace-next")
+            if ck.get("choices"):
+                for i, opt in enumerate(ck.get("choices", []), 1):
+                    yield ChoiceCard(i, opt, id=f"opt-{i}")
+            else:
+                yield Input(placeholder="enter value for target cell [ ??? ]", id="trace-in", classes="question-input")
         elif kind == "micro-lab":
             yield Input(placeholder="expected output (r runs the code first)",
                         id="micro-in", classes="question-input")
         yield Static("", id="feedback", classes="feedback-msg")
+
+    def _render_trace_table(self) -> str:
+        ck = self.check
+        tr = ck.get("trace", {})
+        headers = tr.get("headers", ["Step", "Variable", "Address", "Value"])
+        rows = tr.get("rows", [])
+        tgt = ck.get("target", {})
+        lines = []
+        lines.append(" | ".join(headers))
+        lines.append("-|-".join(["---" * max(3, len(h)) for h in headers]))
+        for r_idx, r in enumerate(rows):
+            if r.get("step", 1) <= getattr(self, "_trace_step", 1):
+                cells = list(r.get("cells", []))
+                if r_idx == tgt.get("row") and 0 <= tgt.get("col", -1) < len(cells):
+                    cells[tgt["col"]] = "[ ??? ]"
+                lines.append(" | ".join(str(c) for c in cells))
+        return "\n".join(lines)
+
+    @on(Button.Pressed, "#btn-trace-prev")
+    def _trace_prev(self) -> None:
+        if getattr(self, "_trace_step", 1) > 1:
+            self._trace_step -= 1
+            self.query_one("#trace-table-view", Static).update(self._render_trace_table())
+
+    @on(Button.Pressed, "#btn-trace-next")
+    def _trace_next(self) -> None:
+        if getattr(self, "_trace_step", 1) < getattr(self, "_max_trace_step", 1):
+            self._trace_step += 1
+            self.query_one("#trace-table-view", Static).update(self._render_trace_table())
+
+    def _submit_faded_order(self) -> None:
+        if self._done:
+            return
+        ck = self.check
+        order_val = ""
+        try:
+            order_val = self.query_one("#order-in", Input).value.strip()
+            picked = [int(x) - 1 for x in order_val.split()]
+        except Exception:
+            picked = []
+        want = list(ck.get("answer_order", []))
+        if picked != want:
+            self._finish(False, "wrong line ordering")
+            return
+        blanks = ck.get("blanks", [])
+        for bi, blk in enumerate(blanks):
+            try:
+                user_token = self.query_one(f"#faded-blank-{bi}", Input).value.strip()
+            except Exception:
+                user_token = ""
+            exp_text = str(blk.get("answer_text", "")).strip()
+            accepted = [str(a).strip() for a in blk.get("accepted", [])]
+            if user_token != exp_text and user_token not in accepted:
+                self._finish(False, f"blank {bi + 1} incorrect: expected {exp_text!r}")
+                return
+        self._finish(True)
+
+    @on(Button.Pressed, "#btn-submit-faded")
+    def _faded_btn(self) -> None:
+        self._submit_faded_order()
 
     # -- answering API used by parent screens (buttons, cards AND key aliases) --
     def answer_choice(self, pick: int) -> None:
@@ -293,7 +496,14 @@ class QuestionWidget(Static):
         if kind == "fillblank":
             ok = raw == str(ck.get("answer_text", "")).strip()
             self._finish(ok, f"expected: {ck.get('answer_text')}" if not ok else "")
+        elif kind == "trace":
+            exp_text = str(ck.get("answer_text", "")).strip()
+            ok = raw.lower() == exp_text.lower()
+            self._finish(ok, f"expected: {exp_text}" if not ok else "")
         elif kind == "order":
+            if ck.get("faded") is True:
+                self._submit_faded_order()
+                return
             try:
                 picked = [int(x) - 1 for x in raw.split()]
             except ValueError:

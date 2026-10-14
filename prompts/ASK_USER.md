@@ -1,6 +1,10 @@
 # ASK_USER.md — interrogation template (SRS FR-ASK-001..003)
 # The AI MUST ask these BEFORE emitting YAML. MUST NOT emit final YAML until
 # the user answers or says `use defaults`.
+#
+# IMPORTANT: When authoring quizzes, checks, and questions, NEVER refer to
+# questions or exercises in the book (e.g. never say "refer to question 3 in book").
+# Always put the whole question with complete, self-contained context and code.
 
 Ask (compact, one message, numbered):
 

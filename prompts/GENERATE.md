@@ -72,6 +72,13 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
 - Every file MUST set `meta.source_ref` (e.g. `Ch.1 pp.1-20`) and every block
   SHOULD inherit/refine it. `meta.book` MUST equal the pack slug,
   `meta.chapter_id` MUST equal the file stem (`ch04.yaml` → `ch04`).
+- **Self-Contained Questions & Checks (MUST)**: When authoring quizzes, checks,
+  labs, or flashcards, NEVER refer or point to questions, exercises, or problem
+  numbers in the book (e.g. NEVER write "Refer to question 3 in the book",
+  "See exercise 4", or "As asked in Problem 5"). The learner studies ONLY
+  from your YAML in the terminal and does not have the book open. You MUST put
+  the entire question with its full background scenario, code snippet, and context
+  directly inside the question prompt/stem.
 
 ## 2. Blocking: one concept per block (MUST)
 
@@ -124,9 +131,11 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   (e.g. "B traps address/value confusion: `&var` is where it lives, not what
   it holds"). A distractor you cannot attach to a named misconception MUST be
   cut — filler options are worse than fewer options.
-- Stems MUST be positively worded. Prefer `why`/`why-fails` over `whether`:
-  conceptual questions discriminate; verdict questions do not (Brown Rust-book
-  experiment, 62k readers: ask WHY it fails, not WHETHER it compiles).
+- Stems MUST be positively worded and fully self-contained. NEVER refer to
+  questions or exercises in the book — always embed the complete question,
+  scenario, and code context directly into the prompt. Prefer `why`/`why-fails`
+  over `whether`: conceptual questions discriminate; verdict questions do not
+  (Brown Rust-book experiment, 62k readers: ask WHY it fails, not WHETHER it compiles).
 - ≥half of choice checks per chapter SHOULD be conceptual (`why-fails`,
   mechanism, contrast) rather than recall.
 
@@ -320,13 +329,15 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
    `answer_order` = ≥2 unique valid indices (distractors omitted)?
 3. `kind`/`type` vocabularies exact? No unknown top-level keys?
 4. `why` on EVERY check with principle + distractor diagnoses + source pointer?
-5. Choice counts 2–4 (3 preferred), stems positive, answers in any position?
-6. Block arc intact → completion → independent present where a lab exists?
-7. Model blocks have stepwise `viz`? Design blocks have `eipe`/`choose-better`?
-8. ≥2 interleaved checks with valid `from_chapter`? Cards atomic with why/when mix?
-9. Lab runs mentally under the declared toolchain (pilot example flags:
+5. All quizzes, checks, and questions 100% self-contained with full context?
+   (Zero references to book questions/exercises like "refer to question 3 in book").
+6. Choice counts 2–4 (3 preferred), stems positive, answers in any position?
+7. Block arc intact → completion → independent present where a lab exists?
+8. Model blocks have stepwise `viz`? Design blocks have `eipe`/`choose-better`?
+9. ≥2 interleaved checks with valid `from_chapter`? Cards atomic with why/when mix?
+10. Lab runs mentally under the declared toolchain (pilot example flags:
    `-Wall -std=c99`)? Hints general → specific? No destructive commands?
-10. Language ≠ C? Runner `run` authored per docs/SRS.md §4.9 (check/exec JSON,
+11. Language ≠ C? Runner `run` authored per docs/SRS.md §4.9 (check/exec JSON,
     exit-0 rule, sandbox prohibitions), `toolchain:` carries `runner`,
     `version_cmd`, `smoke`; C book? No runner file emitted.
-10. Line lengths sane (prose ≤120, code ≤80)?
+12. Line lengths sane (prose ≤120, code ≤80)?

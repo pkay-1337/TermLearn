@@ -2,11 +2,16 @@
 
 See `docs/SRS.md` (IEEE 29148 + RFC 2119, normative).
 
-## Quickstart (v0.1, Rich CLI)
+## Quickstart
 
+Launch the interactive Textual TUI:
 ```bash
 pip install -r requirements.txt
-python main.py --help
+python main.py                # launches modern TUI with Vim navigation
+```
+
+Or run headless CLI modes:
+```bash
 python main.py books                  # list books (FR-BOOK)
 python main.py chapters --book extreme-c
 python main.py extract --book extreme-c
@@ -23,13 +28,25 @@ python main.py stats --book extreme-c
 python main.py export --book extreme-c --format md
 ```
 
+## Language-Agnostic Interactive Learning Palette
+
+`termlearn` combines cognitive learning science with active terminal interactivity across any programming language:
+- **`trace`**: Stepped Notional Machine state tables (trace variables/memory addresses across execution steps).
+- **`order` (with `faded: true`)**: Faded Parsons problems (order scrambled logic + fill in masked syntax tokens).
+- **`spot-bug`**: Authentic diagnostic debugging (inspect compiler/sanitizer logs, highlight the faulty line, select the fix).
+- **`subgoals`**: Worked examples labeled with cognitive subgoal banners to reduce split-attention effect.
+- **Pluggable Runner Verbs**: AI-authored per-book runners supporting `run check`, `run exec`, and optional `run inspect` (live symbols/disassembly/AST via `i` hotkey).
+
 ## Layout (SRS §2.5)
 
-- `main.py` — CLI routing only (CR-DES-001)
-- `lib/` — domain logic (one module per mode)
+- `main.py` — CLI routing & TUI app launcher
+- `lib/` — core domain logic, pack validator, and runner dispatch
+- `tui/` — modern Textual TUI screens, custom TCSS themes, and interactive widgets
 - `books/<slug>/source.epub` — source truth; `raw_chapters/*.txt` + `meta.json` generated
 - `packs/<slug>/book.yaml` + `chNN.yaml` — AI-generated teaching packs (sole runtime source)
-- `prompts/GENERATE.md`, `ASK_USER.md` — normative AI contract
-- `tests/` + `tests/fixtures/` — synthetic fixtures first (VR-001..003), pilot book for e2e (VR-004/006)
+- `prompts/GENERATE.md`, `ASK_USER.md` — normative AI generation contract
+- `docs/` — specifications (`docs/SRS.md`, `docs/INTERACTIVE_LEARNING_SPEC.md`, `docs/USER_MANUAL.md`)
+- `tests/` — automated test suite (`pytest`)
 
 Pilot book: `books/extreme-c/source.epub` (Extreme C).
+

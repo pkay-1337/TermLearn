@@ -221,6 +221,17 @@ learning science, cognitive psychology, and computing education research (CER):
   - `example`: Verified code snippet (≤35 lines, ≤80 cols), runnable where applicable.
     Every code example MUST have an accompanying breakdown of its lines, memory mutations,
     and design rationale in `explain_md` or check `why`.
+    - `subgoals` (OPTIONAL but HIGHLY RECOMMENDED for complex multi-step examples):
+      Break code into purposeful functional steps:
+      ```yaml
+      subgoals:
+        - label: "Acquire & Guard Invariant"
+          lines: [1, 2]
+        - label: "Mutate State"
+          lines: [3, 4]
+      ```
+      [Research: Margulieux & Catrambone 2016 — grouping code lines into functional subgoals
+      boosts learner problem-solving transfer by up to 40% and reduces cognitive split-attention.]
 - `type` MUST be one of `model | syntax | design | algorithm` (meanings in the docs/SRS.md §4.6 table).
 - Each block title MUST be a functional subgoal label, NOT a comment:
   [Research: subgoal labels group procedure steps under their purpose, cut
@@ -311,6 +322,27 @@ learning science, cognitive psychology, and computing education research (CER):
   schema, not one puzzle solution.
 - Order tasks MUST follow a worked `example` of the same pattern earlier in
   the block (fade: study intact → assemble scrambled → write in lab).
+- **Faded Parsons (`faded: true`)**:
+  [Research: Fromont et al. 2023 — Faded Parsons problems require learners to arrange
+  lines AND fill in missing critical tokens, providing an optimal intermediate fade
+  before authoring code from scratch.]
+  ```yaml
+  - kind: order
+    faded: true
+    q: "Order the lines and fill in the missing allocation size argument:"
+    lines:
+      - "car_t* car = (car_t*)malloc(_____);"
+      - "if (!car) return NULL;"
+      - "car->speed = 0;"
+      - "return car;"
+    answer_order: [0, 1, 2, 3]
+    blanks:
+      - line_idx: 0
+        token: "_____"
+        answer_text: "sizeof(car_t)"
+        accepted: ["sizeof(car_t)", "sizeof(*car)"]
+    why: "car_malloc must allocate the byte size of car_t before initializing attributes."
+  ```
 
 ### 3.5 `eipe` — relational answers only (SHOULD for design/algorithm)
 
@@ -400,7 +432,68 @@ learning science, cognitive psychology, and computing education research (CER):
   Include `why/when` cards ("WHEN must a pointer be NULL-initialized?")
   alongside `what` cards. No multi-part cards, no "list all…" cards.
 
-### 3.10 `why` + interleaving on every check (MUST)
+### 3.10 `trace` — stepped Notional Machine memory & state tables (MUST for model/algorithm)
+
+- [Research: Sorva 2013; Lister et al. 2004 — novice programmers fail because they lack
+  an accurate mental model of the Notional Machine (invisible memory state, stack frames,
+  and pointers). Step-by-step state tracing is the single strongest predictor of programming
+  competence.]
+- Every `trace` check presents an executable code snippet and a structured table matrix
+  tracking variable and memory states across execution lines.
+- Schema:
+  ```yaml
+  - kind: trace
+    q: "Trace pointer mutations across execution steps. What is the value at address 0x7ffd01 after Step 3?"
+    code: |
+      int a = 10;
+      int *p = &a;
+      *p = 25;
+    trace:
+      headers: ["Step", "Line", "Variable / Target", "Address", "Value"]
+      rows:
+        - step: 1
+          line: 1
+          cells: ["1", "1", "a", "0x7ffd01", "10"]
+        - step: 2
+          line: 2
+          cells: ["2", "2", "p", "0x7ffd08", "0x7ffd01"]
+        - step: 3
+          line: 3
+          cells: ["3", "3", "*p (a)", "0x7ffd01", "???"]
+    target: {row: 2, col: 4}
+    answer_text: "25"                         # text input mode OR
+    choices: ["10", "25", "0x7ffd01", "NULL"] # choice mode
+    answer: 1
+    why: "Dereferencing *p accesses the memory at &a (0x7ffd01) and mutates the integer stored there from 10 to 25."
+    concept: "pointer-deref-state"
+  ```
+
+### 3.11 `spot-bug` — authentic diagnostic debugging (MUST for boundary failure modes)
+
+- [Research: Kalyuga et al. — authentic troubleshooting schemata require reading diagnostic
+  signals (compiler errors, AddressSanitizer output, stack traces) and mapping them to source lines.]
+- Schema:
+  ```yaml
+  - kind: spot-bug
+    q: "Analyze the code and AddressSanitizer report. Which line triggers the heap-use-after-free, and why?"
+    code: |
+      car_t* c = car_malloc();
+      car_free(c);
+      c->speed = 100;
+    diagnostic_log: |
+      ==12345==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010
+      WRITE of size 4 at 0x602000000010 thread T0
+    target_line: 3
+    choices:
+      - "Line 1: Allocation size was insufficient"
+      - "Line 2: car_free called on uninitialized pointer"
+      - "Line 3: Mutating field through dangling pointer after memory was freed"
+    answer: 2
+    why: "AddressSanitizer detects memory write to 0x602000000010 after that address was returned to the heap allocator in line 2."
+    concept: "use-after-free"
+  ```
+
+### 3.12 `why` + interleaving on every check (MUST)
 
 - `why` is elaborated feedback, not answer reveal [Research: response-specific
   elaborated feedback beats verification-only (Shute 2008; Corbett &

@@ -143,12 +143,15 @@ in-flight question).
 |-------|------|
 | quiz choice | `1-N` answer |
 | quiz fillblank / micro-lab | type text · `r` runs the code (micro-lab) |
+| quiz trace | `n` next step · `p` prev step · type value or `1-N` for target cell |
+| quiz spot-bug | `j`/`k` select buggy line · `1-N` choose diagnosis and patch |
 | parsons | numbers `3 1 2` · `s` reshuffle · `h` hint |
-| study example | `r` run · `Enter` continue |
+| faded parsons | `Tab` switch between line ordering and blank fields · type token |
+| study example | `r` run · `i` inspect toolchain (symbols/disasm/AST) · `Enter` continue |
 | study viz | `n` next step · `s` skip chapter-viz |
 | study remediation | `y` re-show example · `N` move on |
-| lab | `e` edit · `r` run · `t` hidden tests (+snapshot) · `d` last diff · `h` hint |
-| srs | `f` flip · `e` edit card · `1` forgot `2` hard `3` good `4` easy |
+| lab | `e` edit · `r` run · `t` hidden tests (+snapshot) · `d` last diff · `i` inspect · `h` hint |
+| srs | `f` / `Space` flip · `e` edit card · `1` forgot `2` hard `3` good `4` easy |
 
 Keys are single letters, mnemonic (`r`un, `e`dit, `h`int, `s`kip/`s`huffle,
 `n`ext, `f`lip), identical across modes. `?` and `help` are reserved — they

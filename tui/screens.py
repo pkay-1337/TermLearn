@@ -480,6 +480,318 @@ class ChaptersScreen(_Base):
         from tui.screens import ChapterMenu
         self.app.push_screen(ChapterMenu(self.book, cid))
 
+class StudyBlockListScreen(_Base):
+    HELP_TITLE = "study blocks"
+    HELP_LINES = [
+        ("1-9", "jump to block"),
+        ("j/k", "move cursor / scroll dossier"),
+        ("d/u", "half page scroll"),
+        ("g/G", "first / last block"),
+        ("enter/l", "start studying block"),
+        ("tab", "switch list / preview pane"),
+        ("q/h", "back to chapter menu"),
+    ]
+    BINDINGS = ([Binding(str(i), f"block{i}", "", show=False) for i in range(1, 10)] +
+                [Binding("j", "cursor_down", "Down", show=False),
+                 Binding("k", "cursor_up", "Up", show=False),
+                 Binding("g", "cursor_first", "First", show=False),
+                 Binding("G", "cursor_last", "Last", show=False),
+                 Binding("d", "page_down", "Half Down", show=False),
+                 Binding("u", "page_up", "Half Up", show=False),
+                 Binding("l", "open_or_right", "Open", show=False),
+                 Binding("h", "back_or_left", "Back", show=False),
+                 Binding("tab", "toggle_pane", "Toggle Pane", show=False),
+                 Binding("q", "back", "Back"),
+                 Binding("question_mark", "help", "Help")])
+
+    def __init__(self, book: str, chapter: str) -> None:
+        super().__init__()
+        self.book = book
+        self.chapter = chapter
+        self._active_pane = "list"
+        self._blocks: list[dict] = []
+        self._progress: list[dict] = []
+
+    def compose(self) -> ComposeResult:
+        with Vertical():
+            yield Label("", id="study-blocks-banner", classes="block-status-banner")
+            with Horizontal(classes="master-detail-row"):
+                with Vertical(id="study-blocks-list-pane", classes="sidebar-pane"):
+                    yield OptionList(id="block-list")
+                with ScrollableContainer(id="study-block-details", classes="content-pane"):
+                    yield Markdown(id="study-block-details-md")
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        try:
+            dossier = self.query_one("#study-block-details")
+            dossier.can_focus = True
+        except Exception:
+            pass
+        self._refresh_blocks()
+        self._apply_responsive_layout()
+
+    def on_screen_resume(self) -> None:
+        super().on_screen_resume()
+        self._refresh_blocks()
+
+    def on_resize(self) -> None:
+        self._apply_responsive_layout()
+
+    def _apply_responsive_layout(self) -> None:
+        try:
+            sidebar = self.query_one("#study-blocks-list-pane")
+            dossier = self.query_one("#study-block-details")
+            if (self.size.width or 80) < 70:
+                if self._active_pane == "list":
+                    sidebar.remove_class("pane-hidden")
+                    sidebar.add_class("pane-full")
+                    dossier.add_class("pane-hidden")
+                    dossier.remove_class("pane-full")
+                    self.query_one("#block-list").focus()
+                else:
+                    sidebar.add_class("pane-hidden")
+                    sidebar.remove_class("pane-full")
+                    dossier.remove_class("pane-hidden")
+                    dossier.add_class("pane-full")
+                    dossier.focus()
+            else:
+                sidebar.remove_class("pane-hidden")
+                sidebar.remove_class("pane-full")
+                dossier.remove_class("pane-hidden")
+                dossier.remove_class("pane-full")
+        except Exception:
+            pass
+
+    def _refresh_blocks(self) -> None:
+        from lib.pack import load_chapter
+        from lib.progress import chapter_blocks_progress
+        try:
+            data = load_chapter(self.book, self.chapter)
+        except Exception:
+            data = {}
+        self._blocks = data.get("blocks", []) or []
+        self._progress = chapter_blocks_progress(self.book, self.chapter, self._blocks)
+
+        completed_count = sum(1 for p in self._progress if p.get("completed"))
+        total_count = len(self._blocks)
+        pct = int(100.0 * completed_count / total_count) if total_count else 0
+        ch_title = data.get("meta", {}).get("title", self.chapter)
+
+        banner = self.query_one("#study-blocks-banner", Label)
+        banner.update(
+            f"📖  STUDY BLOCKS — {self.book} / {self.chapter}: {ch_title}  "
+            f"[Completed: {completed_count}/{total_count} blocks · {pct}%]"
+        )
+
+        lst = self.query_one("#block-list", OptionList)
+        prev_highlighted = lst.highlighted if lst.option_count > 0 else 0
+        lst.clear_options()
+
+        for i, (b, prog) in enumerate(zip(self._blocks, self._progress)):
+            bid = b.get("id", f"b{i+1}")
+            title = b.get("title", bid)
+            status = prog.get("status", "not_started")
+            att = prog.get("attempted", 0)
+            tot = prog.get("total", 0)
+
+            if status == "completed":
+                badge = "[bold green]✔ DONE[/]"
+            elif status == "in_progress":
+                badge = f"[bold yellow]◐ {att}/{tot}[/]"
+            else:
+                badge = "[dim]○ TODO[/]"
+
+            opt_label = f"[{i + 1}]  {badge}  {bid}: {title}"
+            lst.add_option(Option(opt_label, id=str(i)))
+
+        if total_count > 0:
+            target_idx = min(prev_highlighted if prev_highlighted is not None else 0, total_count - 1)
+            lst.highlighted = target_idx
+            self._update_details(target_idx)
+            if self._active_pane == "list":
+                lst.focus()
+
+    def _update_details(self, idx: int) -> None:
+        if not (0 <= idx < len(self._blocks)):
+            return
+        b = self._blocks[idx]
+        prog = self._progress[idx] if idx < len(self._progress) else {}
+        bid = b.get("id", f"b{idx+1}")
+        title = b.get("title", bid)
+        b_type = str(b.get("type", "concept")).title()
+        status = prog.get("status", "not_started")
+        att = prog.get("attempted", 0)
+        tot = prog.get("total", 0)
+        cor = prog.get("correct", 0)
+
+        if status == "completed":
+            status_desc = "✔ COMPLETED"
+        elif status == "in_progress":
+            status_desc = f"◐ IN PROGRESS ({att}/{tot} checks attempted, {cor} correct)"
+        else:
+            status_desc = "○ NOT STARTED"
+
+        concepts = set()
+        for ck in b.get("checks", []) or []:
+            if ck.get("concept"):
+                concepts.add(ck["concept"])
+        concepts_str = ", ".join(sorted(concepts)) if concepts else "—"
+
+        viz = b.get("viz") or {}
+        viz_steps = viz.get("steps", [])
+        viz_info = f"{len(viz_steps)} steps" if viz_steps else "None"
+
+        explain = str(b.get("explain_md", "")).strip()
+        lines = explain.splitlines()
+        preview_text = "\n".join(lines[:8]) + ("\n\n*(...more in study mode)*" if len(lines) > 8 else "")
+
+        code_preview = ""
+        ex = b.get("example") or {}
+        if ex.get("code"):
+            lang = ex.get("lang", "c")
+            code_preview = f"\n\n### Example Code\n```{lang}\n{ex['code'].strip()}\n```"
+
+        md_text = (
+            f"## Block {idx + 1}: {title}\n\n"
+            f"- **Block ID:** `{bid}`\n"
+            f"- **Type:** `{b_type}`\n"
+            f"- **Status:** **{status_desc}**\n"
+            f"- **Checks:** **{tot}** total\n"
+            f"- **Key Concepts:** `{concepts_str}`\n"
+            f"- **Visualizer:** {viz_info}\n\n"
+            f"### Summary\n{preview_text}"
+            f"{code_preview}\n\n"
+            f"---\n"
+            f"👉 Press **Enter** or **l** to study this block. **Tab** toggles preview pane."
+        )
+
+        try:
+            self.query_one("#study-block-details-md", Markdown).update(md_text)
+        except Exception:
+            pass
+
+    @on(OptionList.OptionHighlighted, "#block-list")
+    def _highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option and event.option.id is not None:
+            try:
+                self._update_details(int(event.option.id))
+            except Exception:
+                pass
+
+    @on(OptionList.OptionSelected, "#block-list")
+    def _selected(self, event: OptionList.OptionSelected) -> None:
+        if event.option and event.option.id is not None:
+            self._start_study(int(event.option.id))
+
+    def _start_study(self, bi: int) -> None:
+        from tui import practice
+        self.app.push_screen(practice.StudyScreen(self.book, self.chapter, start_block=bi))
+
+    def action_cursor_down(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#study-block-details"):
+            try:
+                self.query_one("#study-block-details").scroll_relative(y=2, animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#block-list", OptionList).action_cursor_down()
+            except Exception:
+                pass
+
+    def action_cursor_up(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#study-block-details"):
+            try:
+                self.query_one("#study-block-details").scroll_relative(y=-2, animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#block-list", OptionList).action_cursor_up()
+            except Exception:
+                pass
+
+    def action_cursor_first(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#study-block-details"):
+            try:
+                self.query_one("#study-block-details").scroll_home(animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#block-list", OptionList).action_first()
+            except Exception:
+                pass
+
+    def action_cursor_last(self) -> None:
+        if self._active_pane == "dossier" or getattr(self.app, "focused", None) == self.query_one("#study-block-details"):
+            try:
+                self.query_one("#study-block-details").scroll_end(animate=False)
+            except Exception:
+                pass
+        else:
+            try:
+                self.query_one("#block-list", OptionList).action_last()
+            except Exception:
+                pass
+
+    def action_page_down(self) -> None:
+        try:
+            dossier = self.query_one("#study-block-details")
+            dossier.scroll_relative(y=max(4, dossier.size.height // 2), animate=False)
+        except Exception:
+            pass
+
+    def action_page_up(self) -> None:
+        try:
+            dossier = self.query_one("#study-block-details")
+            dossier.scroll_relative(y=-max(4, dossier.size.height // 2), animate=False)
+        except Exception:
+            pass
+
+    def action_open_or_right(self) -> None:
+        if (self.size.width or 80) < 70 and self._active_pane == "list":
+            self.action_toggle_pane()
+        else:
+            try:
+                lst = self.query_one("#block-list", OptionList)
+                if lst.highlighted is not None:
+                    opt = lst.get_option_at_index(lst.highlighted)
+                    if opt and opt.id is not None:
+                        self._start_study(int(opt.id))
+            except Exception:
+                pass
+
+    def action_back_or_left(self) -> None:
+        if (self.size.width or 80) < 70 and self._active_pane == "dossier":
+            self.action_toggle_pane()
+        else:
+            self.action_back()
+
+    def action_toggle_pane(self) -> None:
+        if self._active_pane == "list":
+            self._active_pane = "dossier"
+            self._apply_responsive_layout()
+            try:
+                self.query_one("#study-block-details").focus()
+            except Exception:
+                pass
+        else:
+            self._active_pane = "list"
+            self._apply_responsive_layout()
+            try:
+                self.query_one("#block-list").focus()
+            except Exception:
+                pass
+
+    def __getattr__(self, name: str):  # action_block1..9 -> _start_study(i)
+        if name.startswith("action_block") and name[len("action_block"):].isdigit():
+            i = int(name[len("action_block"):]) - 1
+            if 0 <= i < len(self._blocks):
+                return lambda: self._start_study(i)
+        raise AttributeError(name)
+
     def action_back(self) -> None:
         self.app.pop_screen()
 
@@ -569,7 +881,7 @@ class ChapterMenu(_Base):
     def _go(self, mode: str) -> None:
         from tui import practice
         from tui.screens import ReviseScreen, StatsScreen, TestScreen
-        dest = {"study": practice.StudyScreen(self.book, self.chapter),
+        dest = {"study": StudyBlockListScreen(self.book, self.chapter),
                 "revise": ReviseScreen(self.book, self.chapter),
                 "quiz": practice.QuizScreen(self.book, self.chapter),
                 "parsons": practice.QuizScreen(self.book, self.chapter, kind="order"),

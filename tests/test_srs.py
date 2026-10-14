@@ -86,7 +86,7 @@ def test_topup_from_mastered(tmp_path, monkeypatch, capsys):
     con.commit()
     con.close()
     assert srs.mastered_topup(["extreme-c"], 2)[0][:2] == ("extreme-c", "ch04")
-    monkeypatch.setattr(sys, "stdin", io.StringIO("f\n4\nf\n4\nf\n4\nf\n4\nf\n4\n"))
+    monkeypatch.setattr(sys, "stdin", io.StringIO("f\n4\n" * 30))
     srs.run("extreme-c")  # grades all 5 cards into the future
     monkeypatch.setattr(sys, "stdin", io.StringIO("5\n1\n"))
     srs.run("extreme-c")  # due=0 -> 2 top-up checks

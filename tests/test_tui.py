@@ -172,3 +172,96 @@ async def test_curriculum_chapter_names_rendered(tmp_path, monkeypatch):
         await pilot.pause()
         banner = menu_screen.query_one(".menu-banner", Label).render()
         assert "Chapter 01 — Essential Features" in str(banner)
+
+
+async def test_choice_card_multi_line_and_selection(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.widgets import ChoiceCard, QuestionWidget
+    check = {
+        "kind": "mcq",
+        "q": "What does the preprocessor do with `#define ABC 5` and `int y = ABC;`?",
+        "choices": [
+            "ABC is replaced by 5 everywhere; the directive line is removed before compiling.",
+            "ABC becomes a const int variable allocated in the data segment.",
+            "ABC is evaluated at runtime by the preprocessor engine.",
+            "The compiler replaces ABC during the code generation pass.",
+        ],
+        "answer": 0,
+        "why": "Preprocessing happens purely as text substitution before the compiler runs.",
+    }
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        done_flag = []
+        qw = QuestionWidget(check, lambda ok: done_flag.append(ok))
+        app.screen.mount(qw)
+        await pilot.pause()
+        cards = list(qw.query(ChoiceCard))
+        assert len(cards) == 4
+        # Check ChoiceCard has can_focus and wraps text
+        assert cards[0].can_focus is True
+        assert "ABC is replaced by 5" in cards[0].raw_text
+        # Click or answer card 0
+        cards[0].on_click()
+        await pilot.pause()
+        assert done_flag == [True]
+        fb = qw.query_one("#feedback", Static)
+        assert "correct" in str(fb.content).lower()
+
+
+async def test_vim_movements_and_pane_switching(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.screens import ChapterMenu, HomeScreen
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        await _wait_screen(app, pilot, HomeScreen)
+        # Test j in HomeScreen
+        await pilot.press("j")
+        await pilot.pause()
+        # Test l to switch right to dossier
+        await pilot.press("l")
+        await pilot.pause()
+        dossier = app.screen.query_one("#book-details")
+        assert dossier.has_focus or app.screen._active_pane == "dossier"
+        # Test j to scroll dossier
+        await pilot.press("j")
+        await pilot.pause()
+        # Test h to switch back to list
+        await pilot.press("h")
+        await pilot.pause()
+        assert app.screen._active_pane == "list"
+
+        # Open ChapterMenu and test j/k
+        app.push_screen(ChapterMenu("extreme-c", "ch04"))
+        menu = await _wait_screen(app, pilot, ChapterMenu)
+        for _ in range(5):
+            await pilot.pause()
+        lst = menu.query_one("#mode-list", OptionList)
+        assert lst.highlighted == 0
+        await pilot.press("j")
+        await pilot.pause()
+        assert lst.highlighted == 1
+        await pilot.press("k")
+        await pilot.pause()
+        assert lst.highlighted == 0
+
+
+async def test_cards_vim_space_flip(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from lib import progress
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        app.push_screen(CardsScreen("extreme-c"))
+        await _wait_screen(app, pilot, CardsScreen)
+        await _wait_body(app, pilot)
+        # Test space to flip
+        await pilot.press("space")
+        await pilot.pause()
+        assert app.screen.flipped is True
+        # Test l to grade (key_l grades 4 when flipped)
+        await pilot.press("l")
+        await pilot.pause()
+        con = sqlite3.connect(str(progress.db_path()))
+        n = con.execute("SELECT COUNT(*) FROM cards WHERE reps>0").fetchone()[0]
+        con.close()
+        assert n >= 1
+

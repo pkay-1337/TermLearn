@@ -1,3 +1,4 @@
+#!/bin/python3
 """Entry point — CLI routing only. Domain logic MUST live in lib/. (SRS CR-DES-001, IF-CLI-001..005)"""
 import typer
 

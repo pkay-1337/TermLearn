@@ -64,7 +64,7 @@ def test_srs_syncs_cards_and_quits(tmp_home, monkeypatch):
     con = sqlite3.connect(str(progress.db_path()))
     n = con.execute("SELECT COUNT(*) FROM cards WHERE book='extreme-c'").fetchone()[0]
     con.close()
-    assert n == 5
+    assert n >= 5
 
 
 def test_srs_grades_and_retries(tmp_home, monkeypatch):

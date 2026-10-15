@@ -416,12 +416,14 @@ blocks:
       - kind: order
         q: "Arrange the statements inside `student_dtor` and caller cleanup in the required architectural order:"
         lines:
-          - "free(student->student_number);"
-          - "person_dtor((struct person_t*)student);"
           - "free(student);"
           - "free(student->person);"
-        answer_order: [0, 1, 2]
-        why: "Child resources must always be released before invoking the parent destructor. Finally, the caller frees the student container allocation. Distractor 3 is invalid syntax for Approach 1."
+          - "free(student->student_number);"
+          - "person_dtor((struct person_t*)student);"
+        answer_order: [2, 3, 0]
+        distractor_why:
+          "free(student->person);": "Approach 1 embeds person_t directly; person is not a heap pointer!"
+        why: "Child resources must always be released first (index 2), then parent destructor chained (index 3), and finally container freed (index 0). Distractor 1 is invalid syntax for Approach 1."
         concept: destructor-chaining-sequence
       - kind: why-fails
         q: "What happens if `student_ctor` initializes `student->student_number` but forgets to call `person_ctor`?"

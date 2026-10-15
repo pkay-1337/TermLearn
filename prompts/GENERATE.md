@@ -317,6 +317,7 @@ learning science, cognitive psychology, and computing education research (CER):
   (distractors omitted). Distractors MUST be authentic near-misses from the
   chapter (missing `&`, wrong format, off-by-one, swapped operands) — each
   with a `distractor_why` naming the bug class.
+- **Pool Scrambling (MUST)**: In all `order` checks, `lines` MUST NOT be in sequential execution order, and `answer_order` MUST NOT be `[0, 1, 2, ...]`. The lines MUST be author-scrambled so the learner performs deliberate sequencing.
 - Provide `hint` that orients without giving order ("find the line that
   creates storage first"). The block's `why` MUST explain the ordering
   principle (data flow / execution order), so the learner gains a sequencing
@@ -332,17 +333,20 @@ learning science, cognitive psychology, and computing education research (CER):
     faded: true
     q: "Order the lines and fill in the missing allocation size argument:"
     lines:
-      - "car_t* car = (car_t*)malloc(_____);"
-      - "if (!car) return NULL;"
       - "car->speed = 0;"
+      - "car_t* car = (car_t*)malloc(_____);"
       - "return car;"
-    answer_order: [0, 1, 2, 3]
+      - "if (!car) return NULL;"
+      - "free(car);"
+    answer_order: [1, 3, 0, 2]
+    distractor_why:
+      "free(car);": "Premature deallocation destroys the object during construction."
     blanks:
-      - line_idx: 0
+      - line_idx: 1
         token: "_____"
         answer_text: "sizeof(car_t)"
         accepted: ["sizeof(car_t)", "sizeof(*car)"]
-    why: "car_malloc must allocate the byte size of car_t before initializing attributes."
+    why: "car_malloc must allocate the byte size of car_t, verify non-null, initialize attributes, and return the instance."
   ```
 
 ### 3.5 `eipe` — relational answers only (SHOULD for design/algorithm)

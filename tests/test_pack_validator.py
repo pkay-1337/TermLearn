@@ -236,3 +236,22 @@ def test_choice_answers_distribution_non_predictable():
         all_answers = {c.get("answer") for c in choice_checks}
         assert {0, 1, 2, 3}.issubset(all_answers), f"{ch_slug} missing positions: {all_answers}"
 
+
+def test_order_checks_are_scrambled():
+    """Verify that order checks in extreme-c do not have trivial [0, 1, 2, ...] sequential answers."""
+    base = Path(__file__).parent.parent / "packs" / "extreme-c"
+    for ch_slug in ["ch04", "ch09", "ch10", "ch11", "ch12"]:
+        p = base / f"{ch_slug}.yaml"
+        if not p.exists():
+            continue
+        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        checks = []
+        for b in data.get("blocks", []):
+            checks.extend(b.get("checks", []))
+        order_checks = [c for c in checks if c.get("kind") == "order"]
+        for oc in order_checks:
+            ans = oc.get("answer_order", [])
+            # Must not be trivial sequential order starting at 0
+            assert ans != list(range(len(ans))), f"{ch_slug} order check has unscrambled answer_order: {ans}"
+
+

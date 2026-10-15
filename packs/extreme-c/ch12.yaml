@@ -518,12 +518,14 @@ blocks:
       - kind: order
         q: "Arrange the operations inside `apple_ctor` in proper architectural order:"
         lines:
-          - "eatable_ctor((eatable_t*)apple);"
-          - "strncpy(apple->name, name, 15);"
           - "apple->base.get_taste_func = __apple_taste;"
           - "free(apple);"
-        answer_order: [0, 1, 2]
-        why: "First initialize base interface state, then initialize child attributes, and finally bind the concrete function pointer to override the pure virtual slot. Distractor 4 is deallocation, not construction."
+          - "eatable_ctor((eatable_t*)apple);"
+          - "strncpy(apple->name, name, 15);"
+        answer_order: [2, 3, 0]
+        distractor_why:
+          "free(apple);": "Constructors must never free the object they are tasked with initializing!"
+        why: "First initialize base interface state (index 2), then initialize child attributes (index 3), and finally bind the function pointer (index 0). Distractor 1 is deallocation, not construction."
         concept: subclass-interface-binding
       - kind: predict
         q: "What does the program output when `eatable_get_taste(food)` is called in `main`?"
@@ -1114,11 +1116,11 @@ blocks:
       - kind: order
         q: "Arrange the chronological steps of vtable dispatch for `shape->vptr->area(shape)`:"
         lines:
-          - "Read the vptr address from the shape instance (offset 0)."
           - "Index into the vtable at the area offset to retrieve the function pointer."
           - "Execute the retrieved function passing shape as self."
-        answer_order: [0, 1, 2]
-        why: "Dynamic dispatch first dereferences the instance's vptr, fetches the method pointer from the vtable, and jumps to the concrete function."
+          - "Read the vptr address from the shape instance (offset 0)."
+        answer_order: [2, 0, 1]
+        why: "Dynamic dispatch first dereferences the instance's vptr (index 2), fetches the method pointer from the vtable (index 0), and jumps to the concrete function (index 1)."
         concept: vtable-dispatch-steps
 
   - id: b11

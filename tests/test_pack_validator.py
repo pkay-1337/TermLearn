@@ -212,3 +212,27 @@ def test_suggest_fixes_points_at_repairs():
     assert any("predict" in h for h in hints), hints
     assert pack.suggest_fixes("nope") != []
     assert pack.suggest_fixes(_load("valid_ch.yaml")) == []
+
+
+def test_choice_answers_distribution_non_predictable():
+    """Verify that chapters ch09-ch12 do not have predictable 100% answer: 0."""
+    base = Path(__file__).parent.parent / "packs" / "extreme-c"
+    for ch_slug in ["ch09", "ch10", "ch11", "ch12"]:
+        p = base / f"{ch_slug}.yaml"
+        if not p.exists():
+            continue
+        data = yaml.safe_load(p.read_text(encoding="utf-8"))
+        checks = []
+        for b in data.get("blocks", []):
+            checks.extend(b.get("checks", []))
+        checks.extend(data.get("test", {}).get("final_checks", []))
+        choice_checks = [c for c in checks if "choices" in c and "answer" in c]
+        assert len(choice_checks) >= 20
+        ans_zeros = sum(1 for c in choice_checks if c.get("answer") == 0)
+        # Ratio of answer 0 must not exceed 50%
+        ratio = ans_zeros / len(choice_checks)
+        assert ratio < 0.50, f"{ch_slug} has too many answer 0 ({ratio:.1%})"
+        # Must have answers in positions 1, 2, and 3 as well
+        all_answers = {c.get("answer") for c in choice_checks}
+        assert {0, 1, 2, 3}.issubset(all_answers), f"{ch_slug} missing positions: {all_answers}"
+

@@ -80,31 +80,31 @@ blocks:
       - kind: choose-better
         q: "A game engine features 50 monster types. The combat system needs to inflict damage on them. Which design best adheres to the Abstraction Principle?"
         choices:
-          - "Define an abstract target_t (or damageable_t) interface with a take_damage() function, and have combat logic interact exclusively with target_t*."
           - "Write 50 separate functions: combat_attack_goblin(), combat_attack_dragon(), etc."
           - "Create 10 intermediate abstract layers: PhysicalObject -> MovableEntity -> SentientCreature -> HostileEntity -> Monster -> Goblin."
           - "Pass all monsters as void* and use runtime string comparisons on monster names."
-        answer: 0
+          - "Define an abstract target_t (or damageable_t) interface with a take_damage() function, and have combat logic interact exclusively with target_t*."
+        answer: 3
         why: "Abstracting damageable entities into a single target_t contract allows combat systems to process any monster subtype uniformly without modifying combat logic when new monsters are added."
         concept: abstraction-decoupling
       - kind: mcq
         q: "What architectural pathology is known as 'Over-Abstraction'?"
         choices:
-          - "Creating deep hierarchies of abstract data types that solve no current or foreseeable variation, increasing complexity with zero payoff."
-          - "Using typedef struct instead of plain struct."
           - "Naming abstract structs in uppercase letters."
+          - "Creating deep hierarchies of abstract data types that solve no current or foreseeable variation, increasing complexity with zero payoff."
           - "Writing more than 100 lines of code in a single C source file."
-        answer: 0
+          - "Using typedef struct instead of plain struct."
+        answer: 1
         why: "Section Abstraction: Over-abstraction occurs when developers create speculative, deeply nested abstract interfaces with no practical need, increasing boilerplate and indirection."
         concept: over-abstraction-risk
       - kind: why-fails
         q: "Why is a concrete type like `Apple` unable to serve as an abstract type for `Orange`?"
         choices:
+          - "Structs in C cannot have subtypes."
           - "Apple contains concrete specialized assumptions (taste, texture, seeds) that do not generalize to other fruits."
           - "The C compiler forbids casting between two structs with different names."
           - "Apple occupies more memory than Orange on 64-bit platforms."
-          - "Structs in C cannot have subtypes."
-        answer: 0
+        answer: 1
         why: "Concrete types carry specific physical state and implementation constraints. An abstract type abstracts away varying details so distinct subtypes can share a single relationship."
         concept: concrete-vs-abstract
 
@@ -164,21 +164,21 @@ blocks:
       - kind: mcq
         q: "What is the structural difference between an Abstract Class and an Interface in C?"
         choices:
-          - "An interface contains only function pointer signatures and zero state attributes; an abstract class may contain data attributes alongside pure virtual function pointers."
-          - "An interface must be compiled with g++, while an abstract class is compiled with gcc."
-          - "An interface cannot use typedef."
           - "An abstract class cannot be inherited."
-        answer: 0
+          - "An interface cannot use typedef."
+          - "An interface must be compiled with g++, while an abstract class is compiled with gcc."
+          - "An interface contains only function pointer signatures and zero state attributes; an abstract class may contain data attributes alongside pure virtual function pointers."
+        answer: 3
         why: "Section Abstraction: An interface exposes functionalities without offering any state or implementation. An abstract class may bundle common state and partial behavior while leaving specific functions pure virtual."
         concept: interface-vs-abstract-class
       - kind: why-fails
         q: "Why is it an architectural error to instantiate an object directly from an Interface in C?"
         choices:
-          - "Because an interface provides no concrete implementation; invoking its behavior function pointers will dereference NULL and crash!"
-          - "Because the C standard library malloc() rejects structs smaller than 16 bytes."
           - "Because interfaces are automatically deleted by the linker."
+          - "Because the C standard library malloc() rejects structs smaller than 16 bytes."
+          - "Because an interface provides no concrete implementation; invoking its behavior function pointers will dereference NULL and crash!"
           - "Because interfaces consume kernel memory."
-        answer: 0
+        answer: 2
         why: "An interface defines only abstract contracts. Its virtual function pointers are initially NULL. Calling a function on an interface instance attempts to jump to address 0x0, triggering an immediate segmentation fault."
         concept: interface-instantiation-hazard
       - kind: choose-better
@@ -291,8 +291,8 @@ blocks:
         target_line: 5
         choices:
           - "Dereferencing NULL function pointer: get_taste_func was initialized to NULL, so invoking it jumps to address 0x0."
-          - "Stack overflow caused by infinite recursion in eatable_ctor."
           - "eatable_t requires 64-byte alignment."
+          - "Stack overflow caused by infinite recursion in eatable_ctor."
           - "The main function must return EXIT_FAILURE."
         answer: 0
         why: "Calling a NULL function pointer attempts to fetch CPU instructions from address 0x0, which triggers an immediate memory access violation (SIGSEGV)."
@@ -395,31 +395,31 @@ blocks:
                                 ^~~
         target_line: 4
         choices:
+          - "The obj variable is a reserved keyword in C99."
+          - "eatable_get_taste requires 2 arguments."
           - "Storage size isn't known: compiler cannot allocate stack memory for an incomplete type."
           - "Missing semicolon after rogue_function."
-          - "eatable_get_taste requires 2 arguments."
-          - "The obj variable is a reserved keyword in C99."
-        answer: 0
+        answer: 2
         why: "Because eatable.h only forward-declares struct eatable_t, the compiler does not know its size and correctly refuses to allocate stack memory."
         concept: incomplete-type-protection
       - kind: choose-better
         q: "Why is omitting `eatable_new()` from `eatable.h` superior to relying on code reviews not to instantiate abstract types?"
         choices:
+          - "It allows the OS kernel to cache the header in CPU L1 cache."
           - "It enforces safety via the compiler and linker; clients physically cannot allocate or construct abstract instances."
           - "It reduces the size of the compiled ELF binary by 50%."
           - "It prevents dynamic linking errors on Windows."
-          - "It allows the OS kernel to cache the header in CPU L1 cache."
-        answer: 0
+        answer: 1
         why: "Architectural rules that rely on human discipline inevitably fail. Hiding allocators and struct definitions enforces constraints at compile time."
         concept: compile-time-enforcement
       - kind: mcq
         q: "How does a concrete subclass (`apple.c`) obtain permission to instantiate the base `eatable_t`?"
         choices:
-          - "By including the private header eatable_p.h, which exposes the full concrete struct definition."
-          - "By declaring eatable_t as extern."
           - "By invoking a GCC compiler pragma #pragma allow_instantiate."
+          - "By declaring eatable_t as extern."
           - "By casting the pointer to uintptr_t."
-        answer: 0
+          - "By including the private header eatable_p.h, which exposes the full concrete struct definition."
+        answer: 3
         why: "Subclasses include the private header (*_p.h) to access the complete struct definition, allowing them to embed the base struct at offset 0 and initialize its function pointers."
         concept: protected-header-access
 
@@ -528,11 +528,11 @@ blocks:
       - kind: predict
         q: "What does the program output when `eatable_get_taste(food)` is called in `main`?"
         choices:
-          - "[Fuji Apple]: Deliciously sweet!\nTaste code: 0"
-          - "Taste code: 0"
           - "Error: Pure virtual function call!"
           - "Segmentation fault (core dumped)"
-        answer: 0
+          - "[Fuji Apple]: Deliciously sweet!\nTaste code: 0"
+          - "Taste code: 0"
+        answer: 2
         why: "apple_ctor bound get_taste_func to __apple_taste. When invoked through food, it prints the message and returns SWEET (enum value 0)."
         concept: interface-polymorphism-predict
       - kind: trace
@@ -623,21 +623,21 @@ blocks:
       - kind: mcq
         q: "Under the System V AMD64 ABI, how does a C++ compiler pass the implicit `this` pointer to a member function?"
         choices:
-          - "In the %rdi register as the first argument, exactly like passing a struct pointer to a C function."
-          - "On top of the thread stack frame."
           - "In the %rax accumulator register."
           - "Inside a thread-local global variable."
-        answer: 0
+          - "On top of the thread stack frame."
+          - "In the %rdi register as the first argument, exactly like passing a struct pointer to a C function."
+        answer: 3
         why: "Section Encapsulation: The C++ compiler treats member functions as ordinary functions where 'this' is passed as the first argument in register %rdi, matching the C convention."
         concept: abi-this-pointer-register
       - kind: why-fails
         q: "Why does the C++ compiler mangle `Rect::Area()` into a symbol like `_ZN4Rect4AreaEv` in the object file?"
         choices:
-          - "To encode the class name and parameter types into the linker symbol, enabling function overloading and namespaces."
-          - "To encrypt the code against reverse engineering."
           - "To prevent the Linux kernel from terminating the process."
           - "Because the linker does not support capital letters in function names."
-        answer: 0
+          - "To encrypt the code against reverse engineering."
+          - "To encode the class name and parameter types into the linker symbol, enabling function overloading and namespaces."
+        answer: 3
         why: "C++ allows function overloading and namespaces. The compiler mangles symbol names to create unique linker identifiers that include class scope and argument types."
         concept: name-mangling-rationale
       - kind: trace
@@ -754,21 +754,21 @@ blocks:
       - kind: mcq
         q: "Why does upcasting `(A*)&b` require zero runtime pointer arithmetic in single inheritance?"
         choices:
+          - "Because A and B are converted to void* at compile time."
           - "Because base class A is placed at offset 0; the address of b is identical to the address of b.parent."
           - "Because C++ compilers use a global hash table for pointer conversions."
           - "Because the operating system handles pointer casting via page faults."
-          - "Because A and B are converted to void* at compile time."
-        answer: 0
+        answer: 1
         why: "When the base class is at offset 0, its memory address is numerically identical to the derived class address, requiring no pointer adjustment."
         concept: zero-offset-upcast-invariance
       - kind: predict
         q: "If `class A` has size 8 bytes, and `class B : public A` adds 12 bytes of attributes, what is `sizeof(B)` (assuming default alignment)?"
         choices:
+          - "Zero bytes"
           - "20 bytes (or 24 bytes with alignment padding)"
           - "12 bytes (base class is discarded)"
           - "8 bytes"
-          - "Zero bytes"
-        answer: 0
+        answer: 1
         why: "Derived class B embeds the 8 bytes of base A plus its own 12 bytes, resulting in 20 bytes (padded to 24 for 8-byte alignment)."
         concept: derived-struct-size-calculation
 
@@ -858,11 +858,11 @@ blocks:
       - kind: why-fails
         q: "Why does naive upcasting `b_t* b = (b_t*)&obj;` corrupt data when `b_t` is the second embedded struct?"
         choices:
-          - "C casts are passive: they change the pointer type without modifying the numeric address, causing b to point to the first struct (a_t)."
+          - "The printf function cannot format structs with multiple parents."
           - "The C compiler automatically zeroes out memory during multiple inheritance."
           - "Second members in structs cannot be accessed via pointers."
-          - "The printf function cannot format structs with multiple parents."
-        answer: 0
+          - "C casts are passive: they change the pointer type without modifying the numeric address, causing b to point to the first struct (a_t)."
+        answer: 3
         why: "Section Inheritance: Casting in C does not perform pointer arithmetic. Assigning (b_t*)&obj copies the base address (offset 0), pointing to a_t instead of b_t."
         concept: passive-cast-offset-collision
       - kind: spot-bug
@@ -878,19 +878,19 @@ blocks:
         choices:
           - "Pointer arithmetic scaling error: adding to c_t* scales by sizeof(c_t); must cast to char* (or uint8_t*) first!"
           - "Missing ampersand before a_t."
-          - "b_t* cannot be assigned to b_ptr."
           - "sizeof operator cannot be used on typedefs."
+          - "b_t* cannot be assigned to b_ptr."
         answer: 0
         why: "Pointer arithmetic in C is scaled by the size of the referenced type. &obj is a c_t*. Adding 8 advances by 8 * sizeof(c_t) bytes! You must cast to (char*)&obj first to advance in raw single bytes."
         concept: pointer-scaling-bug
       - kind: choose-better
         q: "Why is manual pointer arithmetic in C multiple inheritance considered fragile in production code?"
         choices:
-          - "If members in a_t change size or struct padding shifts, hardcoded offsets silently misalign, causing subtle data corruption."
           - "Pointer arithmetic is prohibited in C99."
-          - "Pointer arithmetic disables CPU branch prediction."
           - "Operating systems refuse to run binaries containing char* casts."
-        answer: 0
+          - "If members in a_t change size or struct padding shifts, hardcoded offsets silently misalign, causing subtle data corruption."
+          - "Pointer arithmetic disables CPU branch prediction."
+        answer: 2
         why: "Relying on manual pointer arithmetic couples code to exact struct sizes. Any change in compiler flags, padding, or base struct fields breaks the manual offset calculations."
         concept: manual-offset-fragility
 
@@ -982,21 +982,21 @@ blocks:
       - kind: predict
         q: "In the C++ multiple inheritance example (class D : public A, public B), if &d is 0x1000 and sizeof(A) is 8 bytes, what value is stored in B* bp = &d?"
         choices:
-          - "0x1008"
-          - "0x1000"
-          - "0x1016"
           - "NULL"
-        answer: 0
+          - "0x1016"
+          - "0x1000"
+          - "0x1008"
+        answer: 3
         why: "Section Inheritance: The C++ compiler adjusts the pointer by adding the offset of B within D (which is sizeof(A) = 8 bytes), yielding 0x1008."
         concept: cpp-pointer-adjustment-predict
       - kind: mcq
         q: "What fundamental difference exists between pointer casting in C versus C++?"
         choices:
+          - "C casting only works on void*."
+          - "C++ casting is performed at link time only."
           - "C casting is passive (never changes the numeric address value); C++ upcasting in multiple inheritance can actively perform pointer arithmetic."
           - "C casting allocates heap memory; C++ casting does not."
-          - "C++ casting is performed at link time only."
-          - "C casting only works on void*."
-        answer: 0
+        answer: 2
         why: "Section Inheritance: C casts simply re-interpret existing addresses. C++ casts in multiple inheritance hierarchies actively add or subtract byte offsets to align with sub-object layouts."
         concept: active-vs-passive-casting
       - kind: trace
@@ -1094,21 +1094,21 @@ blocks:
       - kind: why-fails
         q: "Why is calling a virtual function inside a base class constructor considered a dangerous anti-pattern in C and C++?"
         choices:
-          - "Because the derived constructor has not executed yet; the vtable/function pointer still points to the base version (or NULL for pure virtuals)."
-          - "Because constructors run in user mode while virtual functions require kernel mode."
           - "Because virtual functions delete the stack frame."
           - "Because the C standard forbids calling functions from constructors."
-        answer: 0
+          - "Because constructors run in user mode while virtual functions require kernel mode."
+          - "Because the derived constructor has not executed yet; the vtable/function pointer still points to the base version (or NULL for pure virtuals)."
+        answer: 3
         why: "Section Polymorphism: Constructors execute base-first. When the base constructor runs, derived overrides have not yet been installed. Calling a virtual method will call the base implementation or crash on a pure virtual NULL."
         concept: virtual-call-in-constructor
       - kind: mcq
         q: "What does the C++ runtime function `__cxa_pure_virtual` do if invoked?"
         choices:
-          - "It prints an error diagnostic ('pure virtual method called') and immediately aborts the program."
-          - "It returns 0 and allows execution to continue."
-          - "It launches an interactive debugger."
           - "It dynamically recompiles the class."
-        answer: 0
+          - "It returns 0 and allows execution to continue."
+          - "It prints an error diagnostic ('pure virtual method called') and immediately aborts the program."
+          - "It launches an interactive debugger."
+        answer: 2
         why: "In C++, pure virtual slots in a vtable point to __cxa_pure_virtual. If invoked (e.g. through an illegal constructor call), it aborts the process to prevent executing undefined memory."
         concept: cxa-pure-virtual-behavior
       - kind: order
@@ -1152,8 +1152,8 @@ blocks:
         choices:
           - "To enforce strict encapsulation: client code cannot inspect or modify struct members, and must interact solely through public API functions."
           - "To reduce stack frame size by making all struct members 1 byte."
-          - "To allow the linker to inline all functions automatically."
           - "To allow clients to allocate accounts without calling account_new()."
+          - "To allow the linker to inline all functions automatically."
         answer: 0
         why: "In Ch09, incomplete types act as opaque handles. Hiding the struct layout from clients prevents direct member tampering and allows library internals to change without breaking client code."
         concept: opaque-pointer-encapsulation
@@ -1161,32 +1161,32 @@ blocks:
         from_chapter: ch10
         q: "Interleaved Review (Ch. 10): In player_dtor(), why is calling `free(player->gun)` a catastrophic architectural bug if the relationship is Aggregation?"
         choices:
+          - "Because the C library requires gun to be freed before player."
           - "Because in aggregation, the player does NOT own the gun; freeing it causes double-free errors or destroys an object still in use elsewhere in the application."
           - "Because gun was allocated on the stack."
           - "Because player->gun is a const pointer that cannot be freed."
-          - "Because the C library requires gun to be freed before player."
-        answer: 0
+        answer: 1
         why: "In Ch10, aggregation models loose borrowing. The container does not own the subordinate. Destructors must only release owned resources (composition), never borrowed resources (aggregation)."
         concept: aggregation-ownership-lifetime
       - kind: mcq
         from_chapter: ch11
         q: "Interleaved Review (Ch. 11): In Approach 1 inheritance, why MUST the base struct `person_t` be the first member of `student_t`?"
         choices:
-          - "To guarantee that the memory address of student_t is identical to person_t (offset 0), enabling direct pointer upcasting without offset arithmetic."
-          - "To allow the compiler to pack the struct into a single 64-bit integer."
-          - "Because the C99 standard forbids having child attributes before parent attributes."
           - "To prevent malloc() from failing."
-        answer: 0
+          - "To allow the compiler to pack the struct into a single 64-bit integer."
+          - "To guarantee that the memory address of student_t is identical to person_t (offset 0), enabling direct pointer upcasting without offset arithmetic."
+          - "Because the C99 standard forbids having child attributes before parent attributes."
+        answer: 2
         why: "In Ch11, placing the base struct at offset 0 guarantees that (person_t*)&student points directly to the base fields, allowing base functions to be reused without forwarding wrappers."
         concept: offset-zero-upcasting-review
       - kind: choose-better
         q: "A high-reliability avionics system needs an extensible sensor suite. Which combination of OOP techniques provides maximum safety and modularity?"
         choices:
+          - "Allow sensors to directly modify the telemetry processor's internal state variables."
+          - "Use multiple inheritance with raw manual pointer arithmetic in client code."
           - "Define a pure interface sensor_interface_t with function pointers; implement sensors as incomplete types in separate .c files; pass interface pointers to telemetry processors."
           - "Put all sensor data in one giant global union and use switch-case statements across 50 sensor IDs."
-          - "Use multiple inheritance with raw manual pointer arithmetic in client code."
-          - "Allow sensors to directly modify the telemetry processor's internal state variables."
-        answer: 0
+        answer: 2
         why: "Combining pure interfaces (Ch09/12), opaque types (Ch06/09), and polymorphic function pointers (Ch08/11) creates a decoupled, highly testable, and robust architecture."
         concept: grand-oop-synthesis
 

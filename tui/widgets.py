@@ -361,12 +361,30 @@ class QuestionWidget(Static):
     the parent screen's job (same lib functions as the CLI).
     """
 
-    def __init__(self, check: dict, on_done, *, compact: bool = False) -> None:
+    def __init__(self, check: dict, on_done, *, compact: bool = False,
+                 shuffle: bool = False, seed: int | None = None) -> None:
         super().__init__()
         self.check = check
         self.on_done = on_done
         self.compact = compact
+        self.shuffle = shuffle
         self._done = False
+
+        chs = list(check.get("choices", []))
+        raw_ans = check.get("answer")
+        if chs and raw_ans is not None and shuffle:
+            import random
+            rng = random.Random(seed) if seed is not None else random.Random()
+            order = list(range(len(chs)))
+            rng.shuffle(order)
+            self._display_choices = [chs[i] for i in order]
+            try:
+                self._ans_idx = order.index(int(raw_ans))
+            except ValueError:
+                self._ans_idx = -1
+        else:
+            self._display_choices = chs
+            self._ans_idx = int(raw_ans) if raw_ans is not None else -1
 
     def compose(self) -> ComposeResult:
         ck = self.check
@@ -381,7 +399,7 @@ class QuestionWidget(Static):
         if kind in ("predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug"):
             if kind == "spot-bug" and ck.get("diagnostic_log"):
                 yield Static(f"🚨  Diagnostic Log:\n{ck['diagnostic_log']}", classes="bug-diag-box")
-            for i, opt in enumerate(ck.get("choices", []), 1):
+            for i, opt in enumerate(self._display_choices, 1):
                 yield ChoiceCard(i, opt, id=f"opt-{i}")
         elif kind == "order":
             if ck.get("faded") is True:
@@ -404,8 +422,8 @@ class QuestionWidget(Static):
             with Horizontal(classes="trace-nav-bar"):
                 yield Button("◀ Prev Step (p)", id="btn-trace-prev")
                 yield Button("Next Step (n) ▶", id="btn-trace-next")
-            if ck.get("choices"):
-                for i, opt in enumerate(ck.get("choices", []), 1):
+            if self._display_choices:
+                for i, opt in enumerate(self._display_choices, 1):
                     yield ChoiceCard(i, opt, id=f"opt-{i}")
             else:
                 yield Input(placeholder="enter value for target cell [ ??? ]", id="trace-in", classes="question-input")
@@ -478,7 +496,7 @@ class QuestionWidget(Static):
     def answer_choice(self, pick: int) -> None:
         if self._done:
             return
-        ans = int(self.check.get("answer", -1))
+        ans = self._ans_idx
         # Highlight selected card
         try:
             card = self.query_one(f"#opt-{pick + 1}", ChoiceCard)

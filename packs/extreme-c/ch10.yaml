@@ -88,31 +88,31 @@ blocks:
       - kind: mcq
         q: 'How much runtime RAM does a class definition (e.g. `typedef struct { ... } person_t;`) consume in C?'
         choices:
-          - 'Zero bytes; it is a compile-time blueprint used by the compiler to calculate offsets and sizes'
+          - '4 bytes in the data segment per struct member'
           - '68 bytes in the BSS segment'
           - '16 bytes in the text segment for virtual dispatch tables'
-          - '4 bytes in the data segment per struct member'
-        answer: 0
+          - 'Zero bytes; it is a compile-time blueprint used by the compiler to calculate offsets and sizes'
+        answer: 3
         why: 'Section Object versus class: A class blueprint exists only at the source/compiler level and consumes zero memory at runtime; only instantiated objects consume RAM.'
         concept: class-vs-object-memory
       - kind: predict
         q: 'Trace line by line. What is the correct chronological sequence of operations during an object’s full lifecycle?'
         choices:
-          - 'Allocation -> Construction -> Usage -> Destruction -> Deallocation'
+          - 'Construction -> Usage -> Allocation -> Deallocation -> Destruction'
           - 'Construction -> Allocation -> Usage -> Deallocation -> Destruction'
           - 'Allocation -> Usage -> Destruction -> Construction -> Deallocation'
-          - 'Construction -> Usage -> Allocation -> Deallocation -> Destruction'
-        answer: 0
+          - 'Allocation -> Construction -> Usage -> Destruction -> Deallocation'
+        answer: 3
         why: 'Memory allocation must precede attribute construction; resource destruction must precede final container deallocation.'
         concept: lifecycle-sequence
       - kind: why-fails
         q: 'Why must owned resources (such as dynamic buffers or child objects) be destroyed before deallocating the parent container memory?'
         choices:
-          - 'Once the parent container is freed, its internal pointers become inaccessible, stranding child allocations and causing memory leaks'
+          - 'POSIX systems restrict dynamic allocations to a single level of nesting'
           - 'The CPU kernel automatically cancels child pointers if the parent container exceeds 64 bytes'
           - 'Freeing parent memory causes the compiler to generate invalid assembly opcodes'
-          - 'POSIX systems restrict dynamic allocations to a single level of nesting'
-        answer: 0
+          - 'Once the parent container is freed, its internal pointers become inaccessible, stranding child allocations and causing memory leaks'
+        answer: 3
         why: 'Section Object versus class: Deallocating the container first loses the pointer addresses needed to free subordinate resources, permanently leaking heap memory.'
         concept: resource-ownership-cleanup
       - kind: trace
@@ -195,11 +195,11 @@ blocks:
       - kind: why-fails
         q: 'Why does external client code (`main.c`) fail to compile if it attempts `car->engine->temperature = 100.0;`?'
         choices:
-          - 'car_t is an incomplete type in car.h; the compiler does not disclose the engine field or its internal layout'
           - 'C99 forbids nested pointer dereferences across function calls'
+          - 'car_t is an incomplete type in car.h; the compiler does not disclose the engine field or its internal layout'
           - 'The temperature attribute is marked volatile by the kernel'
           - 'Header guards prevent accessing structs that contain pointers'
-        answer: 0
+        answer: 1
         why: 'Section Composition: struct car_t is an incomplete type in car.h. The compiler rejects direct member access, enforcing information hiding.'
         concept: opaque-composition-protection
       - kind: choose-better
@@ -316,11 +316,11 @@ blocks:
       - kind: predict
         q: 'Trace line by line. What is the value of `car_get_engine_temperature(car)` after calling `car_ctor(car)` followed by `car_start(car)`?'
         choices:
-          - '75.0'
           - '15.0'
+          - '75.0'
           - '0.0'
           - 'Undefined'
-        answer: 0
+        answer: 1
         why: 'In Code Box 7-6, engine_ctor sets temperature to 15. Calling car_start delegates to engine_turn_on, which updates temperature to 75.0.'
         concept: composition-behavior-trace
       - kind: spot-bug
@@ -338,11 +338,11 @@ blocks:
               #2 0x401210 in car_ctor car.c:17
         target_line: 2
         choices:
+          - 'Double free: car->engine was freed twice'
+          - 'Null pointer dereference: car->engine was already freed'
           - 'Memory leak: car_dtor destructs the engine but fails to deallocate its heap storage with free(car->engine)'
           - 'Use-after-free: engine_dtor automatically deallocates the pointer'
-          - 'Null pointer dereference: car->engine was already freed'
-          - 'Double free: car->engine was freed twice'
-        answer: 0
+        answer: 2
         why: 'Section Composition: The container is responsible for both destructing and freeing the contained object. Omitting free(car->engine) leaks the heap memory.'
         concept: composition-cleanup-leak
       - kind: order
@@ -359,11 +359,11 @@ blocks:
       - kind: mcq
         q: 'Interleaved Review: Why does `car.c` include `engine.h` rather than `engine.c`?'
         choices:
-          - 'Including .h imports only declarations, preserving separate compilation and preventing duplicate symbol definitions at link time'
-          - 'The preprocessor rejects including files ending in .c'
-          - 'Including .c files converts all functions into static inlines'
           - '.h files are executed by the CPU linker'
-        answer: 0
+          - 'Including .c files converts all functions into static inlines'
+          - 'The preprocessor rejects including files ending in .c'
+          - 'Including .h imports only declarations, preserving separate compilation and preventing duplicate symbol definitions at link time'
+        answer: 3
         why: 'Review from ch09 b9 / ch04 b1: Headers publish public declarations; source files provide private implementations compiled separately into distinct translation units.'
         concept: header-vs-source-inclusion
         from_chapter: ch09
@@ -445,9 +445,9 @@ blocks:
         q: 'Why does linking `gcc car.o main.o -o ex7_1.out` fail with undefined reference errors?'
         choices:
           - 'car.o contains unresolved symbol calls to engine_new, engine_ctor, etc., which reside in engine.o'
-          - 'main.o requires engine.h to resolve the main() entry point'
-          - 'The linker cannot link more than two object files simultaneously'
           - 'car.o cannot be linked without a C++ runtime standard library'
+          - 'The linker cannot link more than two object files simultaneously'
+          - 'main.o requires engine.h to resolve the main() entry point'
         answer: 0
         why: 'Section Composition: car.c calls engine functions declared in engine.h. The linker needs engine.o to resolve those external symbols.'
         concept: multi-file-linking-dependency
@@ -519,11 +519,11 @@ blocks:
       - kind: mcq
         q: 'What is the fundamental architectural difference between composition and aggregation?'
         choices:
+          - 'Composition requires C++ classes; aggregation is exclusive to raw C'
+          - 'Composition can only contain integers; aggregation can contain pointers'
           - 'In composition, the child lifetime is strictly bound to the container; in aggregation, lifetimes are completely independent'
           - 'Composition uses heap memory; aggregation uses stack memory only'
-          - 'Composition can only contain integers; aggregation can contain pointers'
-          - 'Composition requires C++ classes; aggregation is exclusive to raw C'
-        answer: 0
+        answer: 2
         why: 'Section Aggregation: In aggregation, the contained object can be constructed before the container and outlive the container.'
         concept: composition-vs-aggregation-lifetime
       - kind: choose-better
@@ -655,21 +655,21 @@ blocks:
               #2 0x401480 in main main.c:54
         target_line: 3
         choices:
-          - 'Double free: player does not own gun; freeing it causes a double free when the real owner frees gun later'
+          - 'Null pointer exception: player->name was uninitialized'
           - 'Memory leak: player->name was freed before player->gun'
           - 'Stack overflow: free cannot be called from within a destructor'
-          - 'Null pointer exception: player->name was uninitialized'
-        answer: 0
+          - 'Double free: player does not own gun; freeing it causes a double free when the real owner frees gun later'
+        answer: 3
         why: 'Section Aggregation: In aggregation, the container is not the owner of the contained object. Calling free(player->gun) violates ownership and triggers double-free bugs.'
         concept: aggregation-ownership-violation
       - kind: why-fails
         q: 'Why does calling `player_shoot(player)` result in a segmentation fault if the defensive `if (player->gun)` check is omitted and the player has no gun?'
         choices:
+          - 'Calling functions with NULL parameters triggers a kernel panic'
           - 'player->gun is NULL; attempting to dereference a NULL pointer inside gun_trigger causes a fatal segmentation fault'
           - 'The operating system prevents players from shooting without an active audio device'
           - 'The compiler deletes functions that contain empty pointers'
-          - 'Calling functions with NULL parameters triggers a kernel panic'
-        answer: 0
+        answer: 1
         why: 'Dereferencing NULL is undefined behavior and immediately crashes the process with SIGSEGV. Optional aggregation pointers must always be guarded.'
         concept: null-pointer-dereference-guard
       - kind: trace
@@ -701,11 +701,11 @@ blocks:
       - kind: mcq
         q: 'Interleaved Review: Why does initializing optional aggregation pointers to NULL prevent undefined behavior?'
         choices:
-          - 'NULL is a known, testable sentinel value, whereas uninitialized stack pointers contain unpredictable random addresses'
+          - 'Compilers replace NULL pointers with static global buffers'
           - 'NULL pointers are automatically allocated 4 bytes by the CPU bus'
           - 'NULL pointers can be safely written to without memory allocation'
-          - 'Compilers replace NULL pointers with static global buffers'
-        answer: 0
+          - 'NULL is a known, testable sentinel value, whereas uninitialized stack pointers contain unpredictable random addresses'
+        answer: 3
         why: 'Review from ch04 b2: Uninitialized pointers hold garbage stack addresses. Initializing to NULL allows defensive code to reliably check `if (ptr != NULL)`.'
         concept: null-sentinel-idiom
         from_chapter: ch04
@@ -805,30 +805,30 @@ blocks:
         q: 'Trace line by line. What happens to the `gun` object when `player` is destroyed after `player_drop_gun(player)`?'
         choices:
           - 'The gun remains valid in heap memory, unaffected by the destruction of player'
-          - 'The gun is automatically freed by the operating system kernel'
           - 'The gun attributes are overwritten with zeros'
           - 'The gun pointer becomes dangling immediately'
+          - 'The gun is automatically freed by the operating system kernel'
         answer: 0
         why: 'In aggregation, container and contained objects have independent lifetimes. Destroying the player has zero effect on the gun.'
         concept: independent-lifetime-persistence
       - kind: why-fails
         q: 'Why would freeing `gun` inside `main()` BEFORE calling `player_shoot(player)` cause undefined behavior?'
         choices:
-          - 'player still holds the address of gun; dereferencing it after free triggers a heap-use-after-free bug'
           - 'The compiler deletes all player functions if gun is freed'
-          - 'free() returns -1 if another struct references the target pointer'
           - 'The player object is automatically converted into an engine object'
-        answer: 0
+          - 'free() returns -1 if another struct references the target pointer'
+          - 'player still holds the address of gun; dereferencing it after free triggers a heap-use-after-free bug'
+        answer: 3
         why: 'If the owner destroys the aggregated object while the borrower still holds its address, the borrower is left with a dangling pointer.'
         concept: premature-aggregation-destruction
       - kind: eipe
         q: 'In one sentence, what is the role of the caller (`main()`) in an aggregation relationship?'
         choices:
-          - 'The caller acts as the true owner responsible for managing the allocation, linking, and deallocation of both independent objects'
-          - 'The caller compiles the source files into shared libraries'
-          - 'The caller copies the child object into read-only flash memory'
           - 'The caller forces the container to take exclusive ownership of the child object'
-        answer: 0
+          - 'The caller copies the child object into read-only flash memory'
+          - 'The caller compiles the source files into shared libraries'
+          - 'The caller acts as the true owner responsible for managing the allocation, linking, and deallocation of both independent objects'
+        answer: 3
         why: 'In aggregation, the caller orchestrates the independent lifecycles of both container and contained entities.'
         concept: aggregation-caller-responsibility
     common_bugs:
@@ -890,29 +890,29 @@ blocks:
         choices:
           - 'Motherboard as Composition (lifetime bound to computer); USB Flash Drive as Aggregation (can be inserted, removed, shared)'
           - 'Both as Composition (allocate both inside Computer constructor)'
-          - 'Both as Aggregation (neither is owned by the Computer)'
           - 'Motherboard as Aggregation; USB Flash Drive as Composition'
+          - 'Both as Aggregation (neither is owned by the Computer)'
         answer: 0
         why: 'A motherboard is integral to the computer (composition); a USB drive has an autonomous existence and can be plugged/unplugged (aggregation).'
         concept: composition-vs-aggregation-selection
       - kind: mcq
         q: 'Why is an aggregation relationship considered permanent between classes even though it is temporary between instances?'
         choices:
-          - 'The container struct definition must permanently declare the pointer member to allow instances to link at runtime'
-          - 'The linker merges both structs into a single memory segment'
-          - 'C requires all aggregated pointers to be const'
           - 'Temporary relationships are forbidden by POSIX standards'
-        answer: 0
+          - 'C requires all aggregated pointers to be const'
+          - 'The linker merges both structs into a single memory segment'
+          - 'The container struct definition must permanently declare the pointer member to allow instances to link at runtime'
+        answer: 3
         why: 'Section Aggregation: In class-based languages, accommodating a runtime relationship requires permanently adding the pointer attribute to the struct blueprint.'
         concept: class-vs-instance-permanence
       - kind: why-fails
         q: 'Why does choosing composition instead of aggregation for a shared resource (such as a shared database connection pool) cause architectural defects?'
         choices:
-          - 'Each container would allocate its own private duplicate pool, and destroying one container would prematurely destroy the shared pool'
-          - 'Composition prevents functions from executing in parallel threads'
-          - 'The preprocessor rejects structs with more than one composition attribute'
           - 'Shared resources can only be declared inside header guards'
-        answer: 0
+          - 'The preprocessor rejects structs with more than one composition attribute'
+          - 'Composition prevents functions from executing in parallel threads'
+          - 'Each container would allocate its own private duplicate pool, and destroying one container would prematurely destroy the shared pool'
+        answer: 3
         why: 'Composition implies exclusive ownership. Applying it to shared entities duplicates resources and breaks sharing semantics upon container destruction.'
         concept: composition-misuse-shared-resource
     common_bugs:
@@ -1059,11 +1059,11 @@ test:
     - kind: predict
       q: 'Trace line by line. A car composed of an engine is instantiated, started, and destructed. What is the state of the engine memory after `car_dtor(car); free(car);`?'
       choices:
-        - 'The engine memory has been destructed and deallocated back to the heap'
-        - 'The engine memory remains active on the heap awaiting manual deallocation'
-        - 'The engine memory is moved to the BSS segment'
         - 'The engine memory is converted into an aggregation pointer'
-      answer: 0
+        - 'The engine memory has been destructed and deallocated back to the heap'
+        - 'The engine memory is moved to the BSS segment'
+        - 'The engine memory remains active on the heap awaiting manual deallocation'
+      answer: 1
       why: 'In composition, the container destructor is responsible for destructing and freeing all contained sub-objects.'
       concept: composition-cleanup-verification
     - kind: why-fails
@@ -1087,11 +1087,11 @@ test:
     - kind: eipe
       q: 'In one sentence, what is the core architectural principle that prevents memory corruption in C relationship modeling?'
       choices:
-        - 'Strict ownership discipline: every dynamically allocated object must have exactly one clear owner responsible for its lifetime'
-        - 'Eliminating all struct pointers and using global arrays exclusively'
         - 'Allocating all objects on the stack to prevent heap usage'
+        - 'Eliminating all struct pointers and using global arrays exclusively'
+        - 'Strict ownership discipline: every dynamically allocated object must have exactly one clear owner responsible for its lifetime'
         - 'Running AddressSanitizer in production to ignore invalid pointer dereferences'
-      answer: 0
+      answer: 2
       why: 'Clear ownership semantics (composition = container owns; aggregation = caller owns) prevent both leaks and double-free corruption.'
       concept: ownership-discipline
     - kind: spot-bug
@@ -1109,10 +1109,10 @@ test:
             #1 0x401420 in main main.c:16
       target_line: 5
       choices:
-        - 'Line 5: reader_read_page dereferences b through r->borrowed_book after b was freed in Line 4'
-        - 'Line 1: reader_new failed to allocate memory'
-        - 'Line 2: book_new pages count was invalid'
         - 'Line 3: reader_borrow_book requires a pointer to a pointer'
-      answer: 0
+        - 'Line 1: reader_new failed to allocate memory'
+        - 'Line 5: reader_read_page dereferences b through r->borrowed_book after b was freed in Line 4'
+        - 'Line 2: book_new pages count was invalid'
+      answer: 2
       why: 'Freeing an aggregated object while a borrower still references it creates a dangling pointer, leading to a heap-use-after-free on Line 5.'
       concept: aggregation-dangling-reference

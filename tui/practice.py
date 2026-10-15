@@ -285,7 +285,7 @@ class QuizScreen(VimScrollMixin, _Base):
             f"QUESTION {self.idx + 1} OF {len(self.checks)}  ·  CURRENT SCORE: {self.score}",
             classes="study-header-bar"
         ))
-        body.mount(QuestionWidget(ck, self._checked))
+        body.mount(QuestionWidget(ck, self._checked, shuffle=True))
 
     def _checked(self, ok: bool) -> None:
         from lib.srs import log_answer
@@ -562,7 +562,7 @@ class CardsScreen(_Base):
             self.query_one("#body", Vertical).mount(Static("Done. Press [bold cyan]q[/] to return.", classes="feedback-msg-success"))
             return
         _, _, _, _, ck = self.topup[self.topup_idx]
-        self.query_one("#body", Vertical).mount(QuestionWidget(ck, self._topup_done))
+        self.query_one("#body", Vertical).mount(QuestionWidget(ck, self._topup_done, shuffle=True))
 
     def _topup_done(self, ok: bool) -> None:
         from lib.srs import log_answer

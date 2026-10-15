@@ -215,6 +215,37 @@ async def test_choice_card_multi_line_and_selection(tmp_path, monkeypatch):
         assert "correct" in str(fb.content).lower()
 
 
+async def test_question_widget_shuffling(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.widgets import ChoiceCard, QuestionWidget
+    check = {
+        "kind": "mcq",
+        "q": "Which option is correct?",
+        "choices": ["First (Correct)", "Second", "Third", "Fourth"],
+        "answer": 0,
+        "why": "First is correct.",
+    }
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        done_flag = []
+        # Seed 42 permutes choices
+        qw = QuestionWidget(check, lambda ok: done_flag.append(ok), shuffle=True, seed=42)
+        app.screen.mount(qw)
+        await pilot.pause()
+        cards = list(qw.query(ChoiceCard))
+        assert len(cards) == 4
+        # Verify choices were permuted
+        assert [c.raw_text for c in cards] != check["choices"]
+        # Verify the remapped correct choice card index works
+        correct_card_idx = qw._ans_idx
+        assert 0 <= correct_card_idx < 4
+        cards[correct_card_idx].on_click()
+        await pilot.pause()
+        assert done_flag == [True]
+        fb = qw.query_one("#feedback", Static)
+        assert "correct" in str(fb.content).lower()
+
+
 async def test_vim_movements_and_pane_switching(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from tui.screens import ChapterMenu, HomeScreen

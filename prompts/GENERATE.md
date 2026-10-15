@@ -277,6 +277,7 @@ learning science, cognitive psychology, and computing education research (CER):
   (e.g. "B traps address/value confusion: `&var` is where it lives, not what
   it holds"). A distractor you cannot attach to a named misconception MUST be
   cut — filler options are worse than fewer options.
+- **Answer Position Randomization (MUST)**: NEVER default all questions or multiple questions in sequence to `answer: 0`. The correct answer MUST be varied and distributed across all valid choice positions (0, 1, 2, and 3) uniformly throughout the chapter blocks. Any pack where 100% or the vast majority of choice checks have `answer: 0` is defective and will be rejected.
 - Stems MUST be positively worded and fully self-contained. NEVER refer to
   questions or exercises in the book — always embed the complete question,
   scenario, and code context directly into the prompt. Prefer `why`/`why-fails`

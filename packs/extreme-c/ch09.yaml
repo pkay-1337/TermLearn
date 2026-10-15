@@ -68,20 +68,20 @@ blocks:
       - kind: mcq
         q: 'Why does the author contrast `student_first_names[10]` with ad-hoc names like `aaa[10]`?'
         choices:
-          - 'Ad-hoc names destroy the mental mapping between domain concepts and memory representations for the human programmer'
-          - 'Ad-hoc names cause the C compiler to allocate smaller cache lines in memory'
           - 'The linker rejects variable names shorter than three characters'
           - 'Ad-hoc names prevent the CPU instruction pipeline from branch predicting loop counters'
-        answer: 0
+          - 'Ad-hoc names cause the C compiler to allocate smaller cache lines in memory'
+          - 'Ad-hoc names destroy the mental mapping between domain concepts and memory representations for the human programmer'
+        answer: 3
         why: 'Code Box 6-1 vs 6-2: The computer executes both identical memory offsets, but human reasoning requires names that reflect the mental concepts of the domain.'
         concept: mental-concept-mapping
       - kind: predict
         q: 'In the author’s cognition-to-computation isomorphism, which runtime component corresponds to the human mind map?'
         choices:
           - 'The running object model (graph of interrelated objects in memory)'
-          - 'The abstract syntax tree built by the preprocessor'
-          - 'The symbol table generated inside the ELF object file'
           - 'The assembly instruction stream flowing into the CPU arithmetic logic unit'
+          - 'The symbol table generated inside the ELF object file'
+          - 'The abstract syntax tree built by the preprocessor'
         answer: 0
         why: 'Section Mind maps and object models: Concept <-> Object, Mind <-> Memory, and Mind Map <-> Object Model.'
         concept: cognitive-isomorphism
@@ -194,21 +194,21 @@ blocks:
       - kind: predict
         q: 'Trace line by line. What is the fundamental difference between object creation and object construction?'
         choices:
+          - 'Creation sets fields to zero; construction registers the object with the operating system kernel'
+          - 'Creation applies only to heap memory; construction applies only to stack variables'
           - 'Creation allocates raw memory bytes; construction initializes those bytes into valid attribute values'
           - 'Creation is executed by the compiler; construction is executed by the CPU linker'
-          - 'Creation applies only to heap memory; construction applies only to stack variables'
-          - 'Creation sets fields to zero; construction registers the object with the operating system kernel'
-        answer: 0
+        answer: 2
         why: 'Section Object-oriented operations: Creation refers to memory allocation; construction means initialization of attributes.'
         concept: creation-vs-construction
       - kind: why-fails
         q: 'Why are immutable objects especially advantageous in multithreaded systems programming?'
         choices:
-          - 'Their state cannot change after construction, eliminating data races without expensive synchronization locks'
-          - 'The operating system places immutable objects in read-only CPU registers'
           - 'They bypass stack frame allocation and execute directly on the memory bus'
           - 'The compiler automatically duplicates them across every thread cache line'
-        answer: 0
+          - 'The operating system places immutable objects in read-only CPU registers'
+          - 'Their state cannot change after construction, eliminating data races without expensive synchronization locks'
+        answer: 3
         why: 'Section Object attributes: Immutable objects cannot be modified after construction, making them inherently thread-safe for simultaneous shared access.'
         concept: immutability-concurrency
       - kind: spot-bug
@@ -224,11 +224,11 @@ blocks:
           READ of size 4 at 0x602000000010 thread T0
         target_line: 5
         choices:
-          - 'Line 5: Dereferencing n after memory was returned to allocator in Line 4'
-          - 'Line 2: malloc allocation failed due to insufficient size'
           - 'Line 3: Struct field val must be initialized through a designated initializer'
+          - 'Line 2: malloc allocation failed due to insufficient size'
+          - 'Line 5: Dereferencing n after memory was returned to allocator in Line 4'
           - 'Line 4: free cannot be called on typed pointers without a void cast'
-        answer: 0
+        answer: 2
         why: 'AddressSanitizer detects heap-use-after-free on line 5: free(n) destroyed the object, but the pointer was not cleared, breaking referential integrity.'
         concept: referential-integrity-bug
       - kind: choose-better
@@ -308,9 +308,9 @@ blocks:
         q: 'How does attribute storage fundamentally differ between prototype-based OOP and C class-based structs?'
         choices:
           - 'Prototypes store attributes in dynamic runtime maps; C structs use fixed compile-time byte offsets from the base address'
-          - 'Prototypes allocate attributes on the CPU stack; C structs allocate exclusively in the text segment'
           - 'Prototypes require explicit pointer dereferencing; C structs resolve members through runtime hash lookups'
           - 'Prototypes compile into read-only ELF sections; C structs allow dynamic memory expansion'
+          - 'Prototypes allocate attributes on the CPU stack; C structs allocate exclusively in the text segment'
         answer: 0
         why: 'Section Object-oriented operations: Prototype languages use dynamic internal maps/hashes; class-based C maps fields to fixed struct offsets at compile time.'
         concept: prototype-vs-class-memory
@@ -318,20 +318,20 @@ blocks:
         q: 'In C, what is the syntactic counterpart to a reference in object-oriented literature?'
         choices:
           - 'A pointer variable holding the memory address of the object'
+          - 'A typedef alias for a primitive integer'
           - 'A #define preprocessor macro alias'
           - 'An enum constant declared in a header file'
-          - 'A typedef alias for a primitive integer'
         answer: 0
         why: 'Section Object-oriented operations: In C, pointers are the direct syntactic counterpart to references; an object is the allocated memory, while a pointer refers to it.'
         concept: pointer-as-reference
       - kind: why-fails
         q: 'Why does C forbid adding a new field to an existing struct instance at runtime?'
         choices:
-          - 'C struct types have rigid compile-time layouts with fixed byte sizes calculated by the compiler'
+          - 'The preprocessor strips all struct declarations before code generation'
           - 'The operating system locks stack frames in write-protected memory pages'
           - 'C does not support pointer arithmetic on user-defined types'
-          - 'The preprocessor strips all struct declarations before code generation'
-        answer: 0
+          - 'C struct types have rigid compile-time layouts with fixed byte sizes calculated by the compiler'
+        answer: 3
         why: 'Class-based systems enforce static templates. The compiler computes offsets and allocation sizes at compile time; runtime layout mutation is impossible.'
         concept: static-layout-invariance
     common_bugs:
@@ -402,21 +402,21 @@ blocks:
       - kind: why-fails
         q: 'Why does the author state that a C structure alone cannot be the direct counterpart of an OOP class?'
         choices:
-          - 'A C struct can only encapsulate data attributes, whereas an OOP class encapsulates both attributes and behaviors'
+          - 'A struct cannot contain more than four primitive integer variables'
           - 'C structs cannot be allocated on the heap'
           - 'Pointers cannot reference struct addresses without compiler warnings'
-          - 'A struct cannot contain more than four primitive integer variables'
-        answer: 0
+          - 'A C struct can only encapsulate data attributes, whereas an OOP class encapsulates both attributes and behaviors'
+        answer: 3
         why: 'Section Attribute encapsulation: A class encompasses both attributes and functionalities. Since a C structure only holds attributes, it is an attribute structure, not a full class.'
         concept: struct-vs-class
       - kind: predict
         q: 'Trace line by line. Given `pixel_t p; pixel_t *ptr = &p; ptr->red = 255;`, what is the value of `p.red`?'
         choices:
+          - 'Segmentation fault'
           - '255'
           - '0'
           - 'Garbage value'
-          - 'Segmentation fault'
-        answer: 0
+        answer: 1
         why: 'ptr holds &p; writing through ptr->red dereferences the pointer to mutate the memory cell of p.red directly.'
         concept: arrow-member-deref
       - kind: order
@@ -482,29 +482,29 @@ blocks:
       - kind: eipe
         q: 'In one sentence, what architectural purpose does C serve by remaining a procedural language?'
         choices:
-          - 'It acts as the essential bridge translating high-level human object-oriented models into low-level procedural CPU instructions'
-          - 'It guarantees that all programs run with zero dynamic memory allocation'
-          - 'It compiles faster than all other languages by deleting object symbols'
           - 'It restricts hardware execution to a single CPU core'
-        answer: 0
+          - 'It guarantees that all programs run with zero dynamic memory allocation'
+          - 'It acts as the essential bridge translating high-level human object-oriented models into low-level procedural CPU instructions'
+          - 'It compiles faster than all other languages by deleting object symbols'
+        answer: 2
         why: 'Section C is not object-oriented, but why?: C sits on the barrier between human OO models and CPU procedural execution, enabling high-level runtimes to bridge to silicon.'
         concept: c-architectural-frontier
       - kind: why-fails
         q: 'A developer claims: "C is procedural solely because Dennis Ritchie developed it before OOP was invented." Why does the book reject this claim?'
         choices:
           - 'OOP was already established (Simula, Smalltalk), and modern C deliberately remains procedural to serve as the hardware abstraction layer'
+          - 'Procedural programming was invented decades after C++'
           - 'Dennis Ritchie did include the class keyword in C72 but compilers dropped it'
           - 'All C codebases automatically compile to pure object-oriented bytecode'
-          - 'Procedural programming was invented decades after C++'
         answer: 0
         why: 'C standards (C99, C11, C18) intentionally maintain C as a procedural systems language to interface cleanly with hardware and OS kernels.'
         concept: c-history-purpose
       - kind: choose-better
         q: 'When architecting an object-oriented system in C, which design philosophy aligns with mature open-source projects like the Linux kernel and OpenSSL?'
         choices:
-          - 'Use raw C structs and explicit behavior functions adhering to clean naming conventions'
           - 'Construct a massive preprocessor macro framework that simulates C++ class and virtual syntax'
-        answer: 0
+          - 'Use raw C structs and explicit behavior functions adhering to clean naming conventions'
+        answer: 1
         why: 'The author notes that mature C projects avoid macro-based fake C++ languages, choosing transparent raw C structs and functions instead.'
         concept: raw-c-vs-macro-oop
     common_bugs:
@@ -609,11 +609,11 @@ blocks:
       - kind: why-fails
         q: 'Why must a C behavior function accept a pointer to the attribute structure (e.g. `car_t*`) rather than a value (`car_t`)?'
         choices:
-          - 'Passing by value creates a local copy on the stack, preventing mutations from affecting the caller instance'
-          - 'C compilers reject struct arguments larger than 16 bytes'
-          - 'Passing by value converts all floating point attributes into integers'
           - 'The linker cannot resolve functions that take non-pointer parameters'
-        answer: 0
+          - 'Passing by value converts all floating point attributes into integers'
+          - 'C compilers reject struct arguments larger than 16 bytes'
+          - 'Passing by value creates a local copy on the stack, preventing mutations from affecting the caller instance'
+        answer: 3
         why: 'In C, arguments are strictly pass-by-value. To mutate the caller object state, the function must receive the instance address via pointer.'
         concept: pass-by-pointer-mutation
       - kind: order
@@ -723,9 +723,9 @@ blocks:
       - kind: choose-better
         q: 'Which header design enforces robust information hiding for a library data structure?'
         choices:
-          - 'Forward-declare struct list_t; in the header and define the struct layout privately inside the .c file'
           - 'Expose all struct member variables directly in the public header so client code can inspect them'
-        answer: 0
+          - 'Forward-declare struct list_t; in the header and define the struct layout privately inside the .c file'
+        answer: 1
         why: 'Declaring struct list_t; opaquely prevents clients from coupling to internal fields, preserving backward compatibility and encapsulation.'
         concept: opaque-pointer-design
       - kind: fillblank
@@ -739,11 +739,11 @@ blocks:
       - kind: mcq
         q: 'Interleaved Review: Why is initializing a pointer to NULL or the return of an allocator mandatory before dereferencing?'
         choices:
+          - 'NULL pointers increase memory allocation speed by 50%'
+          - 'Pointers left uninitialized are automatically set to point to main()'
           - 'An uninitialized pointer contains indeterminate stack garbage; dereferencing it causes undefined behavior or segmentation faults'
           - 'The preprocessor requires all pointers to match NULL in macro expansions'
-          - 'Pointers left uninitialized are automatically set to point to main()'
-          - 'NULL pointers increase memory allocation speed by 50%'
-        answer: 0
+        answer: 2
         why: 'Review from ch04 b2: Wild uninitialized pointers hold random stack debris. Dereferencing them corrupts arbitrary memory or crashes.'
         concept: pointer-initialization
         from_chapter: ch04
@@ -844,11 +844,11 @@ blocks:
       - kind: predict
         q: 'Trace the return value of `list_add(list, 99)` when `list->size` equals `MAX_SIZE` (10):'
         choices:
-          - '-1 (failure: list is full, private check rejects addition)'
+          - '10'
           - '0 (success: buffer automatically expands)'
           - 'Segmentation fault'
-          - '10'
-        answer: 0
+          - '-1 (failure: list is full, private check rejects addition)'
+        answer: 3
         why: 'In Code Box 6-14, list_add calls __list_is_full. If size == MAX_SIZE, it returns -1 without appending, preserving buffer integrity.'
         concept: opaque-list-bounds-check
       - kind: spot-bug
@@ -865,11 +865,11 @@ blocks:
               #1 0x401182 in list_init list.c:19
         target_line: 4
         choices:
-          - 'Memory leak: free(l) deallocated the container without calling list_destroy(l) to free the internal items buffer'
-          - 'Stack buffer overflow: list_add wrote past the bounds of l'
           - 'Double free: l was freed twice'
+          - 'Stack buffer overflow: list_add wrote past the bounds of l'
+          - 'Memory leak: free(l) deallocated the container without calling list_destroy(l) to free the internal items buffer'
           - 'Segmentation fault: list_malloc failed to return memory'
-        answer: 0
+        answer: 2
         why: 'Freeing the container pointer l directly abandons the buffer l->items on the heap, causing a memory leak reported by LeakSanitizer.'
         concept: two-tier-deallocation-leak
       - kind: trace
@@ -899,11 +899,11 @@ blocks:
       - kind: eipe
         q: 'In one sentence, what is the purpose of private helper functions like `__check_index` and `__list_is_full`?'
         choices:
-          - 'They encapsulate internal boundary invariants within the implementation file, protecting buffer integrity from invalid access'
-          - 'They allow external client code in main() to inspect raw array indices'
           - 'They inform the compiler to compile the functions in 32-bit compatibility mode'
           - 'They automatically serialize the list elements to persistent disk storage'
-        answer: 0
+          - 'They encapsulate internal boundary invariants within the implementation file, protecting buffer integrity from invalid access'
+          - 'They allow external client code in main() to inspect raw array indices'
+        answer: 2
         why: 'Private helpers enforce internal class invariants (boundaries, capacity) without exposing internal mechanisms in the public API.'
         concept: private-helper-purpose
     common_bugs:
@@ -1144,38 +1144,38 @@ test:
           return 0;
         }
       choices:
+        - '15'
         - '20'
         - '10'
-        - '15'
         - 'Garbage value'
-      answer: 0
+      answer: 1
       why: 'c starts at 10. Each call to counter_inc(&c) passes the address &c and adds 5, yielding 10 -> 15 -> 20.'
       concept: behavior-mutation-synthesis
     - kind: why-fails
       q: 'A client application attempts to declare `struct list_t my_list;` directly on the stack when only including `list.h` containing `struct list_t;`. Why does compilation fail?'
       choices:
+        - 'Headers can only contain function definitions, not struct tags'
         - 'The compiler cannot allocate stack storage for an incomplete type whose byte size and field layout are unknown'
         - 'Stack allocation is forbidden for all structs in C99'
         - 'The linker replaces all stack variables with heap allocations'
-        - 'Headers can only contain function definitions, not struct tags'
-      answer: 0
+      answer: 1
       why: 'Allocating on the stack requires the compiler to know the exact byte footprint. An opaque forward declaration provides no size, so stack allocation fails.'
       concept: opaque-stack-allocation-failure
     - kind: choose-better
       q: 'In an enterprise C project, which method best ensures that internal changes to an opaque struct do not break consumer applications?'
       choices:
-        - 'Keep the struct definition in the .c file, expose an opaque pointer in public headers, and distribute as a shared library'
         - 'Place the struct in a public header and ask consumers to promise not to access internal fields'
-      answer: 0
+        - 'Keep the struct definition in the .c file, expose an opaque pointer in public headers, and distribute as a shared library'
+      answer: 1
       why: 'Relying on programmer discipline fails. Enforcing incomplete types at the compiler boundary guarantees complete ABI protection.'
       concept: enterprise-encapsulation-standard
     - kind: eipe
       q: 'In one sentence, what fundamental problem does information hiding solve in modular software engineering?'
       choices:
         - 'It decouples consumers from internal implementation details, preventing code breaks when internal representations evolve'
-        - 'It reduces the total number of CPU instruction cycles required to compile C source files'
-        - 'It eliminates the need for pointers in memory management'
         - 'It compresses the size of compiled object files on physical storage'
+        - 'It eliminates the need for pointers in memory management'
+        - 'It reduces the total number of CPU instruction cycles required to compile C source files'
       answer: 0
       why: 'Information hiding ensures clients depend on stable public interfaces rather than volatile internal implementation structures.'
       concept: information-hiding-principle
@@ -1192,10 +1192,10 @@ test:
         WRITE of size 4 at 0x604000000010 thread T0
       target_line: 4
       choices:
+        - 'Line 2: list_init cannot be called after list_malloc'
         - 'Line 4: Calling list_add after list_destroy deallocated the internal buffer violates the object lifecycle'
         - 'Line 1: list_malloc failed to check for NULL return'
-        - 'Line 2: list_init cannot be called after list_malloc'
         - 'Line 5: free called on already freed container'
-      answer: 0
+      answer: 1
       why: 'list_destroy freed the internal items buffer. Invoking list_add on a destroyed object writes into deallocated heap memory.'
       concept: lifecycle-violation-bug

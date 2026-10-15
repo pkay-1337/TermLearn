@@ -74,19 +74,19 @@ blocks:
       - kind: why-fails
         q: "Why is copying base fields into derived structs (as in `student_naive_t`) considered an anti-pattern in C software architecture?"
         choices:
-          - "It breaks schema evolution: altering base fields requires manual updates across all subtypes, and prevents polymorphic pointer interchangeability."
-          - "C compilers refuse to compile two structs with identical field names in the same file."
-          - "Copying fields causes memory overlap conflicts inside the compiler symbol table."
           - "The sizeof operator cannot be used on structs that have duplicate member names."
-        answer: 0
+          - "It breaks schema evolution: altering base fields requires manual updates across all subtypes, and prevents polymorphic pointer interchangeability."
+          - "Copying fields causes memory overlap conflicts inside the compiler symbol table."
+          - "C compilers refuse to compile two structs with identical field names in the same file."
+        answer: 1
         why: "Field duplication tightly couples schemas manually. If person_t changes (e.g. adding middle_name or changing birth_year to uint16_t), all derived structs silently desynchronize, causing catastrophic memory corruption if cast."
         concept: schema-evolution-coupling
       - kind: mcq
         q: "Which of the following real-world relationships is genuinely an 'Is-A' (inheritance) relationship rather than 'Has-A'?"
         choices:
           - "Circle is-a Shape"
-          - "Car has-a Engine"
           - "Window has-a MenuBar"
+          - "Car has-a Engine"
           - "Teacher has-a Department"
         answer: 0
         why: "A Circle is a specific specialization of a Shape with specialized area calculations. A Car contains an Engine (composition), a Window contains a MenuBar, and a Teacher belongs to a Department (aggregation)."
@@ -94,11 +94,11 @@ blocks:
       - kind: choose-better
         q: "You are designing an embedded IoT telemetry system with `sensor_t` and `temp_sensor_t`. How should the relationship be conceptualized?"
         choices:
-          - "'temp_sensor_t' is-a 'sensor_t': it inherits common device ID and bus read mechanics, while specializing temperature conversion."
           - "'temp_sensor_t' has-a 'sensor_t' as an optional loose aggregation that can be detached at runtime."
-          - "Duplicate all sensor fields into temp_sensor_t so no structures share any relationship."
           - "Make sensor_t inherit from temp_sensor_t since temperature is more concrete."
-        answer: 0
+          - "'temp_sensor_t' is-a 'sensor_t': it inherits common device ID and bus read mechanics, while specializing temperature conversion."
+          - "Duplicate all sensor fields into temp_sensor_t so no structures share any relationship."
+        answer: 2
         why: "A temperature sensor is an extension of a general sensor. It possesses all core sensor attributes plus temperature-specific calibration factors."
         concept: inheritance-domain-modeling
 
@@ -203,21 +203,21 @@ blocks:
       - kind: why-fails
         q: "What critical architectural failure occurs if `person_t person;` is placed as the second member of `student_t` (after `char student_number[16];`)?"
         choices:
-          - "Casting (person_t*)&s will cause person functions to interpret student_number characters as first_name, corrupting memory!"
+          - "The size of student_t becomes infinite due to recursive alignment padding."
           - "The C compiler produces a fatal syntax error because base structs cannot be second members."
           - "The program will automatically insert a runtime trampoline to adjust the pointer offset."
-          - "The size of student_t becomes infinite due to recursive alignment padding."
-        answer: 0
+          - "Casting (person_t*)&s will cause person functions to interpret student_number characters as first_name, corrupting memory!"
+        answer: 3
         why: "If person_t is not at offset 0, upcasting (person_t*)&s passes the address of student_number instead of person. Any read or write via person_t* dereferences memory at the wrong offset, corrupting data."
         concept: offset-alignment-corruption
       - kind: mcq
         q: "Why does upcasting work with embedded struct variables (`person_t person;`) but NOT with struct pointers (`person_t* person;`)?"
         choices:
-          - "An embedded struct variable places parent bytes contiguously at offset 0; a pointer variable stores an indirect address located elsewhere on the heap."
+          - "Pointers are restricted to 32 bits on modern architectures."
           - "Pointers cannot be cast to other pointer types in C99."
           - "Struct variables bypass the operating system MMU pagination tables."
-          - "Pointers are restricted to 32 bits on modern architectures."
-        answer: 0
+          - "An embedded struct variable places parent bytes contiguously at offset 0; a pointer variable stores an indirect address located elsewhere on the heap."
+        answer: 3
         why: "An embedded struct variable places the actual fields in-line at offset 0. A pointer member only occupies 8 bytes containing a remote heap address, so casting the container pointer does not reach parent fields."
         concept: embedded-vs-pointer-layout
 
@@ -299,8 +299,8 @@ blocks:
         target_line: 4
         choices:
           - "Field 'base' has incomplete type: compiler cannot determine struct size without its full definition"
-          - "child_t cannot contain members of type int"
           - "struct base_t must be declared using typedef base_t*"
+          - "child_t cannot contain members of type int"
           - "child.c is missing a return statement"
         answer: 0
         why: "To embed a struct variable (not a pointer), the compiler must know its exact size. Forward-declaring 'struct base_t;' makes it an incomplete type, causing compilation failure."
@@ -308,20 +308,20 @@ blocks:
       - kind: mcq
         q: "Who is permitted to include the private header `person_p.h` in an idiomatic C OOP architecture?"
         choices:
-          - "Only the base implementation (person.c) and derived class implementations (student.c)"
+          - "The C standard library stdlib.h header"
           - "Any caller that wants faster access to struct members"
           - "Only the main.c entry point"
-          - "The C standard library stdlib.h header"
-        answer: 0
+          - "Only the base implementation (person.c) and derived class implementations (student.c)"
+        answer: 3
         why: "Private headers (*_p.h) act as protected interfaces in C++. They expose layout details strictly to subclasses that need to embed the struct, shielding them from external client code."
         concept: private-header-visibility
       - kind: why-fails
         q: "What design violation occurs if `main.c` includes `person_p.h` directly to access `person->first_name`?"
         choices:
           - "It breaks encapsulation: callers become tightly coupled to internal struct layout, preventing future internal refactoring without recompiling callers."
-          - "The linker emits a multiple-definition error for first_name."
           - "The operating system refuses to load the binary into memory."
           - "The compiler automatically deletes person_p.h."
+          - "The linker emits a multiple-definition error for first_name."
         answer: 0
         why: "Encapsulation requires callers to communicate exclusively through public behavior functions. Directly exposing struct fields creates brittle coupling and leaks private state."
         concept: leaky-encapsulation-caller
@@ -427,20 +427,20 @@ blocks:
         q: "What happens if `student_ctor` initializes `student->student_number` but forgets to call `person_ctor`?"
         choices:
           - "The base person_t fields remain uninitialized garbage memory, causing undefined behavior when reading name or birth year."
-          - "The compiler issues a fatal error because parent constructors are automatically synthesized."
-          - "The operating system zeroes out the memory on first access."
           - "The student_t pointer becomes NULL automatically."
+          - "The operating system zeroes out the memory on first access."
+          - "The compiler issues a fatal error because parent constructors are automatically synthesized."
         answer: 0
         why: "In C, there is no compiler runtime that automatically invokes base constructors. The author must explicitly chain the constructor call, otherwise base attributes remain uninitialized garbage."
         concept: missing-constructor-chain
       - kind: choose-better
         q: "In `student_ctor`, how should the base object be constructed?"
         choices:
-          - "Call person_ctor((struct person_t*)student, first_name, last_name, birth_year);"
-          - "Allocate a new heap person using person_new() and overwrite the first 8 bytes of student."
           - "Use memcpy to duplicate bytes from a global person template."
+          - "Call person_ctor((struct person_t*)student, first_name, last_name, birth_year);"
           - "Do not call any constructor; let the caller initialize person fields directly."
-        answer: 0
+          - "Allocate a new heap person using person_new() and overwrite the first 8 bytes of student."
+        answer: 1
         why: "Because person_t is embedded at offset 0, upcasting the student pointer directly to person_t* and passing it to person_ctor cleanly initializes the embedded base object in place."
         concept: in-place-parent-initialization
 
@@ -534,19 +534,19 @@ blocks:
       - kind: mcq
         q: "Why does `main.c` need to include both `person.h` and `student.h` when utilizing Approach 1?"
         choices:
+          - "person.h contains the implementation code of student_ctor."
+          - "student.h automatically undefines all person.h macros."
           - "It needs student.h to allocate/construct the student, and person.h to declare the base behavior functions (person_get_first_name, etc.)."
           - "The linker requires header names to match the object file names."
-          - "student.h automatically undefines all person.h macros."
-          - "person.h contains the implementation code of student_ctor."
-        answer: 0
+        answer: 2
         why: "Because Student does not duplicate the base getters, main() calls person_get_first_name on the upcast pointer, requiring the prototypes declared in person.h."
         concept: dual-header-inclusion
       - kind: why-fails
         q: "What compiler warning is emitted if a programmer passes `&cat` to `animal_get_name(&cat, buffer)` without an explicit cast in C99 with `-Wall`?"
         choices:
           - "Passing argument 1 of 'animal_get_name' from incompatible pointer type without a cast."
-          - "Fatal syntax error: struct pointer expected, found child."
           - "Implicit function declaration warning."
+          - "Fatal syntax error: struct pointer expected, found child."
           - "No warning; C compilers silently cast all pointers automatically."
         answer: 0
         why: "In C, pointers to distinct struct types (cat_t* vs animal_t*) are distinct types. Passing one to the other without an explicit (animal_t*) cast triggers a compiler warning (-Wincompatible-pointer-types)."
@@ -640,31 +640,31 @@ blocks:
       - kind: why-fails
         q: "In Approach 2, why does casting `(person_t*)student` cause a catastrophic segmentation fault or memory corruption if passed to `person_get_first_name`?"
         choices:
-          - "The student struct address is not the parent struct address; student begins with student_number, not person fields!"
-          - "The operating system prevents casting pointers that have different variable names."
           - "Approach 2 pointers are stored in kernel space."
           - "The person_t pointer requires a 64-bit alignment whereas student_t requires 128-bit."
-        answer: 0
+          - "The student struct address is not the parent struct address; student begins with student_number, not person fields!"
+          - "The operating system prevents casting pointers that have different variable names."
+        answer: 2
         why: "In Approach 2, the student struct holds a pointer to a separately allocated person struct. The address of student points to student fields, NOT person fields. Dereferencing (person_t*)student reads student_number as if it were first_name!"
         concept: approach2-invalid-upcast
       - kind: predict
         q: "When creating a student object in Approach 2 (`student_new()` followed by `student_ctor()`), how many distinct heap allocations occur (including dynamic fields)?"
         choices:
-          - "3 allocations (one for student_t, one for person_t, one for student_number buffer)"
-          - "1 allocation (all structs are packed into a single chunk)"
           - "0 allocations (stored on stack)"
+          - "1 allocation (all structs are packed into a single chunk)"
+          - "3 allocations (one for student_t, one for person_t, one for student_number buffer)"
           - "2 allocations only"
-        answer: 0
+        answer: 2
         why: "Approach 2 allocates student_t via student_new(), then inside student_ctor it allocates person_t via person_new(), and allocates student_number via malloc(16). Total: 3 distinct heap chunks."
         concept: approach2-allocation-count
       - kind: mcq
         q: "Which major object-oriented capability is enabled by Approach 2 that is impossible with Approach 1?"
         choices:
-          - "Multiple inheritance: a child struct can hold multiple pointers to different base classes."
           - "Zero-overhead upcasting."
           - "Direct access to private parent attributes without getters."
+          - "Multiple inheritance: a child struct can hold multiple pointers to different base classes."
           - "Compile-time inline expansion of base destructors."
-        answer: 0
+        answer: 2
         why: "Approach 1 can only place ONE base struct at offset 0 (single inheritance). Approach 2 stores pointers, allowing a class to aggregate multiple parent pointers (multiple inheritance) anywhere in its struct."
         concept: multiple-inheritance-via-pointers
 
@@ -762,31 +762,31 @@ blocks:
               #2 0x401310 in student_ctor student.c:22
         target_line: 3
         choices:
-          - "Memory leak: person_dtor cleans up person internals, but free(s->person) is missing, leaking the parent struct allocation."
-          - "Double free error on s->student_number."
-          - "person_dtor should be called before freeing student_number."
           - "s->person must be set to NULL before exit."
-        answer: 0
+          - "Double free error on s->student_number."
+          - "Memory leak: person_dtor cleans up person internals, but free(s->person) is missing, leaking the parent struct allocation."
+          - "person_dtor should be called before freeing student_number."
+        answer: 2
         why: "In Approach 2, person was allocated separately via malloc/person_new(). Calling person_dtor releases internal resources, but s->person itself must still be freed via free(s->person)."
         concept: approach2-parent-leak
       - kind: choose-better
         q: "A library has 40 base behavior functions and 15 derived classes. Why might the architect choose Approach 1 over Approach 2?"
         choices:
-          - "Approach 1 requires 0 forwarding wrappers, avoiding 600 boilerplate delegation functions (40 x 15) and double-dereference runtime overhead."
-          - "Approach 1 is immune to buffer overflows."
           - "Approach 2 cannot run on Linux operating systems."
+          - "Approach 1 is immune to buffer overflows."
           - "Approach 1 eliminates the need for constructors."
-        answer: 0
+          - "Approach 1 requires 0 forwarding wrappers, avoiding 600 boilerplate delegation functions (40 x 15) and double-dereference runtime overhead."
+        answer: 3
         why: "Writing and maintaining 600 boilerplate forwarding functions introduces massive developer toil and runtime indirection overhead. Approach 1 allows direct reuse via upcasting."
         concept: forwarding-overhead-tradeoff
       - kind: mcq
         q: "Why must `student_get_first_name` in Approach 2 perform defensive NULL checks before forwarding?"
         choices:
-          - "Because s->person is an optional or dynamic pointer that could be NULL if allocation failed or was not initialized."
           - "Because C99 compilers automatically set all pointers to NULL on function exit."
-          - "To prevent the operating system from swapping the page to disk."
           - "Because printf crashes if the function returns void."
-        answer: 0
+          - "Because s->person is an optional or dynamic pointer that could be NULL if allocation failed or was not initialized."
+          - "To prevent the operating system from swapping the page to disk."
+        answer: 2
         why: "In Approach 2, person is a pointer variable. If student is NULL or person_new() failed during construction, dereferencing s->person causes an immediate segmentation fault."
         concept: defensive-pointer-guards
 
@@ -818,8 +818,8 @@ blocks:
         choices:
           - "Approach 1: Contiguous memory layout maximizes CPU L1/L2 cache hits and upcasting eliminates function call forwarding overhead."
           - "Approach 2: Because opaque pointers ensure that rendering artists cannot see the base C struct definitions."
-          - "Neither: Use deep recursion to resolve entity properties dynamically."
           - "Approach 2: Fragmented heap allocations help the OS scheduler distribute load across CPU cores."
+          - "Neither: Use deep recursion to resolve entity properties dynamically."
         answer: 0
         why: "In high-performance gaming and graphics, contiguous memory layout (Approach 1) guarantees high cache locality and avoids pointer indirection penalties across hundreds of thousands of entities."
         concept: performance-cache-locality
@@ -827,11 +827,11 @@ blocks:
         from_chapter: ch09
         q: "Interleaved Review (Ch. 09): How does the private header (`person_p.h`) in Approach 1 relate to the encapsulation principles learned in Chapter 09?"
         choices:
-          - "It acts as a selective breach of encapsulation ('friend' access), allowing derived classes to see struct members while keeping them hidden from general callers."
           - "It completely replaces public headers, making all structs global."
           - "It disables the preprocessor from optimizing struct field access."
           - "It converts incomplete types into C++ virtual classes automatically."
-        answer: 0
+          - "It acts as a selective breach of encapsulation ('friend' access), allowing derived classes to see struct members while keeping them hidden from general callers."
+        answer: 3
         why: "In Ch09, we saw that incomplete types hide all internals. Approach 1 introduces a controlled compromise: a private header acts as a 'protected' interface, sharing layout with derived classes but concealing it from clients."
         concept: encapsulation-friend-access
       - kind: mcq
@@ -839,9 +839,9 @@ blocks:
         q: "Interleaved Review (Ch. 10): In Chapter 10, we contrasted Composition (co-dependent lifetimes) with Aggregation (independent lifetimes). How does Approach 2 inheritance relate to these lifecycle models?"
         choices:
           - "Structurally, Approach 2 is identical to Composition: the child creates the parent in its constructor and MUST destroy and free it in its destructor."
+          - "Approach 2 violates composition because the parent is located on the stack."
           - "Approach 2 is Aggregation: the parent object is passed in from outside and outlives the child."
           - "Approach 2 is neither: parent objects in C are managed by an automated garbage collector thread."
-          - "Approach 2 violates composition because the parent is located on the stack."
         answer: 0
         why: "Approach 2 is genuine composition under the hood: the child manages the parent's full lifecycle (allocating it on creation, deallocating it on destruction). If the child dies, the parent dies with it."
         concept: composition-lifecycle-equivalence
@@ -919,31 +919,31 @@ blocks:
       - kind: why-fails
         q: "Why does `naive_animal_sound((animal_t*)&dog)` in Example 8-19 fail to exhibit polymorphic behavior?"
         choices:
-          - "Because C uses static binding by default: the compiler hard-codes the jump target directly to naive_animal_sound's instructions at compile time."
+          - "Because the printf function does not support object-oriented formatting."
           - "Because dog was allocated on the stack rather than the heap."
           - "Because dog_t did not use the virtual keyword."
-          - "Because the printf function does not support object-oriented formatting."
-        answer: 0
+          - "Because C uses static binding by default: the compiler hard-codes the jump target directly to naive_animal_sound's instructions at compile time."
+        answer: 3
         why: "In C, normal function calls are statically resolved by the linker to a single fixed code address. Without an indirect dispatch mechanism (function pointers), passing different struct types cannot alter the executed code."
         concept: static-binding-limitation
       - kind: mcq
         q: "What is the primary architectural benefit of polymorphism as expressed by the Open-Closed Principle?"
         choices:
-          - "Software entities should be open for extension (adding new subtypes) but closed for modification (existing calling code remains unchanged)."
           - "All functions in a program must be marked private to prevent modifications."
-          - "Code should be compiled into binary files that can never be reopened."
+          - "Software entities should be open for extension (adding new subtypes) but closed for modification (existing calling code remains unchanged)."
           - "Polymorphism ensures that all structs occupy the exact same number of bytes in memory."
-        answer: 0
+          - "Code should be compiled into binary files that can never be reopened."
+        answer: 1
         why: "The Open-Closed Principle states that you should be able to introduce new classes (like Duck, Cat, Dog) without touching or recompiling the existing business logic that processes Animal pointers."
         concept: open-closed-principle
       - kind: predict
         q: "What is the terminal output of the naive example program above?"
         choices:
-          - "Generic: Beeeep (Generic sound)\nDog: Beeeep (Generic sound)"
           - "Generic: Beeeep (Generic sound)\nDog: Woof"
-          - "Dog: Beeeep (Generic sound)\nDog: Beeeep (Generic sound)"
+          - "Generic: Beeeep (Generic sound)\nDog: Beeeep (Generic sound)"
           - "Segmentation fault"
-        answer: 0
+          - "Dog: Beeeep (Generic sound)\nDog: Beeeep (Generic sound)"
+        answer: 1
         why: "Because naive_animal_sound contains static code printing '%s: Beeeep', both calls execute the exact same printf, inserting the respective struct name."
         concept: static-dispatch-predict
 
@@ -1046,9 +1046,9 @@ blocks:
         q: "Why is the function pointer defined as `void (*sound_func_t)(void*)` taking `void*` rather than `animal_t*`?"
         choices:
           - "To accept derived class pointers (cat_t*, duck_t*) as the 'this' argument without compiler type-mismatch warnings."
-          - "Because C99 prohibits passing struct pointers to function pointers."
           - "Because void* runs twice as fast as struct pointers."
           - "To prevent the linker from checking symbol names."
+          - "Because C99 prohibits passing struct pointers to function pointers."
         answer: 0
         why: "A derived method like __cat_sound expects to receive a cat_t* (or cast it from void*). Using void* allows any derived instance to be passed as the 'this' receiver cleanly."
         concept: generic-this-pointer
@@ -1070,11 +1070,11 @@ blocks:
       - kind: mcq
         q: "What role does the public function `animal_sound(animal_t*)` play in this architecture?"
         choices:
-          - "A relay function: it accepts public calls and dispatches them through the private sound_func function pointer."
           - "A memory allocator that creates a new thread for sound playback."
-          - "A static validator that checks whether the animal is alive."
+          - "A relay function: it accepts public calls and dispatches them through the private sound_func function pointer."
           - "A compiler macro that generates C++ assembly code."
-        answer: 0
+          - "A static validator that checks whether the animal is alive."
+        answer: 1
         why: "animal_sound acts as a stable public relay. Callers invoke it consistently, while the function delegates execution dynamically to whatever target sound_func currently points to."
         concept: relay-function-dispatch
 
@@ -1195,11 +1195,11 @@ blocks:
       - kind: predict
         q: "What is printed by the `for` loop in `main` across the `zoo` array?"
         choices:
-          - "Animal: Beeeep\nCat: Meow"
-          - "Animal: Beeeep\nAnimal: Beeeep"
           - "Cat: Meow\nCat: Meow"
           - "Compilation failure"
-        answer: 0
+          - "Animal: Beeeep\nCat: Meow"
+          - "Animal: Beeeep\nAnimal: Beeeep"
+        answer: 2
         why: "zoo[0] points to the base animal object whose sound_func is __animal_sound. zoo[1] points to the cat object whose sound_func was overridden to __cat_sound."
         concept: polymorphic-array-iteration
       - kind: trace
@@ -1280,31 +1280,31 @@ blocks:
       - kind: predict
         q: "If a base class defines 5 virtual functions, what is the size increase per object instance in C++ (with a 64-bit vptr) vs our manual C struct storing 5 function pointers?"
         choices:
-          - "C++ adds 8 bytes per instance (1 vptr); C adds 40 bytes per instance (5 function pointers x 8 bytes)."
           - "Both add 40 bytes per instance."
           - "C++ adds 0 bytes because vtables are eliminated by compiler optimization."
+          - "C++ adds 8 bytes per instance (1 vptr); C adds 40 bytes per instance (5 function pointers x 8 bytes)."
           - "C adds 8 bytes and C++ adds 40 bytes."
-        answer: 0
+        answer: 2
         why: "In C++, all 5 virtual functions are grouped into a single static class vtable; each object carries only one 8-byte pointer (vptr). In C, storing 5 individual function pointers directly in the struct consumes 5 * 8 = 40 bytes per object."
         concept: vptr-vs-function-pointers
       - kind: mcq
         q: "Where is the `vtable` typically stored in a compiled binary?"
         choices:
-          - "In the read-only data segment (.rodata), shared across all instances of that class."
           - "On the active thread stack frame."
           - "In heap memory allocated by malloc during program startup."
+          - "In the read-only data segment (.rodata), shared across all instances of that class."
           - "In CPU register RAX."
-        answer: 0
+        answer: 2
         why: "The virtual table is constructed by the compiler at compile time and placed in the static read-only data segment (.rodata). It never changes during program execution."
         concept: vtable-binary-segment
       - kind: choose-better
         q: "When should an architect choose non-virtual functions over virtual polymorphic functions?"
         choices:
-          - "When the function behavior is invariant across all subclasses, eliminating vtable indirection overhead and allowing compiler inlining."
           - "Only when the program has fewer than 10 lines of code."
-          - "When the function returns a float instead of an int."
           - "Never: all functions in modern software must be virtual."
-        answer: 0
+          - "When the function behavior is invariant across all subclasses, eliminating vtable indirection overhead and allowing compiler inlining."
+          - "When the function returns a float instead of an int."
+        answer: 2
         why: "Non-virtual functions can be inlined directly by the compiler and execute with zero indirection overhead. Virtual dispatch should only be used when runtime behavioral divergence is genuinely required."
         concept: non-virtual-optimization
 

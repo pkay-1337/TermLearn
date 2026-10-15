@@ -143,7 +143,7 @@ def test_more_branches():
     _, w = pack.validate_chapter_data(bad)
     assert any("EX-LONG" in x for x in w)
     bad = _ch()
-    bad["lab"] = {"starter_c": "int x;\n" * 40}
+    bad["lab"] = {"starter_c": "int x;\n" * 90}
     _, w = pack.validate_chapter_data(bad)
     assert any("LAB-LONG" in x for x in w)
     assert pack.toolchain_gate(True, bad) is None

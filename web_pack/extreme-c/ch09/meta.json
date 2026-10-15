@@ -1,0 +1,43 @@
+{
+  "book": "extreme-c",
+  "chapter_id": "ch09",
+  "title": "Chapter 09: Memory Ownership & Pointers",
+  "steps": [
+    {
+      "index": 1,
+      "stage": "Intuitive Puzzle",
+      "title": "Connecting Pointers to Memory",
+      "widget": "pointer_connector"
+    },
+    {
+      "index": 2,
+      "stage": "Pattern Induction",
+      "title": "Pointer Aliasing & Synchronized State",
+      "widget": "continuous_speed_scrubber"
+    },
+    {
+      "index": 3,
+      "stage": "Productive Failure",
+      "title": "The Dangling Loss: Unreferenced Heap Leak",
+      "widget": "heap_leak_detector"
+    },
+    {
+      "index": 4,
+      "stage": "Subgoal Naming",
+      "title": "The Ownership Invariant",
+      "widget": "subgoal_breakdown"
+    },
+    {
+      "index": 5,
+      "stage": "Formal Abbreviation",
+      "title": "C Code Execution & Lifecycle Stepper",
+      "widget": "synchronized_code_stepper"
+    }
+  ],
+  "widgets": [
+    "pointer_connector",
+    "continuous_speed_scrubber",
+    "heap_leak_detector",
+    "synchronized_code_stepper"
+  ]
+}

@@ -35,10 +35,56 @@ def gen_prompt(
     book: str = typer.Option(..., "--book"),
     chapter: str = typer.Option(..., "--chapter", help="Chapter id, e.g. ch01"),
     out: str = typer.Option("", "--out", help="Optional output file"),
+    target: str = typer.Option("yaml", "--target", help="Prompt target format: 'yaml' or 'web'"),
 ):
-    """Emit AI generation prompt for a chapter. (FR-GEN-001..003)"""
-    from lib import ai_prompt
-    ai_prompt.emit(book, chapter, out or None)
+    """Emit AI generation prompt for a chapter (YAML pack or Web study). (FR-GEN-001..003)"""
+    if target.lower() in ("web", "html"):
+        from lib import web_prompt
+        web_prompt.emit(book, chapter, out or None)
+    else:
+        from lib import ai_prompt
+        ai_prompt.emit(book, chapter, out or None)
+
+
+@app.command()
+def gen_web_prompt(
+    book: str = typer.Option(..., "--book"),
+    chapter: str = typer.Option(..., "--chapter", help="Chapter id, e.g. ch01"),
+    out: str = typer.Option("", "--out", help="Optional output file"),
+):
+    """Emit AI generation prompt for an interactive HTML/Web chapter study."""
+    from lib import web_prompt
+    web_prompt.emit(book, chapter, out or None)
+
+
+@app.command()
+def web(
+    book: str = typer.Option(..., "--book"),
+    chapter: str = typer.Option(..., "--chapter"),
+    port: int = typer.Option(8080, "--port", help="Preferred local port"),
+    no_browser: bool = typer.Option(False, "--no-browser", help="Do not open browser automatically"),
+):
+    """Launch dedicated local web server for an interactive HTML chapter study."""
+    from pathlib import Path
+    import subprocess
+    import sys
+    from lib import web_prompt
+
+    target_dir = Path(__file__).resolve().parent / "web_pack" / book / chapter
+    server_script = target_dir / "server.py"
+
+    if not target_dir.exists():
+        typer.secho(f"web_pack/{book}/{chapter} does not exist. Scaffolding chapter...", fg="yellow")
+        web_prompt.scaffold_chapter(book, chapter)
+
+    if not server_script.exists():
+        server_script.write_text(web_prompt.get_server_template(book, chapter), encoding="utf-8")
+        server_script.chmod(0o755)
+
+    cmd = [sys.executable, str(server_script), "--port", str(port)]
+    if no_browser:
+        cmd.append("--no-browser")
+    subprocess.run(cmd)
 
 
 @app.command()

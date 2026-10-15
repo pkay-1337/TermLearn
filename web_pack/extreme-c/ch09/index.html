@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Extreme C — Chapter 09: Memory Ownership & Pointers</title>
+  <title>Extreme C — Chapter 09: OOP and Encapsulation</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -16,27 +16,31 @@
           <span class="pill">termlearn web</span>
           <span>Extreme C</span>
         </div>
-        <span class="chapter-title">Ch 09: Memory Ownership</span>
+        <span class="chapter-label">Chapter 06: OOP & Encapsulation</span>
       </div>
 
-      <!-- 5-Stage Micro-Step Progress Bar -->
-      <nav class="progress-track" aria-label="Lesson Progress">
-        <div class="progress-step active" data-step="0" title="Step 1: Intuitive Puzzle"></div>
-        <div class="progress-step" data-step="1" title="Step 2: Pattern Induction"></div>
-        <div class="progress-step" data-step="2" title="Step 3: Productive Failure"></div>
-        <div class="progress-step" data-step="3" title="Step 4: Subgoal Naming"></div>
-        <div class="progress-step" data-step="4" title="Step 5: Formal Abbreviation"></div>
+      <!-- 6-Unit Micro-Step Progress Bar -->
+      <nav class="progress-track" aria-label="Curriculum Progress">
+        <div class="progress-step active" data-step="0" title="Unit 1: Mental Concepts to Object Models"></div>
+        <div class="progress-step" data-step="1" title="Unit 2: Prototype vs Class-Based Construction"></div>
+        <div class="progress-step" data-step="2" title="Unit 3: Explicit Attribute Encapsulation & Memory"></div>
+        <div class="progress-step" data-step="3" title="Unit 4: Behavior Encapsulation & The 'this' Pointer"></div>
+        <div class="progress-step" data-step="4" title="Unit 5: Information Hiding via Opaque Pointers"></div>
+        <div class="progress-step" data-step="5" title="Unit 6: Encapsulated Lifecycle & Leak Spotter"></div>
       </nav>
     </header>
 
-    <!-- Main Dynamic Step Card Container -->
-    <main id="card-viewport">
-      <!-- Step cards are rendered and activated dynamically via app.js -->
+    <!-- Main Dynamic Step Card Viewport -->
+    <main id="card-viewport" role="region" aria-live="polite">
+      <!-- Dynamically rendered by app.js -->
     </main>
 
-    <!-- Navigation Action Bar -->
+    <!-- Navigation & Action Bar -->
     <footer class="action-bar">
-      <button id="btn-prev" class="btn btn-secondary" disabled>← Previous</button>
+      <button id="btn-prev" class="btn btn-secondary" disabled>← Previous Unit</button>
+      <div id="unit-indicator" style="font-size: 13px; color: var(--text-muted); font-weight: 600;">
+        Unit 1 of 6
+      </div>
       <button id="btn-next" class="btn btn-primary">Check & Next →</button>
     </footer>
   </div>

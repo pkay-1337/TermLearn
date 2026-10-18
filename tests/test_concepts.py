@@ -54,10 +54,10 @@ def progress_module_log(con):
 
 def test_quiz_concept_filter_end_to_end(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
-    monkeypatch.setattr(sys, "stdin", io.StringIO("2 3 4\n1\n"))
-    _quiz.run("extreme-c", "ch04", concept="pass-by-value")
+    monkeypatch.setattr(sys, "stdin", io.StringIO("1\n"))
+    _quiz.run("extreme-c", "ch10", concept="delegation-purpose")
     out = capsys.readouterr().out
-    assert "score: 2/2" in out and "pass-by-value" in out
+    assert "score: 1/1" in out and "delegation-purpose" in out
 
 
 def test_stats_shows_concepts(tmp_path, monkeypatch, capsys):

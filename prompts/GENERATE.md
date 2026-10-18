@@ -278,9 +278,13 @@ learning science, cognitive psychology, and computing education research (CER):
   it holds"). A distractor you cannot attach to a named misconception MUST be
   cut — filler options are worse than fewer options.
 - **Answer Position Randomization (MUST)**: NEVER default all questions or multiple questions in sequence to `answer: 0`. The correct answer MUST be varied and distributed across all valid choice positions (0, 1, 2, and 3) uniformly throughout the chapter blocks. Any pack where 100% or the vast majority of choice checks have `answer: 0` is defective and will be rejected.
-- Stems MUST be positively worded and fully self-contained. NEVER refer to
-  questions or exercises in the book — always embed the complete question,
-  scenario, and code context directly into the prompt. Prefer `why`/`why-fails`
+- **Self-Contained Questions & Zero External References (CRITICAL MUST)**:
+  Every question stem (`q:`) in block checks and main quiz questions MUST be 100% self-contained.
+  STRICTLY PROHIBITED in BOTH question stems (`q:`) AND explanations (`why:`): NEVER reference external book examples, code boxes, listings, or figures (e.g. NEVER write "in Example 7.2...", "in Code Box 7-6...", "in Listing 3...", "as seen in Example 1.17...", "in Figure 4...").
+  Learners in a terminal DO NOT have the physical book open in front of them!
+  If a question tests code, behavior, state changes, return value, output, or syntax (e.g. `engine_turn_off`, `player_shoot`, constructors), you MUST EMBED the relevant code snippet directly into the check via `code: |` with `lang: c`, or spell out the complete concrete scenario and type declarations in `q:`. Never expect the student to remember an unseen function's internal constants, default values, or implementation details from memory!
+  Explanations (`why:`) MUST explain the core technical principle, memory mechanics, or language rule directly (e.g. quoting the specific line of code or guard check shown in the question), rather than citing "per Example X.Y" or "in Code Box X-Y".
+- Stems MUST be positively worded. Prefer `why`/`why-fails`
   over `whether`: conceptual questions discriminate; verdict questions do not
   (Brown Rust-book experiment, 62k readers: ask WHY it fails, not WHETHER it compiles).
 - ≥half of choice checks per chapter SHOULD be conceptual (`why-fails`,
@@ -511,13 +515,48 @@ learning science, cognitive psychology, and computing education research (CER):
   practice never teaches (Rohrer; discriminative-contrast). Spacing falls out
   of interleaving for free.]
 
-## 4. Lab + test gates (SHOULD; verifiable)
+### 3.13 Main Chapter Quiz (`quiz:`) vs. Block Checks (`checks:`) (MUST)
 
-- Chapters with code SHOULD include `lab: {title, prompt_md, starter_c,
-  tests_sh|tests, hints[1-3]}` per §3.7 (`starter_c` keeps its key name for
-  schema stability in every language). `tests_sh` MUST NOT need
-  network/GUI/unbounded time; MUST NOT contain destructive commands
-  (examples: `rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs).
+- **Two Distinct Question Arenas**:
+  1. `blocks[].checks`: 5–10 immediate, scaffolded checks per block (calibrated according to the topic's depth and complexity) progressively reinforcing the single concept just taught through diverse angles (syntax, state transitions, edge cases, bug traps).
+  2. `quiz:` (Top-level chapter list): Dedicated 30 to 50 comprehensive quiz questions spanning the entire chapter.
+- **Rules for `quiz:`**:
+  - **Count**: 30 to 50 questions per chapter pack.
+  - **Levels**: Include questions across three difficulty levels via `level: intro | core | advanced`.
+  - **Ordering**: Arrange in NO specific order (mixed difficulty, concept-interleaved) to simulate authentic testing conditions.
+  - **Independence**: Quiz questions MUST be distinct from the block checks — test chapter-wide synthesis, edge cases, combined concepts, and diagnostic discrimination.
+  - **Code Boxes**: Questions can and should include `code:` blocks where relevant (e.g. predicting output, identifying bugs, analyzing stack/heap behavior) with the question prompt directly referencing the snippet.
+  - **Supported Kinds**: Use any valid check kind (`mcq`, `predict`, `why-fails`, `fillblank`, `order`, `eipe`, `choose-better`, `trace`, `spot-bug`).
+  - **Feedback**: Every quiz question MUST have an elaborated `why:` explanation citing the underlying principle and diagnosing distractors.
+
+## 4. Multi-Lab Workspaces + test gates (SHOULD; verifiable)
+
+### 4.1 Labs are Practical Tests — Student Action Required (NO Pre-Solved Code; Files Can Be Blank)
+- **Pedagogical Purpose**: A lab is an interactive practical exam / problem-solving challenge. The student MUST do the work!
+- **Strict Anti-Pattern: NEVER Provide 100% Pre-Solved Solutions**:
+  If the student opens the lab and the code is already completely implemented and passes immediately out of the box, there is zero learning value and no challenge for the student.
+- **Starter Files Can Be Blank or Scaffolded**:
+  - Files that the student is tasked with writing or implementing **MAY BE COMPLETELY BLANK** (e.g. empty string `content: ""`), or scaffolded with function stubs (e.g. `return -1;`, `return NULL;`), struct footprints, and `/* TODO: ... */` tasks.
+  - Supporting framework files (such as headers `.h` / interface definitions, interactive driver harnesses `main.c`, and unit test runners `test_runner.c`) define the contract and deterministic assertions so the student's solution can be compiled, tested, and verified.
+- **Verification Lifecycle**:
+  - When the student first executes `t` (Test) or `r` (Run) on the initial starter files, the tests SHOULD FAIL (displaying compiler errors, failed assertions, or output diffs in the console).
+  - Once the student implements the code in the editor, all assertions and test cases pass 100%.
+
+### 4.2 Multi-Lab Workspace Schema & Rules
+- Chapters with code SHOULD include a `labs: [...]` array (1 to 4 practical, multi-file
+  labs per ISO/IEC/IEEE 29148:2018). Each lab provisions an isolated workspace directory
+  at `labs/<book>/<chapter>/<lab_id>/` and MUST provide:
+  - `id`: unique identifier (`lab1`, `lab2`, etc.)
+  - `title`: descriptive pedagogical title
+  - `instruction_md`: complete, self-contained markdown requirements detailing what the student must implement/fix
+  - `files`: array of starter files (`path` and `content`), e.g. headers (`.h`), implementations (`.c`), drivers (`main.c`), and unit tests (`test_runner.c`)
+  - `commands`: language-agnostic compile/run commands executed in `cwd = workspace_dir`:
+    - `run`: interactive build & run command (e.g. `gcc -Wall -Wextra -std=c99 component.c main.c -o app && ./app`)
+    - `test`: test runner command executing unit test assertions (e.g. `gcc -Wall -Wextra -std=c99 component.c test_runner.c -o test_runner && ./test_runner`)
+  - `test_cases`: input vs. expected output correctness verification array (`name`, `stdin`, `expect`, `expect_exit`). The system executes each test case in the workspace and performs automated unified diffing on mismatch.
+  - `hints`: 1–3 progressive hints (general -> specific).
+- Prohibited in commands (validator scans for these, NFR-SEC-002): destructive commands
+  (`rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs), unbounded waits, or escaping the workspace.
 - Chapters that gate advancement SHOULD include `test: {gates: [{needs:
   [block ids], min_quiz: 80}], final_checks: [...]}` referencing real blocks.
 
@@ -574,3 +613,4 @@ learning science, cognitive psychology, and computing education research (CER):
     exit-0 rule, sandbox prohibitions), `toolchain:` carries `runner`,
     `version_cmd`, `smoke`; C book? No runner file emitted.
 12. Line lengths sane (prose ≤120, code ≤80)?
+13. Dedicated top-level `quiz:` stanza authored with 30–50 standalone questions across levels (intro/core/advanced) in no specific order, including code boxes where relevant, distinct from block checks?

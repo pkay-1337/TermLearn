@@ -18,7 +18,7 @@ from textual.widgets import Button, DataTable, Input, Label, Markdown, Static
 
 from tui.widgets import QuestionWidget, VimScrollMixin
 
-CHOICE_KINDS = ("predict", "why-fails", "mcq", "eipe", "choose-better")
+CHOICE_KINDS = ("predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug")
 
 
 class _Base(Screen):
@@ -27,6 +27,9 @@ class _Base(Screen):
 
     def on_mount(self) -> None:
         self.app.set_help(self.HELP_TITLE, self.HELP_LINES)
+
+    def action_help(self) -> None:
+        self.app.action_help()
 
     def on_unmount(self) -> None:
         con = getattr(self, "_con", None)
@@ -40,11 +43,14 @@ class _Base(Screen):
 
 class StudyScreen(VimScrollMixin, _Base):
     HELP_TITLE = "study"
-    HELP_LINES = [("n", "next"), ("p", "previous block"), ("r", "run example"),
-                  ("i", "inspect example (toolchain)"),
+    HELP_LINES = [("1-4", "answer check"), ("n", "next page / step"),
+                  ("p", "previous page / step"), ("s", "skip check"),
+                  ("r", "run example"), ("i", "inspect example (toolchain)"),
                   ("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
-    BINDINGS = ([Binding("n", "next", "Next"),
+    BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 10)] +
+                [Binding("n", "next", "Next"),
                  Binding("p", "prev", "Previous"),
+                 Binding("s", "skip_check", "Skip", show=False),
                  Binding("r", "run_ex", "Run"),
                  Binding("i", "inspect_example", "Inspect"),
                  Binding("q", "back", "Back"),
@@ -59,6 +65,7 @@ class StudyScreen(VimScrollMixin, _Base):
         self.bi = max(0, start_block)
         self.stage = "explain"  # explain | viz | check-i | done
         self.vi = 0
+        self._check_answered = False
 
     def compose(self) -> ComposeResult:
         from lib.pack import load_chapter
@@ -82,6 +89,10 @@ class StudyScreen(VimScrollMixin, _Base):
         return self.blocks[self.bi]
 
     def _show_body(self) -> None:
+        try:
+            self.query_one(".study-container", ScrollableContainer).scroll_to(y=0, animate=False)
+        except Exception:
+            pass
         body = self.query_one("#body", Vertical)
         body.remove_children()
         b = self._block()
@@ -114,6 +125,7 @@ class StudyScreen(VimScrollMixin, _Base):
             dots = "● " * (self.vi + 1) + "○ " * max(0, len(steps) - self.vi - 1)
             body.mount(Static(f"Step {self.vi + 1} of {len(steps)}  ({dots.strip()})  —  Press [bold cyan]n[/] to advance", classes="study-nav-box"))
         elif self.stage.startswith("check"):
+            self._check_answered = False
             i = int(self.stage.split("-")[1])
             ck = (b.get("checks") or [])[i]
             body.mount(QuestionWidget(ck, self._checked))
@@ -122,6 +134,7 @@ class StudyScreen(VimScrollMixin, _Base):
 
     def _checked(self, ok: bool) -> None:
         from lib.srs import log_answer
+        self._check_answered = True
         b = self._block()
         i = int(self.stage.split("-")[1])
         ck = (b.get("checks") or [])[i]
@@ -171,6 +184,13 @@ class StudyScreen(VimScrollMixin, _Base):
                     self.stage = "done"
                     self._mark_current_block_done()
         elif self.stage.startswith("check"):
+            qw = self.query(QuestionWidget).first() if self.query(QuestionWidget) else None
+            if qw is not None and qw.check.get("kind") == "trace" and not getattr(self, "_check_answered", False):
+                if qw.trace_step_next():
+                    return
+            if not getattr(self, "_check_answered", False):
+                self.app.notify("Please answer the question to proceed (or press s to skip).")
+                return
             i = int(self.stage.split("-")[1]) + 1
             if i < len(checks):
                 self.stage = f"check-{i}"
@@ -180,6 +200,19 @@ class StudyScreen(VimScrollMixin, _Base):
         elif self.stage == "done":
             self._advance_block()
         self._show_body()
+
+    def action_skip_check(self) -> None:
+        if self.stage.startswith("check"):
+            self._check_answered = True
+            b = self._block()
+            checks = b.get("checks", []) or []
+            i = int(self.stage.split("-")[1]) + 1
+            if i < len(checks):
+                self.stage = f"check-{i}"
+            else:
+                self.stage = "done"
+                self._mark_current_block_done()
+            self._show_body()
 
     def _advance_block(self) -> None:
         self._mark_current_block_done()
@@ -192,11 +225,45 @@ class StudyScreen(VimScrollMixin, _Base):
             self.app.notify("Chapter pass complete — try quiz, lab, then test.")
 
     def action_prev(self) -> None:
-        if self.bi > 0:
-            self.bi -= 1
-            self.stage = "explain"
-            self.vi = 0
-            self._show_body()
+        b = self._block()
+        checks = b.get("checks", []) or []
+        steps = (b.get("viz") or {}).get("steps", []) or []
+        if self.stage == "done":
+            if checks:
+                self.stage = f"check-{len(checks) - 1}"
+            elif steps:
+                self.stage = "viz"
+                self.vi = max(0, len(steps) - 1)
+            else:
+                self.stage = "explain"
+        elif self.stage.startswith("check"):
+            qw = self.query(QuestionWidget).first() if self.query(QuestionWidget) else None
+            if qw is not None and qw.check.get("kind") == "trace" and getattr(qw, "_trace_step", 1) > 1:
+                if qw.trace_step_prev():
+                    return
+            i = int(self.stage.split("-")[1])
+            if i > 0:
+                self.stage = f"check-{i - 1}"
+            else:
+                if steps:
+                    self.stage = "viz"
+                    self.vi = max(0, len(steps) - 1)
+                else:
+                    self.stage = "explain"
+        elif self.stage == "viz":
+            if self.vi > 0:
+                self.vi -= 1
+            else:
+                self.stage = "explain"
+        elif self.stage == "explain":
+            if self.bi > 0:
+                self.bi -= 1
+                self.stage = "explain"
+                self.vi = 0
+            else:
+                self.app.notify("Already at first block.")
+                return
+        self._show_body()
 
     def action_run_ex(self) -> None:
         if self.stage != "explain":
@@ -225,16 +292,36 @@ class StudyScreen(VimScrollMixin, _Base):
         from tui.widgets import ToolchainInspectModal
         self.app.push_screen(ToolchainInspectModal(self.book, code, lang=ex.get("lang", "c")))
 
+    def _answer_digit(self, n: int) -> None:
+        if not self.stage.startswith("check"):
+            return
+        if getattr(self, "_check_answered", False):
+            return
+        for w in self.query(QuestionWidget):
+            w.answer_choice(n - 1)
+
+    def action_ans1(self) -> None: self._answer_digit(1)
+    def action_ans2(self) -> None: self._answer_digit(2)
+    def action_ans3(self) -> None: self._answer_digit(3)
+    def action_ans4(self) -> None: self._answer_digit(4)
+    def action_ans5(self) -> None: self._answer_digit(5)
+    def action_ans6(self) -> None: self._answer_digit(6)
+    def action_ans7(self) -> None: self._answer_digit(7)
+    def action_ans8(self) -> None: self._answer_digit(8)
+    def action_ans9(self) -> None: self._answer_digit(9)
+
     def action_back(self) -> None:
         self.app.pop_screen()
 
 
 class QuizScreen(VimScrollMixin, _Base):
     HELP_TITLE = "quiz"
-    HELP_LINES = [("1-4", "answer choice"), ("n", "next"), ("j/k", "scroll / nav"),
+    HELP_LINES = [("1-4", "answer choice"), ("n", "next / trace step"),
+                  ("p", "previous trace step"), ("j/k", "scroll / nav"),
                   ("d/u", "half page"), ("q", "back")]
-    BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 5)] +
+    BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 10)] +
                 [Binding("n", "next", "Next"),
+                 Binding("p", "prev", "Previous", show=False),
                  Binding("q", "back", "Back"),
                  Binding("question_mark", "help", "Help")] +
                 VimScrollMixin.VIM_BINDINGS)
@@ -249,14 +336,27 @@ class QuizScreen(VimScrollMixin, _Base):
         self.done = 0
         self.results: list[tuple[str, bool]] = []
         self._answered = False
+        self.checks: list[tuple[str, int, dict]] = []
 
     def compose(self) -> ComposeResult:
         from lib.pack import load_chapter
-        from lib.quiz import collect_checks
+        from lib.quiz import collect_quiz_questions
         from lib.srs import init_db
-        data = load_chapter(self.book, self.chapter)
-        self.checks = [(b, i, ck) for b, i, ck in collect_checks(data)
-                       if self.kind is None or ck.get("kind") == self.kind]
+        if not self.checks:
+            data = load_chapter(self.book, self.chapter)
+            raw_checks = collect_quiz_questions(data)
+            has_dedicated_quiz = bool(isinstance(data.get("quiz"), list) and data.get("quiz"))
+            if self.kind is None:
+                if has_dedicated_quiz and getattr(self, "shuffle", True):
+                    import random
+                    shuffled = list(raw_checks)
+                    random.shuffle(shuffled)
+                    self.checks = shuffled
+                else:
+                    self.checks = list(raw_checks)
+            else:
+                self.checks = [(b, i, ck) for b, i, ck in raw_checks
+                               if ck.get("kind") == self.kind]
         self._con = init_db()
         title = "QUIZ & CHECKS" if self.kind is None else "PARSONS (ORDERING)"
         with ScrollableContainer(classes="study-container"):
@@ -278,6 +378,10 @@ class QuizScreen(VimScrollMixin, _Base):
 
     def _show_body(self) -> None:
         self._answered = False
+        try:
+            self.query_one(".study-container", ScrollableContainer).scroll_to(y=0, animate=False)
+        except Exception:
+            pass
         body = self.query_one("#body", Vertical)
         body.remove_children()
         b, i, ck = self.checks[self.idx]
@@ -296,8 +400,9 @@ class QuizScreen(VimScrollMixin, _Base):
         self.score += ok
         self.done += 1
         self.results.append((str(ck.get("concept", "")), bool(ok)))
-        self.query_one("#body", Vertical).mount(Button("Next Question (n)", id="next-btn"))
-        self.query_one("#next-btn", Button).focus()
+        body = self.query_one("#body", Vertical)
+        body.mount(Button("Next Question (n)", id="next-btn"))
+        body.query_one("#next-btn", Button).focus()
         self.call_after_refresh(self._scroll_to_next)
 
     def _scroll_to_next(self) -> None:
@@ -313,7 +418,8 @@ class QuizScreen(VimScrollMixin, _Base):
     def _answer_digit(self, n: int) -> None:
         if self._answered or self.idx >= len(self.checks):
             return
-        if self._current().get("kind") not in CHOICE_KINDS:
+        curr = self._current()
+        if not curr.get("choices") and curr.get("kind") not in CHOICE_KINDS:
             return
         for w in self.query(QuestionWidget):
             w.answer_choice(n - 1)
@@ -322,15 +428,29 @@ class QuizScreen(VimScrollMixin, _Base):
     def action_ans2(self) -> None: self._answer_digit(2)
     def action_ans3(self) -> None: self._answer_digit(3)
     def action_ans4(self) -> None: self._answer_digit(4)
+    def action_ans5(self) -> None: self._answer_digit(5)
+    def action_ans6(self) -> None: self._answer_digit(6)
+    def action_ans7(self) -> None: self._answer_digit(7)
+    def action_ans8(self) -> None: self._answer_digit(8)
+    def action_ans9(self) -> None: self._answer_digit(9)
 
     def action_next(self) -> None:
         if not self._answered:
+            qw = self.query(QuestionWidget).first() if self.query(QuestionWidget) else None
+            if qw is not None and qw.check.get("kind") == "trace":
+                if qw.trace_step_next():
+                    return
             return
         self.idx += 1
         if self.idx >= len(self.checks):
             self._finish()
         else:
             self._show_body()
+
+    def action_prev(self) -> None:
+        qw = self.query(QuestionWidget).first() if self.query(QuestionWidget) else None
+        if qw is not None and qw.check.get("kind") == "trace":
+            qw.trace_step_prev()
 
     def _finish(self) -> None:
         from lib.progress import record_quiz
@@ -588,21 +708,244 @@ class CardsScreen(_Base):
 
 class LabScreen(_Base):
     HELP_TITLE = "lab"
-    HELP_LINES = [("r", "run"), ("t", "hidden tests + snapshot"), ("i", "inspect toolchain"),
-                  ("h", "hint"), ("tab", "switch pane"), ("q", "back")]
-    BINDINGS = [Binding("r", "run_code", "Run"),
-                Binding("t", "run_tests", "Tests"),
-                Binding("i", "inspect_buffer", "Inspect"),
-                Binding("h", "hint", "Hint"),
-                Binding("tab", "switch_pane", "Switch Pane", show=False),
-                Binding("q", "back", "Back"),
-                Binding("question_mark", "help", "Help")]
+    HELP_LINES = [
+        ("r", "run project"),
+        ("t", "test suite / verify"),
+        ("e", "open in $EDITOR"),
+        ("R", "reset files to starter"),
+        ("h", "hint"),
+        ("p/[", "previous lab"),
+        ("n/]", "next lab"),
+        ("tab", "switch pane"),
+        ("q", "back"),
+    ]
+    BINDINGS = [
+        Binding("r", "run_code", "Run"),
+        Binding("t", "run_tests", "Test"),
+        Binding("e", "open_editor", "Edit ($EDITOR)"),
+        Binding("R", "reset_workspace", "Reset", show=False),
+        Binding("h", "hint", "Hint"),
+        Binding("p", "prev_lab", "Prev Lab"),
+        Binding("n", "next_lab", "Next Lab"),
+        Binding("left_square_bracket", "prev_lab", "Prev", show=False),
+        Binding("right_square_bracket", "next_lab", "Next", show=False),
+        Binding("tab", "switch_pane", "Switch Pane", show=False),
+        Binding("q", "back", "Back"),
+        Binding("question_mark", "help", "Help"),
+    ]
 
-    def __init__(self, book: str, chapter: str) -> None:
+    def __init__(self, book: str, chapter: str, lab_id: str | None = None) -> None:
         super().__init__()
         self.book = book
         self.chapter = chapter
+        self.requested_lab_id = lab_id
         self.hint_idx = 0
+        self.lab_idx = 0
+        self.labs: list[dict] = []
+        self.workspace_dir: Path | None = None
+        self.files: list[str] = []
+        self.active_file_idx = 0
+        self.console_output = "Press 'r' to Run or 't' to Test."
+        self._load_labs_data()
+
+    def _load_labs_data(self) -> None:
+        from lib.pack import load_chapter
+        data = load_chapter(self.book, self.chapter)
+        raw_labs = data.get("labs")
+        if isinstance(raw_labs, list) and raw_labs:
+            self.labs = raw_labs
+        elif isinstance(data.get("lab"), dict):
+            l_single = data["lab"]
+            self.labs = [{
+                "id": "lab1",
+                "title": l_single.get("title", "Lab"),
+                "instruction_md": l_single.get("prompt_md", ""),
+                "files": [{"path": "starter.c", "content": l_single.get("starter_c", "")}],
+                "commands": {
+                    "run": l_single.get("tests_sh", ""),
+                    "test": l_single.get("tests_sh", "")
+                },
+                "hints": l_single.get("hints", [])
+            }]
+        else:
+            self.labs = []
+
+        if self.requested_lab_id:
+            for i, lb in enumerate(self.labs):
+                if lb.get("id") == self.requested_lab_id:
+                    self.lab_idx = i
+                    break
+
+        self._setup_workspace()
+
+    def _current_lab(self) -> dict:
+        if not self.labs:
+            return {}
+        return self.labs[self.lab_idx]
+
+    def _setup_workspace(self, reset: bool = False) -> None:
+        from lib import lab_workspace as lw
+        cur = self._current_lab()
+        if not cur:
+            self.files = []
+            return
+        self.workspace_dir = lw.provision_lab_workspace(self.book, self.chapter, cur, reset=reset)
+        disk_files = lw.list_workspace_files(self.workspace_dir)
+        declared_files = [str(f.get("path")) for f in cur.get("files", []) if f.get("path")]
+        # Combine disk files and declared files, keeping unique order
+        all_files = list(dict.fromkeys(declared_files + disk_files))
+        self.files = all_files
+        if self.active_file_idx >= len(self.files):
+            self.active_file_idx = 0
+
+    def _detect_lang(self, fname: str) -> str:
+        ext = fname.rsplit(".", 1)[-1].lower() if "." in fname else ""
+        if ext in ("c", "h"):
+            return "c"
+        if ext in ("cpp", "cc", "cxx", "hpp"):
+            return "cpp"
+        if ext in ("py", "pyw"):
+            return "python"
+        if ext in ("js", "ts", "json"):
+            return "javascript"
+        if ext in ("sh", "bash"):
+            return "bash"
+        if ext in ("md", "markdown"):
+            return "markdown"
+        if ext in ("yaml", "yml"):
+            return "yaml"
+        return "c"
+
+    def _active_file_path(self) -> str:
+        if 0 <= self.active_file_idx < len(self.files):
+            return self.files[self.active_file_idx]
+        return ""
+
+    def _active_file_content(self) -> str:
+        if not self.workspace_dir:
+            return ""
+        rel = self._active_file_path()
+        if not rel:
+            return ""
+        from lib import lab_workspace as lw
+        return lw.read_workspace_file(self.workspace_dir, rel)
+
+    def _save_active_file(self) -> None:
+        if not self.workspace_dir:
+            return
+        rel = self._active_file_path()
+        if not rel:
+            return
+        try:
+            from textual.widgets import TextArea
+            editor = self.query_one("#lab-code", TextArea)
+            from lib import lab_workspace as lw
+            lw.write_workspace_file(self.workspace_dir, rel, editor.text)
+        except Exception:
+            pass
+
+    def _load_active_file_into_editor(self) -> None:
+        if not self.workspace_dir:
+            return
+        rel = self._active_file_path()
+        if not rel:
+            return
+        from lib import lab_workspace as lw
+        text = lw.read_workspace_file(self.workspace_dir, rel)
+        try:
+            from textual.widgets import TextArea
+            editor = self.query_one("#lab-code", TextArea)
+            editor.text = text
+            editor.language = self._detect_lang(rel)
+        except Exception:
+            pass
+
+    def _status_badge_text(self) -> str:
+        from lib.progress import is_lab_passed
+        cur = self._current_lab()
+        lid = cur.get("id", "lab1")
+        if is_lab_passed(self.book, self.chapter, lid):
+            return "PASSING ✔"
+        return "UNTESTED"
+
+    def compose(self) -> ComposeResult:
+        from textual.widgets import TextArea
+        cur = self._current_lab()
+        with ScrollableContainer(classes="lab-container", id="lab-scroll"):
+            with Horizontal(classes="lab-header-bar"):
+                title_txt = f"💻  CODE LAB [{self.lab_idx + 1}/{max(1, len(self.labs))}]: {cur.get('title', 'Lab')}"
+                yield Label(title_txt, id="lab-title-label", classes="screen-title")
+                yield Label(self._status_badge_text(), id="lab-status-badge", classes="lab-status-pill")
+
+            with Horizontal(classes="lab-split-top"):
+                with Vertical(classes="lab-info-pane"):
+                    yield Label("Task Instructions", classes="details-header")
+                    inst = cur.get("instruction_md") or cur.get("prompt_md", "No instructions.")
+                    yield Markdown(str(inst), id="lab-instructions")
+                    yield Static("", id="lab-hint-out", classes="feedback-msg")
+
+                with Vertical(classes="lab-editor-pane"):
+                    with Horizontal(classes="lab-file-tabs-bar", id="lab-file-tabs"):
+                        for idx, f_rel in enumerate(self.files):
+                            variant = "primary" if idx == self.active_file_idx else "default"
+                            yield Button(f_rel, id=f"tab-file-{idx}", classes="lab-file-tab-btn", variant=variant)
+                    yield TextArea(self._active_file_content(), language=self._detect_lang(self._active_file_path()), id="lab-code")
+
+            with Horizontal(classes="lab-actions-bar"):
+                yield Button("▶ Run (r)", id="lab-run", variant="primary")
+                yield Button("🧪 Test Suite (t)", id="lab-tests", variant="success")
+                yield Button("📝 Open in $EDITOR (e)", id="lab-editor")
+                yield Button("🔄 Reset (R)", id="lab-reset", variant="error")
+                yield Button("💡 Hint (h)", id="lab-hint")
+                if len(self.labs) > 1:
+                    yield Button("◀ Prev (p)", id="lab-prev")
+                    yield Button("Next (n) ▶", id="lab-next")
+
+            with ScrollableContainer(classes="lab-console-pane", id="lab-console-scroll"):
+                yield Label("Execution & Verification Console:", classes="details-header")
+                yield Static(self.console_output, id="lab-out")
+
+    def on_mount(self) -> None:
+        super().on_mount()
+        self.query_one("#lab-scroll").focus()
+
+    def _show_output(self, text: str) -> None:
+        self.console_output = text
+        try:
+            self.query_one("#lab-out", Static).update(text)
+        except Exception:
+            pass
+
+    def _update_status_badge(self, passed: bool) -> None:
+        try:
+            badge = self.query_one("#lab-status-badge", Label)
+            badge.update("PASSING ✔" if passed else "FAILING ✖")
+        except Exception:
+            pass
+
+    def _update_tab_buttons(self) -> None:
+        for idx in range(len(self.files)):
+            try:
+                btn = self.query_one(f"#tab-file-{idx}", Button)
+                btn.variant = "primary" if idx == self.active_file_idx else "default"
+            except Exception:
+                pass
+
+    def _rebuild_screen(self) -> None:
+        self._setup_workspace()
+        cur = self._current_lab()
+        try:
+            self.query_one("#lab-title-label", Label).update(
+                f"💻  CODE LAB [{self.lab_idx + 1}/{len(self.labs)}]: {cur.get('title', 'Lab')}")
+            self.query_one("#lab-status-badge", Label).update(self._status_badge_text())
+            inst = cur.get("instruction_md") or cur.get("prompt_md", "No instructions.")
+            self.query_one("#lab-instructions", Markdown).update(str(inst))
+            self.query_one("#lab-hint-out", Static).update("")
+            self._load_active_file_into_editor()
+            self._update_tab_buttons()
+        except Exception:
+            # Fallback: re-mount screen
+            pass
 
     def action_switch_pane(self) -> None:
         try:
@@ -614,74 +957,135 @@ class LabScreen(_Base):
         except Exception:
             pass
 
-    def compose(self) -> ComposeResult:
-        from textual.widgets import TextArea
-        from lib.pack import load_chapter
-        data = load_chapter(self.book, self.chapter)
-        self.lab = data.get("lab") or {}
-        with ScrollableContainer(classes="lab-container", id="lab-scroll"):
-            yield Label(f"💻  CODE LAB: {self.lab.get('title', 'Lab')}", classes="screen-title")
-            with Horizontal(classes="lab-split-top"):
-                with Vertical(classes="lab-info-pane"):
-                    yield Label("Task Instructions", classes="details-header")
-                    yield Markdown(str(self.lab.get("prompt_md", "")))
-                    yield Static("", id="lab-hint-out", classes="feedback-msg")
-                with Vertical(classes="lab-editor-pane"):
-                    yield TextArea(self.lab.get("starter_c", ""),
-                                   language="c", id="lab-code")
-            with Horizontal(classes="lab-actions-bar"):
-                yield Button("▶ Run (r)", id="lab-run")
-                yield Button("🧪 Hidden tests (t)", id="lab-tests")
-                yield Button("🔍 Inspect (i)", id="lab-inspect")
-                yield Button("💡 Hint (h)", id="lab-hint")
-            with ScrollableContainer(classes="lab-console-pane"):
-                yield Label("Terminal Console Output:", classes="details-header")
-                yield Static("", id="lab-out")
+    def action_prev_lab(self) -> None:
+        if self.lab_idx > 0:
+            self._save_active_file()
+            self.lab_idx -= 1
+            self.hint_idx = 0
+            self.active_file_idx = 0
+            self._rebuild_screen()
 
-    def on_mount(self) -> None:
-        super().on_mount()
-        self.query_one("#lab-scroll").focus()
-
-    def _code(self) -> str:
-        from textual.widgets import TextArea
-        return self.query_one("#lab-code", TextArea).text
-
-    def _show(self, text: str) -> None:
-        self.query_one("#lab-out", Static).update(text)
+    def action_next_lab(self) -> None:
+        if self.lab_idx < len(self.labs) - 1:
+            self._save_active_file()
+            self.lab_idx += 1
+            self.hint_idx = 0
+            self.active_file_idx = 0
+            self._rebuild_screen()
 
     def action_run_code(self) -> None:
-        from lib.lab import run_code
-        lang = (self.lab.get("lang", "c") or "c")
-        r = run_code(self._code(), lang, tests=[{"args": [], "expect": ""}],
-                     timeout=2, book=self.book)
-        if r.get("unsupported"):
-            self._show(f"no local runner for '{lang}' — use the book toolchain")
-        elif not r["compiled"]:
-            self._show(f"compile error:\n{r['stderr'][:1500]}")
-        elif r.get("timed_out"):
-            self._show("timeout (2s). Infinite loop?")
+        self._save_active_file()
+        cur = self._current_lab()
+        cmd = cur.get("commands", {}).get("run", "").strip()
+        if not cmd:
+            self._show_output("No 'run' command declared in this lab.")
+            return
+        from lib import lab_workspace as lw
+        timeout_s = int(cur.get("commands", {}).get("timeout_s", 5))
+        res = lw.run_command_in_workspace(self.workspace_dir, cmd, timeout_s=timeout_s)
+        out = [f"💻 Executed: {cmd}",
+               f"Status: Exit code {res['returncode']} ({res['elapsed_ms']}ms)"]
+        if res.get("denied"):
+            out.append(f"\n❌ ERROR: {res['error']}")
+        elif res.get("timed_out"):
+            out.append(f"\n❌ TIMEOUT: {res['error']}")
         else:
-            self._show(f"ran OK output:\n{r['output'][:2000]}")
+            if res["stdout"]:
+                out.append(f"\n--- Standard Output ---\n{res['stdout']}")
+            if res["stderr"]:
+                out.append(f"\n--- Standard Error ---\n{res['stderr']}")
+        self._show_output("\n".join(out))
 
     def action_run_tests(self) -> None:
-        from lib.lab import run_code, save_solution
-        lang = (self.lab.get("lang", "c") or "c")
-        r = run_code(self._code(), lang, tests=[{"args": [], "expect": ""}],
-                     timeout=2, book=self.book)
-        verdict = bool(r.get("compiled") and not r.get("timed_out")
-                       and not r.get("unsupported") and not r.get("runner_error"))
-        h = save_solution(self.book, self.chapter, self._code(), verdict)
-        self._show(f"snapshot {h[:12]}… ({'pass' if verdict else 'fail'})"
-                   + (f"\n{r['diff'][:1000]}" if r.get("diff") else ""))
+        self._save_active_file()
+        cur = self._current_lab()
+        from lib import lab_workspace as lw
+        report = lw.run_lab_verification(self.workspace_dir, cur)
+
+        from lib.progress import record_lab_run
+        record_lab_run(self.book, self.chapter, cur.get("id", "lab1"), report["passed"],
+                       report["summary"], report["elapsed_ms"])
+
+        out = []
+        status_str = "PASS ✔" if report["passed"] else "FAIL ✖"
+        out.append(f"🧪 Verification: {status_str}")
+        out.append(f"Summary: {report['summary']} (Total time: {report['elapsed_ms']}ms)")
+
+        if report.get("test_cmd_run"):
+            out.append(f"\n--- Test Command Output ---\n{report['test_cmd_output']}")
+
+        if report.get("case_results"):
+            out.append("\n--- Input vs Expected Output Test Cases ---")
+            for cr in report["case_results"]:
+                tag = "[PASS ✔]" if cr["passed"] else "[FAIL ✖]"
+                out.append(f"{tag} {cr['name']} (Exit {cr['returncode']}, {cr['elapsed_ms']}ms)")
+                if not cr["passed"]:
+                    if cr.get("diff"):
+                        out.append(f"Diff:\n{cr['diff']}")
+                    elif cr["returncode"] != cr["expected_exit"]:
+                        out.append(f"Exit code mismatch: expected {cr['expected_exit']}, got {cr['returncode']}")
+                    if cr.get("stderr"):
+                        out.append(f"Stderr:\n{cr['stderr']}")
+
+        if report.get("diff") and not report.get("case_results"):
+            out.append(f"\n--- Unified Diff ---\n{report['diff']}")
+
+        self._show_output("\n".join(out))
+        self._update_status_badge(report["passed"])
+
+    def action_open_editor(self) -> None:
+        self._save_active_file()
+        if not self.workspace_dir:
+            return
+        import os
+        import subprocess
+        editor = os.environ.get("EDITOR") or os.environ.get("VISUAL") or "nano"
+        target = self.workspace_dir / self._active_file_path()
+        try:
+            with self.app.suspend():
+                subprocess.run([editor, str(target)])
+        except Exception as e:
+            self._show_output(f"Error launching editor '{editor}': {e}")
+            return
+        self._load_active_file_into_editor()
+        self.app.notify(f"Reloaded {self._active_file_path()} from disk")
+
+    def action_reset_workspace(self) -> None:
+        from tui.widgets import ConfirmResetModal
+        cur = self._current_lab()
+
+        def _on_confirm(confirmed: bool) -> None:
+            if confirmed:
+                self._setup_workspace(reset=True)
+                self._load_active_file_into_editor()
+                self._show_output("Workspace reset to initial starter files.")
+                self.app.notify("Workspace reset to initial state")
+
+        self.app.push_screen(ConfirmResetModal(cur.get("title", "Lab")), _on_confirm)
 
     def action_hint(self) -> None:
-        hints = self.lab.get("hints", [])
+        cur = self._current_lab()
+        hints = cur.get("hints", [])
         if not hints:
             self.query_one("#lab-hint-out", Static).update("No hints in pack.")
             return
         self.query_one("#lab-hint-out", Static).update(
             f"💡 Hint {self.hint_idx + 1}/{len(hints)}: {hints[self.hint_idx]}")
         self.hint_idx = (self.hint_idx + 1) % len(hints)
+
+    @on(Button.Pressed, ".lab-file-tab-btn")
+    def _file_tab_pressed(self, event: Button.Pressed) -> None:
+        try:
+            btn_id = event.button.id or ""
+            if btn_id.startswith("tab-file-"):
+                new_idx = int(btn_id.split("-")[-1])
+                if new_idx != self.active_file_idx:
+                    self._save_active_file()
+                    self.active_file_idx = new_idx
+                    self._load_active_file_into_editor()
+                    self._update_tab_buttons()
+        except Exception:
+            pass
 
     @on(Button.Pressed, "#lab-run")
     def _run_btn(self) -> None:
@@ -691,18 +1095,28 @@ class LabScreen(_Base):
     def _tests_btn(self) -> None:
         self.action_run_tests()
 
+    @on(Button.Pressed, "#lab-editor")
+    def _editor_btn(self) -> None:
+        self.action_open_editor()
+
+    @on(Button.Pressed, "#lab-reset")
+    def _reset_btn(self) -> None:
+        self.action_reset_workspace()
+
     @on(Button.Pressed, "#lab-hint")
     def _hint_btn(self) -> None:
         self.action_hint()
 
-    @on(Button.Pressed, "#lab-inspect")
-    def _inspect_btn(self) -> None:
-        self.action_inspect_buffer()
+    @on(Button.Pressed, "#lab-prev")
+    def _prev_btn(self) -> None:
+        self.action_prev_lab()
 
-    def action_inspect_buffer(self) -> None:
-        from tui.widgets import ToolchainInspectModal
-        self.app.push_screen(ToolchainInspectModal(self.book, self._code(), lang=self.lab.get("lang", "c")))
+    @on(Button.Pressed, "#lab-next")
+    def _next_btn(self) -> None:
+        self.action_next_lab()
 
     def action_back(self) -> None:
+        self._save_active_file()
         self.app.pop_screen()
+
 

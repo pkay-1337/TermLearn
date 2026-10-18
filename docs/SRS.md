@@ -288,9 +288,9 @@ The following tree **SHALL** exist. Files marked `(gen)` are user/AI-generated, 
 `FR-AI-001`: `prompts/GENERATE.md` **MUST** exist and **MUST** normatively define: fidelity rules, chunking/blocking rules, interaction palette and when-to-use mapping, question-quality bar, lab/test rules, SRS card rules, YAML output envelope (single YAML document in a fenced block, no surrounding prose), and refusal/uncertainty handling.
 `FR-AI-002`: Fidelity: generated exposition **MUST** use only concepts and APIs present in the pasted chapter; external knowledge **MUST NOT** be introduced as normative unless marked `enrichment: true` with a `source_ref` distinct from the book. All code examples taken from the book **MUST** be verbatim unless explicitly marked `adapted: true` with a reason.
 `FR-AI-003`: Blocking: each chapter **MUST** be split into concept-dependency-ordered blocks with exactly one new falsifiable skill per block. A block **MUST NOT** bundle two independent new APIs without justification.
-`FR-AI-004`: Interaction selection **MUST** be content-dependent per block `type` (`model`, `syntax`, `design`, `algorithm`) as mapped in §4.7. Fixed quotas (e.g. always 5 MCQ) **MUST NOT** be required; the AI **SHOULD** choose 2–4 checks per block that best fit the type.
-`FR-AI-005`: Question quality: at least half of `predict`/`mcq` checks per chapter **SHOULD** be conceptual `why`/`why-fails` rather than mere `whether/output-only`, with distractors drawn from authentic bugs (e.g. off-by-one; pilot instances: missing `&`, dangling pointer, format-string mismatch). Every check **MUST** carry a `why` explanation linking back to its block. All questions and checks **MUST** be fully self-contained with complete scenario and code context; the AI **MUST NOT** refer to external questions, exercises, or page numbers in the book.
-`FR-AI-006`: Labs: each chapter with code **SHOULD** include at least one `lab` with `starter_c` (key name stable across languages) ≤ ~80 lines, explicit task, `tests_sh` or `tests` list, 2-second timeout default, 1–3 hints, and `lang` matching the book's toolchain. Labs **MUST** run under the declared toolchain (pilot: compile under `gcc -Wall -std=c99` or the book's stated standard). For languages without a local runner, the AI **MUST** additionally author `packs/<slug>/runner/run` per §4.9 (with `toolchain.runner`, `version_cmd`, and `smoke` vectors). Chapters without executable code **MUST** omit labs rather than invent them.
+`FR-AI-004`: Interaction selection **MUST** be content-dependent per block `type` (`model`, `syntax`, `design`, `algorithm`) as mapped in §4.7. The AI **SHOULD** author 5–10 scaffolded checks per block according to the topic's depth and complexity, choosing interaction kinds that best fit the type.
+`FR-AI-005`: Question quality: at least half of `predict`/`mcq` checks per chapter **SHOULD** be conceptual `why`/`why-fails` rather than mere `whether/output-only`, with distractors drawn from authentic bugs (e.g. off-by-one; pilot instances: missing `&`, dangling pointer, format-string mismatch). Every check **MUST** carry a `why` explanation linking back to its block. All questions and checks **MUST** be 100% self-contained with complete scenario and code context; the AI **MUST NOT** refer to external questions, exercises, example numbers ("Example X.Y"), code box numbers ("Code Box X-Y"), listing numbers ("Listing Z"), or page numbers in the book in either question stems (`q:`) or explanations (`why:`). If code or function behavior is tested, an embedded `code:` block **MUST** be provided directly in the check or question item.
+`FR-AI-006`: Multi-Lab Workspaces: each chapter with executable code **SHOULD** include a `labs: [...]` array (1 to 4 practical, multi-file labs per ISO/IEC/IEEE 29148:2018). Each lab **MUST** provide `id`, `title`, `instruction_md`, `files: [{path, content}, ...]`, language-agnostic `commands: {run, test}`, automated `test_cases: [{name, stdin, expect, expect_exit}, ...]`, and progressive `hints: [...]`. Each lab provisions an isolated workspace directory at `labs/<book>/<chapter>/<lab_id>/`. Commands execute in `cwd = workspace_dir`. Automated verification verifies `commands.test` and input vs. expected output diffing. Starter implementation files **SHALL NOT** provide 100% pre-solved solutions (tests must fail or report missing symbols initially) and **MAY** be blank (`content: ""`) or minimally scaffolded with TODO stubs. Supporting framework files (headers, test runners, drivers) **MUST** be complete. Chapters without executable code **MUST** omit `labs` rather than invent them.
 `FR-AI-007`: The AI **MUST** output exactly one YAML document per chapter conforming to §4.8, inside a single fenced `yaml` block when responding in chat. Surrounding explanation **SHOULD** be outside the fence and **MUST NOT** be required for parsing.
 
 ### 4.3 Feature F6: User interrogation (`prompts/ASK_USER.md`)
@@ -404,7 +404,7 @@ blocks:                        # REQUIRED, >=1
     viz:                       # SHOULD for model; otherwise OPTIONAL
       kind: ascii-memory
       steps: ["...","..."]
-    checks:                    # REQUIRED, >=1 per block
+    checks:                    # REQUIRED, >=1 per block (SHOULD: 5-10 according to topic)
       - kind: predict          # REQUIRED, §4.7 vocabulary: predict|why-fails|mcq|fillblank|order|eipe|choose-better|trace|spot-bug
         q: "..."               # REQUIRED
         code: "..."            # OPTIONAL
@@ -427,13 +427,37 @@ blocks:                        # REQUIRED, >=1
     common_bugs: [...]         # OPTIONAL but RECOMMENDED
 cards:                         # SHOULD, >=3 when chapter introduces durable facts
   - {front: "...", back: "...", concept: "..."}
-lab:                           # SHOULD when chapter has code; else OMIT (never invent)
-  lang: c                      # OPTIONAL, default c; the book's toolchain language
-  title: "..."
-  prompt_md: "..."
-  starter_c: "..."             # key name stable across languages
-  tests_sh: "..."              # OR tests: [...]
-  hints: ["..."]
+quiz:                          # SHOULD, 30-50 questions across levels (intro/core/advanced) in no specific order
+  - kind: mcq                  # same shape as checks; supports code: "...", level: core|intro|advanced
+    level: core
+    q: "..."
+    code: "..."                # OPTIONAL code snippet for question
+    choices: [...]
+    answer: 0
+    why: "..."
+    concept: "..."
+labs:                          # SHOULD when chapter has code; 1-4 multi-file labs per ISO/IEC/IEEE 29148:2018
+  - id: lab1                   # unique lab id (e.g. lab1, lab2)
+    title: "..."               # descriptive pedagogical title
+    instruction_md: "..."      # complete, self-contained markdown requirements
+    files:                     # starter files in workspace labs/<book>/<chapter>/<lab_id>/
+      - path: "component.h"
+        content: "..."
+      - path: "component.c"
+        content: "..."
+      - path: "main.c"
+        content: "..."
+      - path: "test_runner.c"
+        content: "..."
+    commands:                  # language-agnostic commands executed in cwd = workspace_dir
+      run: "gcc -Wall -Wextra -std=c99 component.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 component.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:                # automated input vs expected output assertions with unified diffing
+      - name: "Interactive execution trace"
+        stdin: ""
+        expect: "...\n"
+        expect_exit: 0
+    hints: ["..."]             # progressive hints (general -> specific)
 test:                          # SHOULD; REQUIRED for chapters that gate advancement
   gates: [{needs: [b1,b2], min_quiz: 80}]
   final_checks: [...]          # same shape as block checks

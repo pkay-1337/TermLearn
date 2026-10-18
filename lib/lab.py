@@ -380,6 +380,19 @@ def run(book: str, chapter: str, save_solution_on_test: bool = True):
         c.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, paste YAML to packs/{book}/{chapter}.yaml, then validate.[/yellow]")
         return
     lab = data.get("lab")
+    if not lab and data.get("labs"):
+        first_lab = data["labs"][0]
+        starter = ""
+        for f in first_lab.get("files", []):
+            if f.get("content"):
+                starter = f.get("content")
+                break
+        lab = {
+            "title": first_lab.get("title", "Lab"),
+            "prompt_md": first_lab.get("instruction_md", ""),
+            "starter_c": starter,
+            "hints": first_lab.get("hints", []),
+        }
     if not lab:
         c.print("[yellow]No lab in this chapter pack.[/yellow]")
         return
@@ -455,6 +468,25 @@ def check_lab(book: str, chapter: str, non_interactive=True, packs_root=None):
     import yaml
     from lib.pack import require_chapter
     data = yaml.safe_load(require_chapter(book, chapter, packs_root).read_text(encoding="utf-8"))
+    labs = data.get("labs")
+    if isinstance(labs, list) and labs:
+        from lib import lab_workspace as lw
+        from lib import progress
+        all_passed = True
+        reasons = []
+        for l in labs:
+            lid = l.get("id", "lab1")
+            if progress.is_lab_passed(book, chapter, lid):
+                continue
+            wdir = lw.provision_lab_workspace(book, chapter, l)
+            v = lw.run_lab_verification(wdir, l)
+            if not v["passed"]:
+                all_passed = False
+                reasons.append(f"{lid}: {v.get('summary', 'failed')}")
+        return {
+            "passed": all_passed,
+            "reason": "all labs pass verification" if all_passed else "; ".join(reasons)
+        }
     lab = data.get("lab")
     if not lab:
         return {"passed": None, "reason": "no lab in pack"}

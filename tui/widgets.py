@@ -160,6 +160,49 @@ class ConfirmDeleteModal(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class ConfirmResetModal(ModalScreen[bool]):
+    """Confirmation modal to reset lab workspace files."""
+
+    BINDINGS = [
+        Binding("y", "confirm", "Yes", show=False),
+        Binding("n", "cancel", "No", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("q", "cancel", "Cancel", show=False),
+    ]
+
+    def __init__(self, lab_title: str) -> None:
+        super().__init__()
+        self.lab_title = lab_title
+
+    def compose(self) -> ComposeResult:
+        from textual.containers import Horizontal
+        with Vertical(id="confirm-delete-box"):
+            yield Label("⚠️  Reset Lab Workspace?", id="confirm-delete-title")
+            yield Static(
+                f"Reset workspace files for [bold cyan]{self.lab_title}[/] to initial starter state?\n\n"
+                f"[dim yellow]Any edits made in this lab directory will be overwritten.[/dim yellow]",
+                classes="confirm-delete-body",
+            )
+            with Horizontal(classes="confirm-delete-actions"):
+                yield Button("Cancel (n / Esc)", id="btn-cancel-delete")
+                yield Button("Reset (y)", id="btn-confirm-delete")
+
+    @on(Button.Pressed, "#btn-confirm-delete")
+    def _on_confirm(self) -> None:
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#btn-cancel-delete")
+    def _on_cancel(self) -> None:
+        self.dismiss(False)
+
+    def action_confirm(self) -> None:
+        self.dismiss(True)
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+
+
 class SubgoalCodeView(Static):
     """Renders a code block partitioned into labeled functional subgoals (SPEC-PED-001)."""
 
@@ -323,7 +366,7 @@ class ChoiceCard(Static):
     can_focus = True
 
     class Selected(Message):
-        """Posted when card is selected by click, Enter, or Space."""
+        """Posted when card is selected by click, Enter, Space, or digit keys."""
 
         def __init__(self, index: int) -> None:
             super().__init__()
@@ -335,15 +378,18 @@ class ChoiceCard(Static):
         self.raw_text = text
 
     def compose(self) -> ComposeResult:
-        yield Static(f"({self.index})  {self.raw_text}", classes="choice-card-text")
+        yield Static(f"[{self.index}]  {self.raw_text}", classes="choice-card-text")
 
-    def on_click(self) -> None:
+    def on_click(self, event: events.Click | None = None) -> None:
         self.post_message(self.Selected(self.index - 1))
 
     def on_key(self, event: events.Key) -> None:
         if event.key in ("enter", "space"):
             event.stop()
             self.post_message(self.Selected(self.index - 1))
+        elif event.key in ("1", "2", "3", "4", "5", "6", "7", "8", "9"):
+            event.stop()
+            self.post_message(self.Selected(int(event.key) - 1))
         elif event.key in ("j", "down"):
             event.stop()
             self.screen.focus_next()
@@ -386,9 +432,14 @@ class QuestionWidget(Static):
             self._display_choices = chs
             self._ans_idx = int(raw_ans) if raw_ans is not None else -1
 
+        tr = check.get("trace", {})
+        self._trace_step = 1
+        self._max_trace_step = max((r.get("step", 1) for r in tr.get("rows", [])), default=1)
+
     def compose(self) -> ComposeResult:
         ck = self.check
-        yield Static(f"[{ck.get('kind', '?').upper()}] {ck.get('q', '')}", classes="question-prompt")
+        level_tag = f" · {ck['level'].upper()}" if ck.get("level") else ""
+        yield Static(f"[{ck.get('kind', '?').upper()}{level_tag}] {ck.get('q', '')}", classes="question-prompt")
         if ck.get("code"):
             try:
                 from textual.widgets import Syntax
@@ -396,7 +447,7 @@ class QuestionWidget(Static):
             except Exception:
                 yield Static(ck["code"])
         kind = ck.get("kind")
-        if kind in ("predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug"):
+        if kind in ("predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug") or (kind not in ("order", "fillblank", "trace", "micro-lab") and self._display_choices):
             if kind == "spot-bug" and ck.get("diagnostic_log"):
                 yield Static(f"🚨  Diagnostic Log:\n{ck['diagnostic_log']}", classes="bug-diag-box")
             for i, opt in enumerate(self._display_choices, 1):
@@ -449,17 +500,31 @@ class QuestionWidget(Static):
                 lines.append(" | ".join(str(c) for c in cells))
         return "\n".join(lines)
 
-    @on(Button.Pressed, "#btn-trace-prev")
-    def _trace_prev(self) -> None:
-        if getattr(self, "_trace_step", 1) > 1:
+    def trace_step_prev(self) -> bool:
+        if self.check.get("kind") == "trace" and getattr(self, "_trace_step", 1) > 1:
             self._trace_step -= 1
             self.query_one("#trace-table-view", Static).update(self._render_trace_table())
+            return True
+        return False
 
-    @on(Button.Pressed, "#btn-trace-next")
-    def _trace_next(self) -> None:
-        if getattr(self, "_trace_step", 1) < getattr(self, "_max_trace_step", 1):
+    def trace_step_next(self) -> bool:
+        if self.check.get("kind") == "trace" and getattr(self, "_trace_step", 1) < getattr(self, "_max_trace_step", 1):
             self._trace_step += 1
             self.query_one("#trace-table-view", Static).update(self._render_trace_table())
+            return True
+        return False
+
+    @on(Button.Pressed, "#btn-trace-prev")
+    def _trace_prev(self, event: Button.Pressed | None = None) -> None:
+        if event is not None:
+            event.stop()
+        self.trace_step_prev()
+
+    @on(Button.Pressed, "#btn-trace-next")
+    def _trace_next(self, event: Button.Pressed | None = None) -> None:
+        if event is not None:
+            event.stop()
+        self.trace_step_next()
 
     def _submit_faded_order(self) -> None:
         if self._done:
@@ -495,6 +560,8 @@ class QuestionWidget(Static):
     # -- answering API used by parent screens (buttons, cards AND key aliases) --
     def answer_choice(self, pick: int) -> None:
         if self._done:
+            return
+        if not (0 <= pick < len(self._display_choices)):
             return
         ans = self._ans_idx
         # Highlight selected card

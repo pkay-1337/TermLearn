@@ -36,6 +36,9 @@ def init_db(db: Path | None = None) -> sqlite3.Connection:
       id INTEGER PRIMARY KEY, ts INTEGER, book TEXT, chapter TEXT,
       block TEXT, completed INTEGER DEFAULT 1,
       UNIQUE(book, chapter, block))""")
+    con.execute("""CREATE TABLE IF NOT EXISTS lab_runs(
+      id INTEGER PRIMARY KEY AUTOINCREMENT, ts INTEGER, book TEXT, chapter TEXT,
+      lab_id TEXT, passed INTEGER, output TEXT DEFAULT '', elapsed_ms INTEGER DEFAULT 0)""")
     # migrate pre-concept databases (D-02/03/08): answers.concept, quiz_runs.items
     cols_a = [r[1] for r in con.execute("PRAGMA table_info(answers)").fetchall()]
     if "concept" not in cols_a:
@@ -309,7 +312,7 @@ def wipe_chapter_progress(book: str, chapter: str) -> None:
     if con is None:
         return
     try:
-        for tbl in ("answers", "quiz_runs", "test_runs", "cards", "block_progress", "solutions"):
+        for tbl in ("answers", "quiz_runs", "test_runs", "cards", "block_progress", "solutions", "lab_runs"):
             try:
                 con.execute(f"DELETE FROM {tbl} WHERE book=? AND chapter=?", (book, chapter))
             except Exception:
@@ -317,5 +320,55 @@ def wipe_chapter_progress(book: str, chapter: str) -> None:
         con.commit()
     finally:
         con.close()
+
+
+def record_lab_run(book: str, chapter: str, lab_id: str, passed: bool,
+                   output: str = "", elapsed_ms: int = 0) -> None:
+    """Records the outcome of a lab test execution."""
+    con = init_db()
+    con.execute("INSERT INTO lab_runs(ts,book,chapter,lab_id,passed,output,elapsed_ms) VALUES(?,?,?,?,?,?,?)",
+                (int(time.time()), book, chapter, lab_id, 1 if passed else 0, output, elapsed_ms))
+    con.commit()
+    con.close()
+
+
+record_lab_result = record_lab_run
+
+
+def is_lab_passed(book: str, chapter: str, lab_id: str) -> bool:
+    """Returns True if the lab has been successfully passed."""
+    con = _db_or_none()
+    if con is None:
+        return False
+    try:
+        row = con.execute("SELECT MAX(passed) FROM lab_runs WHERE book=? AND chapter=? AND lab_id=?",
+                          (book, chapter, lab_id)).fetchone()
+        return bool(row and row[0] == 1)
+    finally:
+        con.close()
+
+
+def get_chapter_labs_status(book: str, chapter: str, labs: list[dict]) -> list[dict]:
+    """Batch-fetches pass status for all labs in a chapter."""
+    out = []
+    con = _db_or_none()
+    try:
+        for lb in labs:
+            lid = lb.get("id", "lab1")
+            passed = False
+            if con is not None:
+                row = con.execute("SELECT MAX(passed) FROM lab_runs WHERE book=? AND chapter=? AND lab_id=?",
+                                  (book, chapter, lid)).fetchone()
+                passed = bool(row and row[0] == 1)
+            out.append({
+                "id": lid,
+                "title": lb.get("title", lid),
+                "passed": passed
+            })
+    finally:
+        if con is not None:
+            con.close()
+    return out
+
 
 

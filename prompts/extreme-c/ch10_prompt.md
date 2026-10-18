@@ -1,6 +1,6 @@
 # =============================================================================
 # INSTRUCTIONS FOR AI AGENTS & CODING ASSISTANTS:
-# TARGET OUTPUT FILE: packs/extreme-c/ch12.yaml
+# TARGET OUTPUT FILE: packs/extreme-c/ch10.yaml
 #
 # [MANDATORY DIRECTIVES — READ CAREFULLY BEFORE WRITING A SINGLE LINE]
 # 1. PUT ALL YOUR MIGHT & GO PLUS ULTRA (NO HALF-ASSING):
@@ -26,11 +26,42 @@
 #    Elevate interactivity beyond basic MCQ: author `trace` checks for tricky pointer/state
 #    mutations, `faded: true` Parsons checks for scaffolded syntax construction, `spot-bug`
 #    checks for reading compiler/sanitizer diagnostics, and `subgoals` on complex code blocks.
-# 7. EXECUTION & VALIDATION PROTOCOL:
-#    - Autonomous Agents with Tools: Write/edit directly to `packs/extreme-c/ch12.yaml`.
-#      Then execute: python main.py validate --book extreme-c --chapter ch12 --strict
+# 7. DUAL QUESTION ARCHITECTURE (BLOCK CHECKS VS. MAIN QUIZ):
+#    - Immediate Block Checks (`blocks[].checks`): 5–10 scaffolded checks directly after each block's
+#      explanation (calibrated according to the topic's depth and complexity) to reinforce
+#      the single concept just taught through diverse angles (syntax, state, edge cases, traps).
+#    - Dedicated Chapter Quiz (`quiz:`): 30 to 50 comprehensive, standalone questions in no
+#      specific order spanning mixed difficulty levels (`level: intro | core | advanced`).
+#      Main quiz questions MUST be different from the block checks and test cumulative chapter synthesis.
+#      Questions can and should include `code:` blocks where relevant with code-related problem solving.
+# 8. 100% SELF-CONTAINED QUESTIONS & EXPLANATIONS (ZERO EXTERNAL/BOOK REFERENCES):
+#    - NEVER refer to external book labels, example numbers, code boxes, or listings:
+#      STRICTLY PROHIBITED in BOTH question stems (`q:`) AND explanations (`why:`):
+#      'In Example 7.2...', 'In Code Box 7-6...', 'In Listing 10.1...', 'As seen in Figure 3...', 'Section 4...'.
+#    - The learner is inside a terminal TUI and DOES NOT have the physical book open in front of them!
+#    - MANDATORY: If a question tests the behavior, state changes, return value, or output
+#      of a function or snippet (e.g. `engine_turn_off`, `player_shoot`, constructor logic),
+#      you MUST SHOW THAT CODE DIRECTLY in the question item via `code: |` with `lang: c`!
+#      Never expect the learner to memorize an unseen function's constants, defaults, or internal logic.
+#    - Explanations (`why:`) MUST explain the underlying mechanics, memory transitions, and language
+#      rules directly on their own merits (e.g. 'The guard check if (engine->state == OFF) return; ensures...').
+# 9. LABS ARE PRACTICAL CODING CHALLENGES (`labs: [...]`):
+#    - A lab is an interactive practical exam / problem-solving challenge. The STUDENT MUST DO THE WORK.
+#    - STRICT PROHIBITION: NEVER provide 100% pre-solved, complete solutions in student implementation files!
+#      If the student opens the lab and the code is already completely implemented and passes out of the box,
+#      there is zero learning value and no challenge for the student.
+#    - STARTER FILES CAN BE BLANK OR SCAFFOLDED:
+#      • Files that the student is tasked with creating or implementing CAN BE BLANK (e.g. empty string `content: ""`),
+#        or minimally scaffolded with function stubs (e.g. `return -1;`, `return NULL;`) and `/* TODO: ... */` tasks.
+#      • Supporting framework files (such as headers `.h`, interactive drivers `main.c`, and unit test runners `test_runner.c`)
+#        provide the contract and deterministic assertions so the student's solution can be tested and verified.
+#    - VERIFICATION LIFECYCLE: When initial starter files are tested with `commands.test` or `test_cases`,
+#      the tests MUST initially fail or report missing symbols. Once the student implements the code, tests pass 100%.
+# 10. EXECUTION & VALIDATION PROTOCOL:
+#    - Autonomous Agents with Tools: Write/edit directly to `packs/extreme-c/ch10.yaml`.
+#      Then execute: python main.py validate --book extreme-c --chapter ch10 --strict
 #    - Chat-Only Interfaces: Output in ```yaml``` fenced blocks (or sequential parts) and
-#      direct the user to save to `packs/extreme-c/ch12.yaml`.
+#      direct the user to save to `packs/extreme-c/ch10.yaml`.
 # =============================================================================
 
 
@@ -313,9 +344,14 @@ learning science, cognitive psychology, and computing education research (CER):
   (e.g. "B traps address/value confusion: `&var` is where it lives, not what
   it holds"). A distractor you cannot attach to a named misconception MUST be
   cut — filler options are worse than fewer options.
-- Stems MUST be positively worded and fully self-contained. NEVER refer to
-  questions or exercises in the book — always embed the complete question,
-  scenario, and code context directly into the prompt. Prefer `why`/`why-fails`
+- **Answer Position Randomization (MUST)**: NEVER default all questions or multiple questions in sequence to `answer: 0`. The correct answer MUST be varied and distributed across all valid choice positions (0, 1, 2, and 3) uniformly throughout the chapter blocks. Any pack where 100% or the vast majority of choice checks have `answer: 0` is defective and will be rejected.
+- **Self-Contained Questions & Zero External References (CRITICAL MUST)**:
+  Every question stem (`q:`) in block checks and main quiz questions MUST be 100% self-contained.
+  STRICTLY PROHIBITED in BOTH question stems (`q:`) AND explanations (`why:`): NEVER reference external book examples, code boxes, listings, or figures (e.g. NEVER write "in Example 7.2...", "in Code Box 7-6...", "in Listing 3...", "as seen in Example 1.17...", "in Figure 4...").
+  Learners in a terminal DO NOT have the physical book open in front of them!
+  If a question tests code, behavior, state changes, return value, output, or syntax (e.g. `engine_turn_off`, `player_shoot`, constructors), you MUST EMBED the relevant code snippet directly into the check via `code: |` with `lang: c`, or spell out the complete concrete scenario and type declarations in `q:`. Never expect the student to remember an unseen function's internal constants, default values, or implementation details from memory!
+  Explanations (`why:`) MUST explain the core technical principle, memory mechanics, or language rule directly (e.g. quoting the specific line of code or guard check shown in the question), rather than citing "per Example X.Y" or "in Code Box X-Y".
+- Stems MUST be positively worded. Prefer `why`/`why-fails`
   over `whether`: conceptual questions discriminate; verdict questions do not
   (Brown Rust-book experiment, 62k readers: ask WHY it fails, not WHETHER it compiles).
 - ≥half of choice checks per chapter SHOULD be conceptual (`why-fails`,
@@ -352,6 +388,7 @@ learning science, cognitive psychology, and computing education research (CER):
   (distractors omitted). Distractors MUST be authentic near-misses from the
   chapter (missing `&`, wrong format, off-by-one, swapped operands) — each
   with a `distractor_why` naming the bug class.
+- **Pool Scrambling (MUST)**: In all `order` checks, `lines` MUST NOT be in sequential execution order, and `answer_order` MUST NOT be `[0, 1, 2, ...]`. The lines MUST be author-scrambled so the learner performs deliberate sequencing.
 - Provide `hint` that orients without giving order ("find the line that
   creates storage first"). The block's `why` MUST explain the ordering
   principle (data flow / execution order), so the learner gains a sequencing
@@ -367,17 +404,20 @@ learning science, cognitive psychology, and computing education research (CER):
     faded: true
     q: "Order the lines and fill in the missing allocation size argument:"
     lines:
-      - "car_t* car = (car_t*)malloc(_____);"
-      - "if (!car) return NULL;"
       - "car->speed = 0;"
+      - "car_t* car = (car_t*)malloc(_____);"
       - "return car;"
-    answer_order: [0, 1, 2, 3]
+      - "if (!car) return NULL;"
+      - "free(car);"
+    answer_order: [1, 3, 0, 2]
+    distractor_why:
+      "free(car);": "Premature deallocation destroys the object during construction."
     blanks:
-      - line_idx: 0
+      - line_idx: 1
         token: "_____"
         answer_text: "sizeof(car_t)"
         accepted: ["sizeof(car_t)", "sizeof(*car)"]
-    why: "car_malloc must allocate the byte size of car_t before initializing attributes."
+    why: "car_malloc must allocate the byte size of car_t, verify non-null, initialize attributes, and return the instance."
   ```
 
 ### 3.5 `eipe` — relational answers only (SHOULD for design/algorithm)
@@ -542,13 +582,48 @@ learning science, cognitive psychology, and computing education research (CER):
   practice never teaches (Rohrer; discriminative-contrast). Spacing falls out
   of interleaving for free.]
 
-## 4. Lab + test gates (SHOULD; verifiable)
+### 3.13 Main Chapter Quiz (`quiz:`) vs. Block Checks (`checks:`) (MUST)
 
-- Chapters with code SHOULD include `lab: {title, prompt_md, starter_c,
-  tests_sh|tests, hints[1-3]}` per §3.7 (`starter_c` keeps its key name for
-  schema stability in every language). `tests_sh` MUST NOT need
-  network/GUI/unbounded time; MUST NOT contain destructive commands
-  (examples: `rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs).
+- **Two Distinct Question Arenas**:
+  1. `blocks[].checks`: 5–10 immediate, scaffolded checks per block (calibrated according to the topic's depth and complexity) progressively reinforcing the single concept just taught through diverse angles (syntax, state transitions, edge cases, bug traps).
+  2. `quiz:` (Top-level chapter list): Dedicated 30 to 50 comprehensive quiz questions spanning the entire chapter.
+- **Rules for `quiz:`**:
+  - **Count**: 30 to 50 questions per chapter pack.
+  - **Levels**: Include questions across three difficulty levels via `level: intro | core | advanced`.
+  - **Ordering**: Arrange in NO specific order (mixed difficulty, concept-interleaved) to simulate authentic testing conditions.
+  - **Independence**: Quiz questions MUST be distinct from the block checks — test chapter-wide synthesis, edge cases, combined concepts, and diagnostic discrimination.
+  - **Code Boxes**: Questions can and should include `code:` blocks where relevant (e.g. predicting output, identifying bugs, analyzing stack/heap behavior) with the question prompt directly referencing the snippet.
+  - **Supported Kinds**: Use any valid check kind (`mcq`, `predict`, `why-fails`, `fillblank`, `order`, `eipe`, `choose-better`, `trace`, `spot-bug`).
+  - **Feedback**: Every quiz question MUST have an elaborated `why:` explanation citing the underlying principle and diagnosing distractors.
+
+## 4. Multi-Lab Workspaces + test gates (SHOULD; verifiable)
+
+### 4.1 Labs are Practical Tests — Student Action Required (NO Pre-Solved Code; Files Can Be Blank)
+- **Pedagogical Purpose**: A lab is an interactive practical exam / problem-solving challenge. The student MUST do the work!
+- **Strict Anti-Pattern: NEVER Provide 100% Pre-Solved Solutions**:
+  If the student opens the lab and the code is already completely implemented and passes immediately out of the box, there is zero learning value and no challenge for the student.
+- **Starter Files Can Be Blank or Scaffolded**:
+  - Files that the student is tasked with writing or implementing **MAY BE COMPLETELY BLANK** (e.g. empty string `content: ""`), or scaffolded with function stubs (e.g. `return -1;`, `return NULL;`), struct footprints, and `/* TODO: ... */` tasks.
+  - Supporting framework files (such as headers `.h` / interface definitions, interactive driver harnesses `main.c`, and unit test runners `test_runner.c`) define the contract and deterministic assertions so the student's solution can be compiled, tested, and verified.
+- **Verification Lifecycle**:
+  - When the student first executes `t` (Test) or `r` (Run) on the initial starter files, the tests SHOULD FAIL (displaying compiler errors, failed assertions, or output diffs in the console).
+  - Once the student implements the code in the editor, all assertions and test cases pass 100%.
+
+### 4.2 Multi-Lab Workspace Schema & Rules
+- Chapters with code SHOULD include a `labs: [...]` array (1 to 4 practical, multi-file
+  labs per ISO/IEC/IEEE 29148:2018). Each lab provisions an isolated workspace directory
+  at `labs/<book>/<chapter>/<lab_id>/` and MUST provide:
+  - `id`: unique identifier (`lab1`, `lab2`, etc.)
+  - `title`: descriptive pedagogical title
+  - `instruction_md`: complete, self-contained markdown requirements detailing what the student must implement/fix
+  - `files`: array of starter files (`path` and `content`), e.g. headers (`.h`), implementations (`.c`), drivers (`main.c`), and unit tests (`test_runner.c`)
+  - `commands`: language-agnostic compile/run commands executed in `cwd = workspace_dir`:
+    - `run`: interactive build & run command (e.g. `gcc -Wall -Wextra -std=c99 component.c main.c -o app && ./app`)
+    - `test`: test runner command executing unit test assertions (e.g. `gcc -Wall -Wextra -std=c99 component.c test_runner.c -o test_runner && ./test_runner`)
+  - `test_cases`: input vs. expected output correctness verification array (`name`, `stdin`, `expect`, `expect_exit`). The system executes each test case in the workspace and performs automated unified diffing on mismatch.
+  - `hints`: 1–3 progressive hints (general -> specific).
+- Prohibited in commands (validator scans for these, NFR-SEC-002): destructive commands
+  (`rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs), unbounded waits, or escaping the workspace.
 - Chapters that gate advancement SHOULD include `test: {gates: [{needs:
   [block ids], min_quiz: 80}], final_checks: [...]}` referencing real blocks.
 
@@ -605,6 +680,7 @@ learning science, cognitive psychology, and computing education research (CER):
     exit-0 rule, sandbox prohibitions), `toolchain:` carries `runner`,
     `version_cmd`, `smoke`; C book? No runner file emitted.
 12. Line lengths sane (prose ≤120, code ≤80)?
+13. Dedicated top-level `quiz:` stanza authored with 30–50 standalone questions across levels (intro/core/advanced) in no specific order, including code boxes where relevant, distinct from block checks?
 
 
 ---
@@ -613,20 +689,24 @@ learning science, cognitive psychology, and computing education research (CER):
 # The AI MUST ask these BEFORE emitting YAML. MUST NOT emit final YAML until
 # the user answers or says `use defaults`.
 #
-# IMPORTANT: When authoring quizzes, checks, and questions:
-# 1. NEVER refer to questions or exercises in the book (e.g. never say "refer to question 3 in book").
-#    Always put the whole question with complete, self-contained context and code.
+# 1. 100% SELF-CONTAINED QUESTIONS & EXPLANATIONS: NEVER refer to external book examples, code boxes, listings, figures, or exercises in questions OR explanations
+#    (e.g. NEVER write "In Example 7.2...", "In Code Box 7-6...", "In Listing 3...", "Refer to question 4 in book").
+#    The student is studying in a terminal and does not have the book. Always embed the complete code
+#    snippet directly in `code: |` with `lang: c` or write out the entire concrete scenario in `q:`.
+#    If a question tests what a function does or its return value, SHOW THE FUNCTION CODE directly in the question.
+#    Explanations (`why:`) must explain the underlying mechanics directly, never saying "In Code Box X-Y...".
 # 2. NEVER worry about YAML length — multi-turn generation across sequential steps is supported.
 # 3. Always include thorough, line-by-line explanations for every code block and reveal the Notional Machine.
 # 4. Put all your might and go Plus Ultra — zero half-assing, no placeholders.
+# 5. Author 5–10 scaffolded checks per block according to topic, plus 30–50 dedicated questions under top-level 'quiz:' spanning mixed difficulty levels in no specific order, separate from immediate block checks, including code boxes where relevant.
 
 Ask (compact, one message, numbered):
 
 1. **Level** — novice / comfortable-in-C / experienced? (affects depth of
    `explain_md` and whether `model` blocks get extra `viz` steps.)
    Default: comfortable-in-C.
-2. **Depth vs speed** — deep (more blocks, ≥3 checks each) or fast (fewer
-   blocks, 1-2 checks each) or balanced (2 blocks per major concept)? Default: deep.
+2. **Depth vs speed** — deep (more blocks, 5–10 checks each according to topic) or fast (fewer
+   blocks, 3–5 checks each) or balanced (2 blocks per major concept)? Default: deep.
    *(Note: YAML length is unlimited — multi-turn / multi-step generation is fully supported
    so no concepts or code explanations are ever rushed or cut short).*
 3. **Prioritize / skip** — which sections/examples of this chapter matter most?
@@ -702,7 +782,7 @@ blocks:                        # REQUIRED, >=1
     viz:                       # SHOULD for model; otherwise OPTIONAL
       kind: ascii-memory
       steps: ["...","..."]
-    checks:                    # REQUIRED, >=1 per block
+    checks:                    # REQUIRED, >=1 per block (SHOULD: 5-10 according to topic)
       - kind: predict          # REQUIRED, §4.7 vocabulary: predict|why-fails|mcq|fillblank|order|eipe|choose-better|trace|spot-bug
         q: "..."               # REQUIRED
         code: "..."            # OPTIONAL
@@ -725,13 +805,37 @@ blocks:                        # REQUIRED, >=1
     common_bugs: [...]         # OPTIONAL but RECOMMENDED
 cards:                         # SHOULD, >=3 when chapter introduces durable facts
   - {front: "...", back: "...", concept: "..."}
-lab:                           # SHOULD when chapter has code; else OMIT (never invent)
-  lang: c                      # OPTIONAL, default c; the book's toolchain language
-  title: "..."
-  prompt_md: "..."
-  starter_c: "..."             # key name stable across languages
-  tests_sh: "..."              # OR tests: [...]
-  hints: ["..."]
+quiz:                          # SHOULD, 30-50 questions across levels (intro/core/advanced) in no specific order
+  - kind: mcq                  # same shape as checks; supports code: "...", level: core|intro|advanced
+    level: core
+    q: "..."
+    code: "..."                # OPTIONAL code snippet for question
+    choices: [...]
+    answer: 0
+    why: "..."
+    concept: "..."
+labs:                          # SHOULD when chapter has code; 1-4 multi-file labs per ISO/IEC/IEEE 29148:2018
+  - id: lab1                   # unique lab id (e.g. lab1, lab2)
+    title: "..."               # descriptive pedagogical title
+    instruction_md: "..."      # complete, self-contained markdown requirements
+    files:                     # starter files in workspace labs/<book>/<chapter>/<lab_id>/
+      - path: "component.h"
+        content: "..."
+      - path: "component.c"
+        content: "..."
+      - path: "main.c"
+        content: "..."
+      - path: "test_runner.c"
+        content: "..."
+    commands:                  # language-agnostic commands executed in cwd = workspace_dir
+      run: "gcc -Wall -Wextra -std=c99 component.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 component.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:                # automated input vs expected output assertions with unified diffing
+      - name: "Interactive execution trace"
+        stdin: ""
+        expect: "...\n"
+        expect_exit: 0
+    hints: ["..."]             # progressive hints (general -> specific)
 test:                          # SHOULD; REQUIRED for chapters that gate advancement
   gates: [{needs: [b1,b2], min_quiz: 80}]
   final_checks: [...]          # same shape as block checks
@@ -792,961 +896,826 @@ a runner that breaks the protocol fails validation like a broken pack.
 
 ---
 
-# CHAPTER ch12 OF extreme-c (3 part(s))
-# TARGET FILE DESTINATION: packs/extreme-c/ch12.yaml
-# Process: answer ASK_USER questions first, then emit/write YAML to `packs/extreme-c/ch12.yaml`.
+# CHAPTER ch10 OF extreme-c (3 part(s))
+# TARGET FILE DESTINATION: packs/extreme-c/ch10.yaml
+# Process: answer ASK_USER questions first, then emit/write YAML to `packs/extreme-c/ch10.yaml`.
 
 
 ## part 1/3
 
-# Chapter 0 9
+# Chapter 07
 
-<!-- source: Text/abstraction_and_oop_in_cplusplus.xhtml | spine-id: abstraction_and_oop_in_cplusplus.xhtml | chapter: ch12 -->
+<!-- source: Text/composition_and_aggregation.xhtml | spine-id: composition_and_aggregation.xhtml | chapter: ch10 -->
 
-# Chapter 0 9
+# Chapter 07
 
-# Abstraction and OOP in C++
+# Composition and Aggregation
 
-This is the final chapter on OOP in C. In this chapter, we are going to cover the remaining topics and introduce you to a new programming paradigm. In addition, we explore C++ and look at how it implements object-oriented concepts behind the scenes.
+In the previous chapter, we talked about encapsulation and information hiding. In this chapter, we continue with object orientation in C and we'll discuss the various relationships that can exist between two classes. Eventually, this will allow us to expand our object model and express the relations between objects as part of the upcoming chapters.
 
-As part of this chapter, we will cover the following topics:
+As part of this chapter, we discuss:
 
-- Firstly, we discuss the Abstraction. This continues our discussion regarding inheritance and polymorphism and will be the last topic that we cover as part of OOP in C. We show how abstraction helps us in designing object models that have the maximum extendibility and the minimum dependencies between its various components.
-- We talk about how object-oriented concepts have been implemented in a famous C++ compiler, `g++` in this case. As part of this, we see that how close the approaches that we have discussed so far are in accordance with the approaches that `g++` has taken to provide the same concepts.
+- Types of relations that can exist between two objects and their corresponding classes: We will talk about to-have and to-be relationships, but our focus will be on to-have relations in this chapter.
+- Composition as our first to-have relation: An example will be given to demonstrate a real composition relationship between two classes. Using the given example, we explore the memory structure which we usually have in case of composition.
+- Aggregation as the second to-have relation: It is similar to composition since both of them address a to-have relationship. But they are different. We will give a separate complete example to cover an aggregation case. The difference among aggregation and composition will shine over the memory layout associated with these relationships.
 
-Let's start the chapter by talking about abstraction.
+This is the second of the four chapters covering OOP in C. The to-be relationship, which is also called inheritance, will be covered in the next chapter.
 
-# Abstraction
+# Relations between classes
 
-Abstraction can have a very general meaning in various fields of science and engineering. But in programming, and especially in OOP, abstraction essentially deals with abstract data types. In class-based object orientation, abstract data types are the same as abstract classes. Abstract classes are special classes that we cannot create an object from; they are not ready or complete enough to be used for object creation. So, why do we need to have such classes or data types? This is because when we work with abstract and general data types, we avoid creating strong dependencies between various parts of code.
+An object model is a set of related objects. The number of relations can be many, but there are a few relationship types that can exist between two objects. Generally, there are two categories of relationships found between objects (or their corresponding classes): to-have relationships and to-be relationships.
 
-As an example, we can have the following relationships between the Human and Apple classes:
+We'll explore to-have relationships in depth in this chapter, and we'll cover to-be relationships in the next chapter. In addition, we will also see how the relationships between various objects can lead to relationships between their corresponding classes. Before dealing with that, we need to be able to distinguish between a class and an object.
 
-An object of the Human class eats an object of the Apple class.
+# Object versus class
 
-An object of the Human class eats an object of the Orange class.
+If you remember from the previous chapter, we have two approaches for constructing objects. One approach is prototype-based and the other is class-based.
 
-If the classes that an object from the Human class can eat were expanded to more than just Apple and Orange, we would need to add more relations to the Human class. Instead, though, we could create an abstract class called Fruit that is the parent of both Apple and Orange classes, and we could set the relation to be between Human and Fruit only. Therefore, we can turn our preceding two statements into one:
+In the prototype-based approach, we construct an object either empty (without any attribute or behavior), or we clone it from an existing object. In this context, instance and object mean the same thing. So, the prototype-based approach can be read as the object-based approach; an approach that begins from empty objects instead of classes.
 
-An object of the Human class eats an object from a subtype of the Fruit class.
+In the class-based approach, we cannot construct an object without having a blueprint that is often called a class. So, we should start from a class. And then, we can instantiate an object from it. In the previous chapter, we explained the implicit encapsulation technique that defines a class as a set of declarations put in a header file. We also gave some examples showing how this works in C.
 
-The Fruit class is abstract because it lacks information about shape, taste, smell, color, and many more attributes of a specific fruit. Only when we have an apple or an orange do we know the exact values of the different attributes. The Apple and Orange classes are said to be concrete types.
+Now, as part of this section, we want to talk more about the differences between a class and an object. While the differences seem to be trivial, we want to dive deeper and study them carefully. We begin by giving an example.
 
-We can even add more abstraction. The Human class can eat Salad or Chocolate as well. So, we can say:
+Suppose that we define a class, `Person`. It has the following attributes: `name`, `surname`, and `age`. We won't talk about the behaviors because the differences usually come from the attributes, and not the behaviors.
 
-An object of the Human type eats an object from a subtype of the Eatable class.
-
-As you can see, the abstraction level of Eatable is even higher than that of Fruit. Abstraction is a great technique for designing an object model that has minimal dependency on concrete types and allows the maximum future extension to the object model when more concrete types are introduced to the system.
-
-Regarding the preceding example, we could also add further abstraction by using the fact that Human is an Eater. Then, we could make our statement even more abstract:
-
-An object from a subtype of the Eater class eats an object from a subtype of the Eatable class.
-
-We can continue to abstract everything in an object model and find abstract data types that are more abstract than the level we need to solve our problem. This is usually called over-abstraction. It happens when you try to create abstract data types that have no real application, either for your current or your future needs. This should be avoided at all costs because abstraction can cause problems, despite all the benefits it provides.
-
-A general guide regarding the amount of abstraction that we need can be found as part of the abstraction principle. I got the following quote from its Wikipedia page, https://en.wikipedia.org/wiki/Abstraction_principle_(computer_programming). It simply states:
-
-Each significant piece of functionality in a program should be implemented in just one place in the source code. Where similar functions are carried out by distinct pieces of code, it is generally beneficial to combine them into one by abstracting out the varying parts.
-
-While at first glance you may not see any sign of object orientation or inheritance in this statement, by giving some further thought to it you will notice that what we did with inheritance was based on this principle. Therefore, as a general rule, whenever you don't expect to have variations in a specific logic, there is no need to introduce abstraction at that point.
-
-In a programming language, inheritance and polymorphism are two capabilities that are required in order to create abstraction. An abstract class such as Eatable is a supertype in relation to its concrete classes, such as Apple, and this is accomplished by inheritance.
-
-Polymorphism also plays an important role. There are behaviors in an abstract type that cannot have default implementation at that abstraction level. For example, taste as an attribute implemented using a behavior function such as `eatable_get_taste` as part of the Eatable class cannot have an exact value when we are talking about an Eatable object. In other words, we cannot create an object directly from the Eatable class if we don't know how to define the `eatable_get_taste` behavior function.
-
-The preceding function can only be defined when the child class is concrete enough. For example, we know that Apple objects should return sweet for their taste (we've assumed here that all apples are sweet). This is where polymorphism helps. It allows a child class to override its parent's behaviors and return the proper taste, for example.
-
-If you remember from the previous chapter, the behavior functions that can be overridden by child classes are called virtual functions. Note that it is possible that a virtual function doesn't have any definition at all. Of course, this makes the owner class abstract.
-
-By adding more and more abstraction, at a certain level, we reach classes that have no attributes and contain only virtual functions with no default definitions. These classes are called interfaces. In other words, they expose functionalities but they don't offer any implementation at all, and they are usually used to create dependencies between various components in a software project. As an example, in our preceding examples, the Eater and Eatable classes are interfaces. Note that, just like abstract classes, you must not create an object from an interface. The following code shows why this cannot be done in a C code.
-
-The following code box is the equivalent code written for the preceding interface Eatable in C using the techniques we introduced in the previous chapter to implement inheritance and polymorphism:
-
-typedef enum {SWEET, SOUR} taste_t;
-
-// Function pointer type
-
-typedef taste_t (*get_taste_func_t)(void*);
+In C, we can write the `Person` class with public attributes as follows:
 
 typedef struct {
 
-// Pointer to the definition of the virtual function
+char name[32];
 
-get_taste_func_t get_taste_func;
+char surname[32];
 
-} eatable_t;
+unsigned int age;
 
-eatable_t* eatable_new() { ... }
+} person_t;
 
-void eatable_ctor(eatable_t* eatable) {
+Code Box 7-1: The Person attribute structure in C
 
-// We don't have any default definition for the virtual function
+And in C++:
 
-eatable->get_taste_func = NULL;
+class Person {
 
-}
+public:
 
-// Virtual behavior function
+std::string name;
 
-taste_t eatable_get_taste(eatable_t* eatable) {
+std::string family;
 
-return eatable->get_taste_func(eatable);
+uint32_t age;
 
-}
+};
 
-Code Box 9-1: The Eatable interface in C
+Code Box 7-2: The Person class's class in C++
 
-As you can see, in the constructor function we have set the `get_taste_func` pointer to `NULL`. So, calling the `eatable_get_taste` virtual function can lead to a segmentation fault. From the coding perspective, that's basically why that we must not create an object from the Eatable interface other than the reasons we know from the definition of the interface and the design point of view.
+The preceding code boxes are identical. In fact, the current discussion can be applied to both C and C++, and even other OOP languages such as Java. A class (or an object template) is a blueprint that only determines the attributes required to be present in every object, and not the values that these attributes might have in one specific object. In fact, each object has its own specific set of values for the same attributes that exist in other objects instantiated from the same class.
 
-The following code box demonstrates how creating an object from the Eatable interface, which is totally possible and allowed from a C point of view, can lead to a crash and must not be done:
+When an object is created based on a class, its memory is allocated first. This allocated memory will be a placeholder for the attribute values. After that, we need to initialize the attribute values with some values. This is an important step, otherwise, the object might have an invalid state after being created. As you've already seen, this step is called construction.
 
-eatable_t *eatable = eatable_new();
+There is usually a dedicated function that performs the construction step, which is called the constructor. The functions `list_init` and `car_construct` in the examples, found in the previous chapter, were constructor functions. It is quite possible that as part of constructing an object, we need to allocate even more memory for resources such as other objects, buffers, arrays, streams, and so on required by that object. The resources owned by the object must have been released before having the owner object freed.
 
-eatable_ctor(eatable);
+We also have another function, similar to the constructor, which is responsible for freeing any allocated resources. It is called the destructor. Similarly, the functions `list_destroy` and `car_destruct` in the examples found in the previous chapter were destructors. After destructing an object, its allocated memory is freed, but before that, all the owned resources and their corresponding memories must be freed.
 
-taste_t taste = eatable_get_taste(eatable); // Segmentation fault!
+Before moving on, let's sum up what we've explained so far:
 
-free(eatable);
+- A class is a blueprint that is used as a map for creating objects.
+- Many objects can be made from the same class.
+- A class determines which attributes should be present in every future object created based on that class. It doesn't say anything about the possible values they can have.
+- A class itself does not consume any memory (except in some programming languages other than C and C++) and only exists at the source level and at compile time. But objects exist at runtime and consume memory.
+- When creating an object, memory allocation happens first. In addition, memory deallocation is the last operation for an object.
+- When creating an object, it should be constructed right after memory allocation. It should be also destructed right before deallocation.
+- An object might be owning some resources such as streams, buffers, arrays, and so on, that must be released before having the object destroyed.
 
-Code Box 9-2: Segmentation fault when creating an object from the Eatable interface and calling a pure virtual function from it
+Now that you know the differences between a class and an object, we can move on and explain the different relationships that can exist between two objects and their corresponding classes. We'll start with composition.
 
-To prevent ourselves from creating an object from an abstract type, we can remove the allocator function from the class's public interface. If you remember the approaches that we took in the previous chapter to implement inheritance in C, by removing the allocator function, only child classes are able to create objects from the parent's attribute structure.
+# Composition
 
-External codes are then no longer able to do so. For instance, in the preceding example, we do not want any external code to be able to create any object from the structure `eatable_t`. In order to do that, we need to have the attribute structure forward declared and make it an incomplete type. Then, we need to remove the public memory allocator `eatable_new` from the class.
+As the term "composition" implies, when an object contains or possesses another object – in other words, it is composed of another object – we say that there is a composition relationship between them.
 
-To summarize what we need to do to have an abstract class in C, you need to nullify the virtual function pointers that are not meant to have a default definition at that abstraction level. At an extremely high level of abstraction, we have an interface whose all function pointers are null. To prevent any external code from creating objects from abstract types, we should remove the allocator function from the public interface.
+As an example, a car has an engine; a car is an object that contains an engine object. Therefore, the car and engine objects have a composition relationship. There is an important condition that a composition relationship must have: the lifetime of the contained object is bound to the lifetime of the container object.
 
-In the following section, we are going to compare similar object-oriented features in C and C++. This gives us an idea how C++ has been developed from pure C.
+As long as the container object exists, the contained object must exist. But when the container object is about to get destroyed, the contained object must have been destructed first. This condition implies that the contained object is often internal and private to the container.
 
-# Object-oriented constructs in C++
+Some parts of the contained object may be still accessible through the public interface (or behavior functions) of the container class, but the lifetime of the contained object must be managed internally by the container object. If a piece of code can destruct the contained object without destructing the container object, it is a breach of the composition relationship and the relationship is no longer a composition.
 
-In this section, we are going to compare what we did in C and the underlying mechanisms employed in a famous C++ compiler, `g++` in this case, for supporting encapsulation, inheritance, polymorphism, and abstraction.
+The following example, example 7.1, demonstrates the composition relationship between a car object and an engine object.
 
-We want to show that there is a close accordance between the methods by which object-oriented concepts are implemented in C and C++. Note that, from now on, whenever we refer to C++, we are actually referring to the implementation of `g++` as one of the C++ compilers, and not the C++ standard. Of course, the underlying implementations can be different for various compilers, but we don't expect to see a lot of differences. We will also be using `g++` in a 64-bit Linux setup.
+It is composed of five files: two header files, which declare the public interfaces of the `Car` and `Engine` classes; two source files, which contain the implementation of the `Car` and `Engine` classes; and finally, a source file, which contains the `main` function and executes a simple scenario using a car and its engine object.
 
-We are going to use the previously discussed techniques to write an object-oriented code in C, and then we write the same program in C++, before jumping to the final conclusion.
+Note that, in some domains, we can have engine objects outside of the car objects; for example, in mechanical engineering CAD software. So, the type of relationships between the various objects is determined by the problem domain. For the sake of our example, imagine a domain in which engine objects could not exist outside of car objects.
 
-## Encapsulation
+The following code box shows the header file for the `Car` class:
 
-It is difficult to go deep into a C++ compiler and see how it uses the techniques that we've been exploring so far to produce the final executable, but there is one clever trick that we can use to actually see this. The way to do this is to compare the assembly instructions generated for two similar C and C++ programs.
+#ifndef EXTREME_C_EXAMPLES_CHAPTER_7_1_CAR_H
 
-This is exactly what we are going to do to demonstrate that the C++ compiler ends up generating the same assembly instructions as a C program that uses the OOP techniques that we've been discussing in the previous chapters.
+#define EXTREME_C_EXAMPLES_CHAPTER_7_1_CAR_H
 
-Example 9.1 is about two C and C++ programs addressing the same simple object-oriented logic. There is a `Rectangle` class in this example, which has a behavior function for calculating its area. We want to see and compare the generated assembly codes for the same behavior function in both programs. The following code box demonstrates the C version:
+struct car_t;
 
-#include <stdio.h>
+// Memory allocator
+
+struct car_t* car_new();
+
+// Constructor
+
+void car_ctor(struct car_t*);
+
+// Destructor
+
+void car_dtor(struct car_t*);
+
+// Behavior functions
+
+void car_start(struct car_t*);
+
+void car_stop(struct car_t*);
+
+double car_get_engine_temperature(struct car_t*);
+
+#endif
+
+Code Box 7-3 [ExtremeC_examples_chapter7_1_car.h]: The public interface of the Car class
+
+As you see, the preceding declarations have been made in a similar way to what we did for the `List` class in the last example of the previous chapter, example 6.3. One of the differences is that we have chosen a new suffix for the constructor function; `car_new` instead of `car_construct`. The other difference is that we have only declared the attribute structure `car_t`. We have not defined its fields, and this is called a forward declaration. The definition for the structure `car_t` will be in the source file which comes in the code box 7-5. Note that in the preceding header file, the type `car_t` is considered an incomplete type which is not defined yet.
+
+The following code box contains the header file for the `Engine` class:
+
+#ifndef EXTREME_C_EXAMPLES_CHAPTER_7_1_ENGINE_H
+
+#define EXTREME_C_EXAMPLES_CHAPTER_7_1_ENGINE_H
+
+struct engine_t;
+
+// Memory allocator
+
+struct engine_t* engine_new();
+
+// Constructor
+
+void engine_ctor(struct engine_t*);
+
+// Destructor
+
+void engine_dtor(struct engine_t*);
+
+// Behavior functions
+
+void engine_turn_on(struct engine_t*);
+
+void engine_turn_off(struct engine_t*);
+
+double engine_get_temperature(struct engine_t*);
+
+#endif
+
+Code Box 7-4 [ExtremeC_examples_chapter7_1_engine.h]: The public interface of the Engine class
+
+The following code boxes contains the implementations done for the `Car` and `Engine` classes. We begin with the `Car` class:
+
+#include <stdlib.h>
+
+// Car is only able to work with the public interface of Engine
+
+#include "ExtremeC_examples_chapter7_1_engine.h"
 
 typedef struct {
 
-int width;
+// Composition happens because of this attribute
 
-int length;
+struct engine_t* engine;
 
-} rect_t;
+} car_t;
 
-int rect_area(rect_t* rect) {
+car_t* car_new() {
 
-return rect->width * rect->length;
+return (car_t*)malloc(sizeof(car_t));
 
 }
 
-int main(int argc, char** argv) {
+void car_ctor(car_t* car) {
 
-rect_t r;
+// Allocate memory for the engine object
 
-r.width = 10;
+car->engine = engine_new();
 
-r.length = 25;
+// Construct the engine object
 
-int area = rect_area(&r);
+engine_ctor(car->engine);
 
-printf("Area: %d\n", area);
+}
 
+void car_dtor(car_t* car) {
+
+// Destruct the engine object
+
+engine_dtor(car->engine);
+
+// Free the memory allocated for the engine object
+
+free(car->engine);
+
+}
+
+void car_start(car_t* car) {
+
+engine_turn_on(car->engine);
+
+}
+
+void car_stop(car_t* car) {
+
+engine_turn_off(car->engine);
+
+}
+
+double car_get_engine_temperature(car_t* car) {
+
+return engine_get_temperature(car->engine);
+
+}
+
+Code Box 7-5 [ExtremeC_examples_chapter7_1_car.c]: The definition of the Car class
+
+The preceding code box shows how the car has contained the engine. As you see, we have a new attribute as part of the `car_t` attribute structure, and 
 
 
 ## part 2/3
 
-s example, which has a behavior function for calculating its area. We want to see and compare the generated assembly codes for the same behavior function in both programs. The following code box demonstrates the C version:
+the engine object
+
+free(car->engine);
+
+}
+
+void car_start(car_t* car) {
+
+engine_turn_on(car->engine);
+
+}
+
+void car_stop(car_t* car) {
+
+engine_turn_off(car->engine);
+
+}
+
+double car_get_engine_temperature(car_t* car) {
+
+return engine_get_temperature(car->engine);
+
+}
+
+Code Box 7-5 [ExtremeC_examples_chapter7_1_car.c]: The definition of the Car class
+
+The preceding code box shows how the car has contained the engine. As you see, we have a new attribute as part of the `car_t` attribute structure, and it is of the `struct engine_t*` type. Composition happens because of this attribute.
+
+Though the type `struct engine_t*` is still incomplete inside this source file, it can point to an object from a complete `engine_t` type at runtime. This attribute will point to an object that is going to be constructed as part of the `Car` class's constructor, and it will be freed inside the destructor. At both places, the car object exists, and this means that the engine's lifetime is included in the car's lifetime.
+
+The `engine` pointer is private, and no pointer is leaking from the implementation. That's an important note. When you are implementing a composition relationship, no pointer should be leaked out otherwise it causes external code to be able to change the state of the contained object. Just like encapsulation, no pointer should be leaked out when it gives direct access to the private parts of an object. Private parts should always be accessed indirectly via behavior functions.
+
+The `car_get_engine_temperature` function in the code box gives access to the `temperature` attribute of the engine. However, there is an important note regarding this function. It uses the public interface of the engine. If you pay attention, you'll see that the car's private implementation is consuming the engine's public interface.
+
+This means that the car itself doesn't know anything about the implementation details of the engine. This is the way that it should be.
+
+Two objects that are not of the same type, in most cases, must not know about each other's implementation details. This is what information hiding dictates. Remember that the car's behaviors are considered external to the engine.
+
+This way, we can replace the implementation of the engine with an alternative one, and it should work, as long as the new implementation provides definitions for the same public functions declared in the engine's header file.
+
+Now, let's look at the implementation of the `Engine` class:
+
+#include <stdlib.h>
+
+typedef enum {
+
+ON,
+
+OFF
+
+} state_t;
+
+typedef struct {
+
+state_t state;
+
+double temperature;
+
+} engine_t;
+
+// Memory allocator
+
+engine_t* engine_new() {
+
+return (engine_t*)malloc(sizeof(engine_t));
+
+}
+
+// Constructor
+
+void engine_ctor(engine_t* engine) {
+
+engine->state = OFF;
+
+engine->temperature = 15;
+
+}
+
+// Destructor
+
+void engine_dtor(engine_t* engine) {
+
+// Nothing to do
+
+}
+
+// Behavior functions
+
+void engine_turn_on(engine_t* engine) {
+
+if (engine->state == ON) {
+
+return;
+
+}
+
+engine->state = ON;
+
+engine->temperature = 75;
+
+}
+
+void engine_turn_off(engine_t* engine) {
+
+if (engine->state == OFF) {
+
+return;
+
+}
+
+engine->state = OFF;
+
+engine->temperature = 15;
+
+}
+
+double engine_get_temperature(engine_t* engine) {
+
+return engine->temperature;
+
+}
+
+Code Box 7-6 [ExtremeC_examples_chapter7_1_engine.c]: The definition of the Engine class
+
+The preceding code is just using the implicit encapsulation approach for its private implementation, and it is very similar to previous examples. But there is one thing to note about this. As you see, the `engine` object doesn't know that an external object is going to contain it in a composition relationship. This is like the real world. When a company is building engines, it is not clear which engine will go into which car. Of course, we could have kept a pointer to the container `car` object, but in this example, we didn't need to.
+
+The following code box demonstrates the scenario in which we create a `car` object and invoke some of its public API to extract information about the car's engine:
 
 #include <stdio.h>
 
-typedef struct {
+#include <stdlib.h>
 
-int width;
-
-int length;
-
-} rect_t;
-
-int rect_area(rect_t* rect) {
-
-return rect->width * rect->length;
-
-}
+#include "ExtremeC_examples_chapter7_1_car.h"
 
 int main(int argc, char** argv) {
 
-rect_t r;
+// Allocate memory for the car object
 
-r.width = 10;
+struct car_t *car = car_new();
 
-r.length = 25;
+// Construct the car object
 
-int area = rect_area(&r);
+car_ctor(car);
 
-printf("Area: %d\n", area);
+printf("Engine temperature before starting the car: %f\n",
+
+car_get_engine_temperature(car));
+
+car_start(car);
+
+printf("Engine temperature after starting the car: %f\n",
+
+car_get_engine_temperature(car));
+
+car_stop(car);
+
+printf("Engine temperature after stopping the car: %f\n",
+
+car_get_engine_temperature(car));
+
+// Destruct the car object
+
+car_dtor(car);
+
+// Free the memory allocated for the car object
+
+free(car);
 
 return 0;
 
 }
 
-Code Box 9-3 [ExtremeC_examples_chapter9_1.c]: Encapsulation example in C
+Code Box 7-7 [ExtremeC_examples_chapter7_1_main.c]: The main function of example 7.1
 
-And the following code box shows the C++ version of the preceding program:
+To build the preceding example, firstly we need to compile the previous three source files. Then, we need to link them together to generate the final executable object file. Note that the main source file (the source file that contains the `main` function) only depends on the car's public interface. So, when linking, it only needs the private implementation of the `car` object. However, the private implementation of the `car` object relies on the public interface of the engine interface; then, while linking, we need to provide the private implementation of the `engine` object. Therefore, we need to link all three object files in order to have the final executable.
 
-#include <iostream>
+The following commands show how to build the example and run the final executable:
 
-class Rect {
+$ gcc -c ExtremeC_examples_chapter7_1_engine.c -o engine.o
 
-public:
+$ gcc -c ExtremeC_examples_chapter7_1_car.c -o car.o
 
-int Area() {
+$ gcc -c ExtremeC_examples_chapter7_1_main.c -o main.o
 
-return width * length;
+$ gcc engine.o car.o main.o -o ex7_1.out
 
-}
+$ ./ex7_1.out
 
-int width;
+Engine temperature before starting the car: 15.000000
 
-int length;
+Engine temperature after starting the car: 75.000000
 
-};
-
-int main(int argc, char** argv) {
-
-Rect r;
-
-r.width = 10;
-
-r.length = 25;
-
-int area = r.Area();
-
-std::cout << "Area: " << area << std::endl;
-
-return 0;
-
-}
-
-Code Box 9-4 [ExtremeC_examples_chapter9_1.cpp]: Encapsulation example in C++
-
-So, let's generate the assembly codes for the preceding C and C++ programs:
-
-$ gcc -S ExtremeC_examples_chapter9_1.c -o ex9_1_c.s
-
-$ g++ -S ExtremeC_examples_chapter9_1.cpp -o ex9_1_cpp.s
+Engine temperature after stopping the car: 15.000000
 
 $
 
-Shell Box 9-1: Generating the assembly outputs for the C and C++ codes
+Shell Box 7-1: The compilation, linking, and execution of example 7.1
 
-Now, let's dump the `ex9_1_c.s` and `ex9_1_cpp.s` files and look for the definition of the behavior functions. In `ex9_1_c.s`, we should look for the `rect_area` symbol, and in `ex9_1_cpp.s`, we should look for the `_ZN4Rect4AreaEv` symbol. Note that C++ mangles the symbol names, and that's why you need to search for this strange symbol. Name mangling in C++ has been discussed in Chapter 2, Compilation and Linking.
+In this section, we explained one type of relationship that can exist between two objects. In the next section, we'll talk about the next relationship. It shares a similar concept to the composition relationship, but there are some significant differences.
 
-For the C program, the following is the generated assembly for the `rect_area` function:
+# Aggregation
 
-$ cat ex9_1_c.s
+Aggregation also involves a container object that contains another object. The main difference is that in aggregation, the lifetime of the contained object is independent of the lifetime of the container object.
 
-...
+In aggregation, the contained object could be constructed even before the container object is constructed. This is opposite to composition, in which the contained object should have a lifetime shorter than or equal to the container object.
 
-rect_area:
+The following example, example 7.2, demonstrates an aggregation relationship. It describes a very simple game scenario in which a player picks up a gun, fires multiple times, and drops the gun.
 
-.LFB0:
+The `player` object would be a container object for a while, and the `gun` object would be a contained object as long as the player object holds it. The lifetime of the gun object is independent of the lifetime of the player object.
 
-.cfi_startproc
+The following code box shows the header file of the `Gun` class:
 
-pushq %rbp
+#ifndef EXTREME_C_EXAMPLES_CHAPTER_7_2_GUN_H
 
-.cfi_def_cfa_offset 16
+#define EXTREME_C_EXAMPLES_CHAPTER_7_2_GUN_H
 
-.cfi_offset 6, -16
+typedef int bool_t;
 
-movq %rsp, %rbp
+// Type forward declarations
 
-.cfi_def_cfa_register 6
+struct gun_t;
 
-movq %rdi, -8(%rbp)
+// Memory allocator
 
-movq -8(%rbp), %rax
+struct gun_t* gun_new();
 
-movl (%rax), %edx
+// Constructor
 
-movq -8(%rbp), %rax
+void gun_ctor(struct gun_t*, int);
 
-movl 4(%rax), %eax
+// Destructor
 
-imull %edx, %eax
+void gun_dtor(struct gun_t*);
 
-popq %rbp
+// Behavior functions
 
-.cfi_def_cfa 7, 8
+bool_t gun_has_bullets(struct gun_t*);
 
-Ret
+void gun_trigger(struct gun_t*);
 
-.cfi_endproc
+void gun_refill(struct gun_t*);
 
-...
+#endif
 
-$
+Code Box 7-8 [ExtremeC_examples_chapter7_2_gun.h]: The public interface of the Gun class
 
-Shell Box 9-2: The generated assembly code of the rect_area function
+As you see, we have only declared the `gun_t` attribute structure as we have not defined its fields. As we have explained before, this is called a forward declaration and it results in an incomplete type which cannot be instantiated.
 
-The following is the generated assembly instructions for the `Rect::Area` function:
+The following code box shows the header file of the `Player` class:
 
-$ cat ex9_1_cpp.s
+#ifndef EXTREME_C_EXAMPLES_CHAPTER_7_2_PLAYER_H
 
-...
+#define EXTREME_C_EXAMPLES_CHAPTER_7_2_PLAYER_H
 
-_ZN4Rect4AreaEv:
+// Type forward declarations
 
-.LFB1493:
+struct player_t;
 
-.cfi_startproc
+struct gun_t;
 
-pushq %rbp
+// Memory allocator
 
-.cfi_def_cfa_offset 16
+struct player_t* player_new();
 
-.cfi_offset 6, -16
+// Constructor
 
-movq %rsp, %rbp
+void player_ctor(struct player_t*, const char*);
 
-.cfi_def_cfa_register 6
+// Destructor
 
-movq %rdi, -8(%rbp)
+void player_dtor(struct player_t*);
 
-movq -8(%rbp), %rax
+// Behavior functions
 
-movl (%rax), %edx
+void player_pickup_gun(struct player_t*, struct gun_t*);
 
-movq -8(%rbp), %rax
+void player_shoot(struct player_t*);
 
-movl 4(%rax), %eax
+void player_drop_gun(struct player_t*);
 
-imull %edx, %eax
+#endif
 
-popq %rbp
+Code Box 7-9 [ExtremeC_examples_chapter7_2_player.h]: The public interface of the Player class
 
-.cfi_def_cfa 7, 8
+The preceding code box defines the public interface of all player objects. In other words, it defines the public interface of the `Player` class.
 
-Ret
+Again, we have to forward the declaration of the `gun_t` and `player_t` structures. We need to have the `gun_t` type declared since some behavior functions of the `Player` class have arguments of this type.
 
-.cfi_endproc
+The implementation of the `Player` class is as follows:
 
-...
-
-$
-
-Shell Box 9-3: The generated assembly code of the Rect::Area function
-
-Unbelievably, they are exactly the same! I'm not sure how the C++ code turns into the preceding assembly code, but I'm sure that the assembly code generated for the preceding C function is almost, to high degree of accuracy, equivalent to the assembly code generated for the C++ function.
-
-We can conclude from this that the C++ compiler has used a similar approach to that which we used in C, introduced as implicit encapsulation as part of Chapter 6, OOP and Encapsulation, to implement the encapsulation. Like what we did with implicit encapsulation, you can see in Code Box 9-3 that a pointer to the attribute structure is passed to the `rect_area` function as the first argument.
-
-As part of the boldened assembly instructions in both shell boxes, the `width` and `length` variables are being read by adding to the memory address passed as the first argument. The first pointer argument can be found in the `%rdi` register according to System V ABI. So, we can infer that C++ has changed the `Area` function to accept a pointer argument as its first argument, which points to the object itself.
-
-As a final word on encapsulation, we saw how C and C++ are closely related regarding encapsulation, at least in this simple example. Let's see if the same is true regarding inheritance as well.
-
-## Inheritance
-
-Investigating inheritance is easier than encapsulation. In C++, the pointers from a child class can be assigned to the pointers from the parent class. Also, the child class should have access to the private definition of the parent class.
-
-Both of these behaviors imply that C++ is using our first approach to implementing inheritance, which was discussed in the previous chapter, Chapter 8, Inheritance and Polymorphism, along with the second approach. Please refer back to the previous chapter if you need to remind yourself of the two approaches.
-
-However, C++ inheritance seems more complex because C++ supports multiple inheritances that we can't support in our first approach. In this section, we will check the memory layouts of two objects instantiated from two similar classes in C and C++, as demonstrated in example 9.2.
-
-Example 9.2 is about a simple class inheriting from another simple class, both of which have no behavior functions. The C version is as follows:
+#include <stdlib.h>
 
 #include <string.h>
 
-typedef struct {
+#include <stdio.h>
 
-char c;
+#include "ExtremeC_examples_chapter7_2_gun.h"
 
-char d;
-
-} a_t;
+// Attribute structure
 
 typedef struct {
 
-a_t parent;
+char* name;
 
-char str[5];
+struct gun_t* gun;
 
-} b_t;
+} player_t;
 
-int main(int argc, char** argv) {
+// Memory allocator
 
-b_t b;
+player_t* player_new() {
 
-b.parent.c = 'A';
-
-b.parent.d = 'B';
-
-strcpy(b.str, "1234");
-
-// We need to set a break point at this line to see the memory layout.
-
-return 0;
+return (player_t*)malloc(sizeof(player_t));
 
 }
 
-Code Box 9-5 [ExtremeC_examples_chapter9_2.c]: Inheritance example in C
+// Constructor
 
-And the C++ version comes within the following code box:
+void player_ctor(player_t* player, const char* name) {
 
-#include <string.h>
+player->name =
 
-class A {
+(char*)malloc((strlen(name) + 1) * sizeof(char));
 
-public:
+strcpy(player->name, name);
 
-char c;
+// This is important. We need to nullify aggregation pointers
 
-char d;
+// if they are not meant to be set in constructor.
 
-};
-
-class B : public A {
-
-public:
-
-char str[5];
-
-};
-
-int main(int argc, char** argv) {
-
-B b;
-
-b.c = 'A';
-
-b.d = 'B';
-
-strcpy(b.str, "1234");
-
-// We need to set a break point at this line to see the memory layout.
-
-return 0;
+player->gun = NULL;
 
 }
 
-Code Box 9-6 [ExtremeC_examples_chapter9_2.cpp]: Inheritance example in C++
+// Destructor
 
-Firstly, we need to compile the C program and use `gdb` to set a breakpoint on the last line of the `main` function. When the execution pauses, we can examine the memory layout as well as the existing values:
+void player_dtor(player_t* player) {
 
-$ gcc -g ExtremeC_examples_chapter9_2.c -o ex9_2_c.out
-
-$ gdb ./ex9_2_c.out
-
-...
-
-(gdb) b ExtremeC_examples_chapter9_2.c:19
-
-Breakpoint 1 at 0x69e: file ExtremeC_examples_chapter9_2.c, line 19.
-
-(gdb) r
-
-Starting program: .../ex9_2_c.out
-
-Breakpoint 1, main (argc=1, argv=0x7fffffffe358) at ExtremeC_examples_chapter9_2.c:20
-
-20 return 0;
-
-(gdb) x/7c &b
-
-0x7fffffffe261: 65 'A' 66 'B' 49 '1' 50 '2' 51 '3' 52 '4' 0 '\000'
-
-(qdb) c
-
-[Inferior 1 (process 3759) exited normally]
-
-(qdb) q
-
-$
-
-Shell Box 9-4: Running the C version of example 9.2 in gdb
-
-As you can see, we have printed seven characters, starting from the address of `b` object, which are as follows: `'A'`, `'B'`, `'1'`, `'2'`, `'3'`, `'4'`, `'\0'`. Let's do the same for the C++ code:
-
-$ g++ -g ExtremeC_examples_chapter9_2.cpp -o ex9_2_cpp.out
-
-$ gdb ./ex9_2_cpp.out
-
-...
-
-(gdb) b ExtremeC_examples_chapter9_2.cpp:20
-
-Breakpoint 1 at 0x69b: file ExtremeC_examples_chapter9_2.cpp, line 20.
-
-(gdb) r
-
-Starting program: .../ex9_2_cpp.out
-
-Breakpoint 1, main (argc=1, argv=0x7fffffffe358) at ExtremeC_examples_chapter9_2.cpp:21
-
-21 return 0;
-
-(gdb) x/7c &b
-
-0x7fffffffe251: 65 'A' 66 'B' 49 '1' 50 '2' 51 '3' 52 '4' 0 '\000'
-
-(qdb) c
-
-[Inferior 1 (process 3804) exited normally]
-
-(qdb) q
-
-$
-
-Shell Box 9-5: Running the C++ version of example 9.2 in gdb
-
-As you can see in the preceding two shell boxes, the memory layout and the values stored in the attributes are the same. You shouldn't get confused by having the behavior functions and attributes together in a class in C++; they are going to be treated separately from the class. In C++, the attributes, no matter where you put them in a class, are always collected within the same memory block regarding a specific object, and functions will always be independent of the attributes, just as we saw when looking at implicit encapsulation as part of Chapter 6, OOP and Encapsulation.
-
-The previous example demonstrates single inheritance. So, what about multiple inheritance? In the previous chapter, we explained why our first approach to implementing inheritance in C could not support multiple inheritance. We again demonstrate the reason in the following code box:
-
-typedef struct { ... } a_t;
-
-typedef struct { ... } b_t;
-
-typedef struct {
-
-a_t a;
-
-b_t b;
-
-...
-
-} c_t;
-
-c_t c_obj;
-
-a_t* a_ptr = (a_ptr*)&c_obj;
-
-b_t* b_ptr = (b_ptr*)&c_obj;
-
-c_t* c_ptr = &c_obj;
-
-Code Box 9-7: Demonstration of why multiple inheritance cannot work with our proposed first approach for implementing inheritance in C
-
-In the preceding code box, the `c_t` class desires to inherit both `a_t` and `b_t` classes. After declaring the classes, we create the `c_obj` object. In the following lines of preceding code, we create different pointers.
-
-An important note here is that all of these pointers must be pointing to the same address. The `a_ptr` and `c_ptr` pointers can be used safely with any behavior function from the `a_t` and `c_t` classes, but the `b_ptr` pointer is dangerous to use because it is pointing to the a field in the `c_t` class, which is an `a_t` object. Trying to access the fields inside `b_t` through `b_ptr` results in an undefined behavior.
-
-The following code is the correct version of the preceding code, where all pointers can be used safely:
-
-c_t c_obj;
-
-a_t* a_ptr = (a_ptr*)&c_obj;
-
-b_t* b_ptr = (b_ptr*)(&c_obj + sizeof(a_t));
-
-c_t* c_ptr = &c_obj;
-
-Code Box 9-8: Demonstration of how casts should be updated to point to the correct fields
-
-As you can see on the third line in Code Box 9-8, we have added the size of an `a_t` object to the address of `c_obj`; this eventually results in a pointer pointing to the `b` field in `c_t`. Note that casting in C does not do any magic; it is there to convert types and it doesn't modify the transferring value, the memory address in the preceding case. Eventually, after the assignment, the address from the right-hand side would be copied to the left-hand side.
-
-For now, let's see the same example in C++ with a look at example 9.3. Suppose that we have a `D` class that inherits from three different classes, `A`, `B`, and `C`. The following is the code written for example 9.3:
-
-#include <string.h>
-
-class A {
-
-public:
-
-char a;
-
-char b[4];
-
-};
-
-class B {
-
-public:
-
-char c;
-
-char d;
-
-};
-
-class C {
-
-public:
-
-char e;
-
-char f;
-
-};
-
-class D : public A, public B, public C {
-
-public:
-
-char str[5];
-
-};
-
-int main(int argc, char** argv) {
-
-D d;
-
-d.a = 'A';
-
-strcpy(d.b, "BBB");
-
-d.c = 'C';
-
-d.d = 'D';
-
-d.e = 'E';
-
-d.f = 'F';
-
-strcpy(d.str, "1234");
-
-A* ap = &d;
-
-B* bp = &d;
-
-C* cp = &d;
-
-D* dp = &d;
-
-// We need to set a break point at this line.
-
-return 0;
+free(player->name);
 
 }
 
-Code Box 9-9 [ExtremeC_examples_chapter9_3.cpp]: Multiple inheritance in C++
+// Behavior functions
 
-Let's compile the example and run it with `gdb`:
+void player_pickup_gun(player_t* player, struct gun_t* gun) {
 
-$ g++ -g ExtremeC_examples_chapter9_3.cpp -o ex9_3.out
+// After the following line the aggregation relation begins.
 
-$ gdb ./ex9_3.out
+player->gun = gun;
 
-...
+}
 
-(gdb) b ExtremeC_examples_chapter9_3.cpp:40
+void player_shoot(player_t* player) {
 
-Breakpoint 1 at 0x100000f78: file ExtremeC_examples_chapter9_3.cpp, line 40.
+// We need to check if the player has picked up the gun
 
-(gdb) r
+// otherwise, shooting is meaningless
 
-Starting program: .../ex9_3.out
+if (player->gun) {
 
-Breakpoint 1, main (argc=1, argv=0x7fffffffe358) at ExtremeC_examples_chapter9_3.cpp:41
+gun_trigger(player->gun);
 
-41 return 0;
+} else {
 
-(gdb) x/14c &d
+printf("Player wants to shoot but he doesn't have a gun!");
 
-0x7fffffffe25a: 65 'A' 66 'B' 66 'B' 66 'B' 0 '\000' 67 'C' 68 'D' 69 'E'
+exit(1);
 
-0x7fffffffe262: 70 'F' 49 '1' 50 '2' 51 '3' 52 '4' 0 '\000'
+}
 
-(gdb)
+}
 
-$
+void player_drop_gun(player_t* player) {
 
-Shell Box 9-6: Compiling and running example 9.3 in gdb
+// After the following line the aggregation relation
 
-As you can see, the attributes are placed adjacent to each other. This shows that multiple objects of the parent classes are being kept inside the same memory layout of the `d` object. What about the `ap`, `bp`, `cp`, and `dp` pointers? As you can see, in C++, we can cast implicitly when assigning a child pointer to a parent pointer (upcasting).
+// ends between two objects. Note that the object gun
 
-Let's examine the values of these pointers in the current execution:
+// should not be freed since this object is not its
 
-(gdb) print ap
+// owner like composition.
 
-$1 = (A *) 0x7fffffffe25a
+player->gun = NULL;
 
-(gdb) print bp
+}
 
-$2 = (B *) 0x7fffffffe25f
+Code Box 7-10 [ExtremeC_examples_chapter7_2_player.c]: The definition of the Player class
 
-(gdb) print cp
+Inside the `player_t` structure, we declare the pointer attribute `gun` that is going to point to a `gun` object soon. We need to nullify this in the constructor because unlike composition, this attribute is not meant to be set as part of the constructor.
 
-$3 = (C *) 0x7fffffffe261
+If an aggregation pointer is required to be set upon construction, the address of the target object should be passed as an argument to the constructor. Then, this situation is called a mandatory aggregation.
 
-(gdb) print dp
+If the aggregation pointer can be left as null in the constructor, then it is an optional aggregation, as in the preceding code. It is important to nullify the optional aggregation pointers in the constructor.
 
-$4 = (D *) 0x7fffffffe25a
+In the function `player_pickup_gun`, the aggregation relationship begins, and it ends in the function `player_drop_gun` when the player drops the gun.
 
-(gdb)
+Note that we need to nullify the pointer `gun` after dropping the aggregation relationship. Unlike in composition, the container object is not the owner of the contained object. So, it has no control over its lifetime. Therefore, we should not free the gun object in any place inside the player's implementation code.
 
-Shell Box 9-7: Printing the addresses stored in the pointers as part of exa
+In optional aggregation relations, we may not have set the contained object at some point in the program. Therefore, we should be careful while using the aggregation pointer since any access to a pointer that is not set, or a pointer that is `null`, can lead to a segmentation fault.
 
 
 ## part 3/3
 
-`d` object. What about the `ap`, `bp`, `cp`, and `dp` pointers? As you can see, in C++, we can cast implicitly when assigning a child pointer to a parent pointer (upcasting).
+composition, the container object is not the owner of the contained object. So, it has no control over its lifetime. Therefore, we should not free the gun object in any place inside the player's implementation code.
 
-Let's examine the values of these pointers in the current execution:
+In optional aggregation relations, we may not have set the contained object at some point in the program. Therefore, we should be careful while using the aggregation pointer since any access to a pointer that is not set, or a pointer that is `null`, can lead to a segmentation fault. That's basically why in the function `player_shoot`, we check the `gun` pointer is valid. If the aggregation pointer is null, it means that the code using the player object is misusing it. If that's the case, we abort the execution by returning 1 as the exit code of the process.
 
-(gdb) print ap
+The following code is the implementation of the `Gun` class:
 
-$1 = (A *) 0x7fffffffe25a
+#include <stdlib.h>
 
-(gdb) print bp
+typedef int bool_t;
 
-$2 = (B *) 0x7fffffffe25f
-
-(gdb) print cp
-
-$3 = (C *) 0x7fffffffe261
-
-(gdb) print dp
-
-$4 = (D *) 0x7fffffffe25a
-
-(gdb)
-
-Shell Box 9-7: Printing the addresses stored in the pointers as part of example 9.3
-
-The preceding shell box shows that the starting address of the d object, shown as `$4`, is the same as the address being pointed to by ap, shown as `$1`. So, this clearly shows that C++ puts an object of the type A as the first field in the corresponding attribute structure of the D class. Based on the addresses in the pointers and the result we got from the `x` command, an object of the B type and then an object of the C type, are put into the same memory layout belonging to object `d`.
-
-In addition, the preceding addresses show that the cast in C++ is not a passive operation, and it can perform some pointer arithmetic on the transferring address while converting the types. For example, in Code Box 9-9, while assigning the `bp` pointer in the `main` function, five bytes or `sizeof(A)`, are added to the address of `d`. This is done in order to overcome the problem we found in implementing multiple inheritance in C. Now, these pointers can easily be used in all behavior functions without needing to do the arithmetic yourself. As an important note, C casts and C++ casts are different, and you may see different behavior if you assume that C++ casts are as passive as C casts.
-
-Now it's time to look at the similarities between C and C++ in the case of polymorphism.
-
-## Polymorphism
-
-Comparing the underlying techniques for having polymorphism in C and C++ is not an easy task. In the previous chapter, we came up with a simple method for having a polymorphic behavior function in C, but C++ uses a much more sophisticated mechanism to bring about polymorphism, though the basic underlying idea is still the same. If we want to generalize our approach for implementing polymorphism in C, we can do it as the pseudo-code that can be seen in the following code box:
-
-// Typedefing function pointer types
-
-typedef void* (*func_1_t)(void*, ...);
-
-typedef void* (*func_2_t)(void*, ...);
-
-...
-
-typedef void* (*func_n_t)(void*, ...);
-
-// Attribute structure of the parent class
+// Attribute structure
 
 typedef struct {
 
-// Attributes
+int bullets;
 
-...
+} gun_t;
 
-// Pointers to functions
+// Memory allocator
 
-func_1_t func_1;
+gun_t* gun_new() {
 
-func_2_t func_2;
+return (gun_t*)malloc(sizeof(gun_t));
 
-...
-
-func_n_t func_t;
-
-} parent_t;
-
-// Default private definitions for the
-
-// virtual behavior functions
-
-void* __default_func_1(void* parent, ...) { // Default definition }
-
-void* __default_func_2(void* parent, ...) { // Default definition }
-
-...
-
-void* __default_func_n(void* parent, ...) { // Default definition }
+}
 
 // Constructor
 
-void parent_ctor(parent_t *parent) {
+void gun_ctor(gun_t* gun, int initial_bullets) {
 
-// Initializing attributes
+gun->bullets = 0;
 
-...
+if (initial_bullets > 0) {
 
-// Setting default definitions for virtual
-
-// behavior functions
-
-parent->func_1 = __default_func_1;
-
-parent->func_2 = __default_func_2;
-
-...
-
-parent->func_n = __default_func_n;
+gun->bullets = initial_bullets;
 
 }
 
-// Public and non-virtual behavior functions
+}
 
-void* parent_non_virt_func_1(parent_t* parent, ...) { // Code }
+// Destructor
 
-void* parent_non_virt_func_2(parent_t* parent, ...) { // Code }
+void gun_dtor(gun_t* gun) {
 
-...
-
-void* parent_non_virt_func_m(parent_t* parent, ...) { // Code }
-
-// Actual public virtual behavior functions
-
-void* parent_func_1(parent_t* parent, ...) {
-
-return parent->func_1(parent, ...);
+// Nothing to do
 
 }
 
-void* parent_func_2(parent_t* parent, ...) {
+// Behavior functions
 
-return parent->func_2(parent, ...);
+bool_t gun_has_bullets(gun_t* gun) {
 
-}
-
-...
-
-void* parent_func_n(parent_t* parent, ...) {
-
-return parent->func_n(parent, ...);
+return (gun->bullets > 0);
 
 }
 
-Code Box 9-10: Pseudo-code demonstrating how virtual functions can be declared and defined in a C code
+void gun_trigger(gun_t* gun) {
 
-As you can see in the preceding pseudo-code, the parent class has to maintain a list of function pointers in its attribute structure. These function pointers (in the parent class) either point to the default definitions for the virtual functions, or they are null. The pseudo-class defined as part of Code Box 9-10 has `m` non-virtual behavior functions and `n` virtual behavior functions.
-
-Note:
-
-Not all behavior functions are polymorphic. Polymorphic behavior functions are called virtual behavior functions or simply virtual functions. In some languages, such as Java, they are called virtual methods.
-
-Non-virtual functions are not polymorphic, and you never get various behaviors by calling them. In other words, a call to a non-virtual function is a simple function call and it just performs the logic inside the definition and doesn't relay the call to another function. However, virtual functions need to redirect the call to a proper function, set by either the parent or the child constructor. If a child class wants to override some of the inherited virtual functions, it should update the virtual function pointers.
-
-Note:
-
-The `void*` type for the output variables can be replaced by any other pointer type. I used a generic pointer to show that anything can be returned from the functions in the pseudo-code.
-
-The following pseudo-code shows how a child class overrides a few of the virtual functions found in Code Box 9-10:
-
-Include everything related to parent class ...
-
-typedef struct {
-
-parent_t parent;
-
-// Child attributes
-
-...
-
-} child_t;
-
-void* __child_func_4(void* parent, ...) { // Overriding definition }
-
-void* __child_func_7(void* parent, ...) { // Overriding definition }
-
-void child_ctor(child_t* child) {
-
-parent_ctor((parent_t*)child);
-
-// Initialize child attributes
-
-...
-
-// Update pointers to functions
-
-child->parent.func_4 = __child_func_4;
-
-child->parent.func_7 = __child_func_7;
+gun->bullets--;
 
 }
 
-// Child's behavior functions
+void gun_refill(gun_t* gun) {
 
-...
-
-Code Box 9-11: Pseudo-code in C demonstrating how a child class can override some virtual functions inherited from the parent class
-
-As you can see in Code Box 9-11, the child class needs only to update a few pointers in the parent's attribute structure. C++ takes a similar approach. When you declare a behavior function as virtual (using the `virtual` keyword), C++ creates an array of function pointers, pretty similar to the way we did in Code Box 9-10.
-
-As you can see, we added one function pointer attribute for each virtual function, but C++ has a smarter way of keeping these pointers. It just uses an array called a virtual table or vtable. The virtual table is created when an object is about to be created. It is first populated while calling the constructor of the base class, and then as part of the constructor of the child class, just as we've shown in Code Boxes 9-10 and 9-11.
-
-Since the virtual table is only populated in the constructors, calling a polymorphic method in a constructor, either in the parent or in the child class, should be avoided, as its pointer may have not been updated yet and it might be pointing to an incorrect definition.
-
-As our last discussion regarding the underlying mechanisms used for having various object-oriented concepts in C and C++, we are going to talk about abstraction.
-
-## Abstract classes
-
-Abstraction in C++ is possible using pure virtual functions. In C++ if you define a member function as a virtual function and set it to zero, you have declared a pure virtual function. Look at the following example:
-
-enum class Taste { Sweet, Sour };
-
-// This is an interface
-
-class Eatable {
-
-public:
-
-virtual Taste GetTaste() = 0;
-
-};
-
-Code Box 9-12: The Eatable interface in C++
-
-Inside the class `Eatable`, we have a `GetTaste` virtual function that is set to zero. `GetTaste` is a pure virtual function and makes the whole class abstract. You can no longer create objects from the Eatable type, and C++ doesn't allow this. In addition, Eatable is an interface, because all of its member functions are purely virtual. This function can be overridden in a child class.
-
-The following shows a class that is overriding the `GetTaste` function:
-
-enum class Taste { Sweet, Sour };
-
-// This is an interface
-
-class Eatable {
-
-public:
-
-virtual Taste GetTaste() = 0;
-
-};
-
-class Apple : public Eatable {
-
-public:
-
-Taste GetTaste() override {
-
-return Taste::Sweet;
+gun->bullets = 7;
 
 }
 
-};
+Code Box 7-11 [ExtremeC_examples_chapter7_2_gun.c]: The definition of the Gun class
 
-Code Box 9-13: Two child classes implementing the Eatable interface
+The preceding code is straightforward, and it is written in a way that a gun object doesn't know that it will be contained in any object.
 
-Pure virtual functions are remarkably similar to virtual functions. The addresses to the actual definitions are being kept in the virtual table in the same way as virtual functions, but with one difference. The initial values for the pointers of pure virtual functions are null, unlike the pointers of normal virtual functions, which need to point to a default definition while the construction is in progress.
+Finally, the following code box demonstrates a short scenario that creates a `player` object and a `gun` object. Then, the player picks up the gun and fires with it until no ammo is left. After that, the player refills the gun and does the same. Finally, they drop the gun:
 
-Unlike a C compiler, which doesn't know anything about abstract types, a C++ compiler is aware of abstract types and generates a compilation error if you try to create an object from an abstract type.
+#include <stdio.h>
 
-In this section, we took various object-oriented concepts and compared them in C, using the techniques introduced in the past three chapters, and in C++, using the `g++` compiler. We showed that, in most cases, the approaches we employed are in accordance with the techniques that a compiler like `g++` uses.
+#include <stdlib.h>
+
+#include "ExtremeC_examples_chapter7_2_player.h"
+
+#include "ExtremeC_examples_chapter7_2_gun.h"
+
+int main(int argc, char** argv) {
+
+// Create and constructor the gun object
+
+struct gun_t* gun = gun_new();
+
+gun_ctor(gun, 3);
+
+// Create and construct the player object
+
+struct player_t* player = player_new();
+
+player_ctor(player, "Billy");
+
+// Begin the aggregation relation.
+
+player_pickup_gun(player, gun);
+
+// Shoot until no bullet is left.
+
+while (gun_has_bullets(gun)) {
+
+player_shoot(player);
+
+}
+
+// Refill the gun
+
+gun_refill(gun);
+
+// Shoot until no bullet is left.
+
+while (gun_has_bullets(gun)) {
+
+player_shoot(player);
+
+}
+
+// End the aggregation relation.
+
+player_drop_gun(player);
+
+// Destruct and free the player object
+
+player_dtor(player);
+
+free(player);
+
+// Destruct and free the gun object
+
+gun_dtor(gun);
+
+free(gun);
+
+return 0;
+
+}
+
+Code Box 7-12 [ExtremeC_examples_chapter7_2_main.c]: The main function of example 7.2
+
+As you see here, the `gun` and `player` objects are independent of each other. The responsible logic for creating and destroying these objects is the `main` function. At some point in the execution, they form an aggregation relationship and perform their roles, then at another point, they become separated. The important thing in aggregation is that the container object shouldn't alter the lifetime of the contained object, and as long as this rule is followed, no memory issues should arise.
+
+The following shell box shows how to build the example and run the resulting executable file. As you see, the `main` function in Code Box 7-12 doesn't produce any output:
+
+$ gcc -c ExtremeC_examples_chapter7_2_gun.c -o gun.o $ gcc -c ExtremeC_examples_chapter7_2_player.c -o player.o $ gcc -c ExtremeC_examples_chapter7_2_main.c -o main.o $ gcc gun.o player.o main.o -o ex7_2.out $ ./ex7_2.out $
+
+Shell Box 7-2: The compilation, linking, and execution of example 7.2
+
+In an object model created for a real project, the amount of aggregation relationships is usually greater than the number of composition relationships. Also, aggregation relationships are more visible externally because, in order to make an aggregation relationship, some dedicated behavior functions are required, at least in the public interface of the container object, to set and reset the contained object.
+
+As you see in the preceding example, the `gun` and `player` objects are separated from the start. They become related for a short period of time, and then they become separated again. This means that the aggregation relationship is temporary, unlike the composition relationship, which is permanent. This shows that composition is a stronger form of possession (to-have) relationship between objects, while aggregation exhibits a weaker relationship.
+
+Now, a question comes to mind. If an aggregation relationship is temporary between two objects, is it temporary between their corresponding classes? The answer is no. The aggregation relationship is permanent between the types. If there is a small chance that in the future, two objects from two different types become related based on an aggregation relationship, their types should be in the aggregation relationship permanently. This holds for composition as well.
+
+Even a low chance of there being an aggregation relationship should cause us to declare some pointers in the attribute structure of the container object, and this means that the attribute structure is changed permanently. Of course, this is only true for class-based programming languages.
+
+Composition and aggregation both describe the possession of some objects. In other words, these relationships describe a "to-have" or "has-a" situation; a player has a gun, or a car has an engine. Every time you feel that an object possesses another one, it means there should either be a composition relationship or an aggregation relationship between them (and their corresponding classes).
+
+In the next chapter, we'll continue our discussion regarding relationship types by looking at the inheritance or extension relationship.
 
 # Summary
 
-In this chapter, we concluded our exploration of topics in OOP, picking up from abstraction and moving on by showing the similarities between C and C++ regarding object-oriented concepts.
+In this chapter, the following topics have been discussed:
 
-The following topics were discussed as part of this chapter:
+- The possible relationship types between classes and objects.
+- The differences and similarities between a class, an object, an instance, and a reference.
+- Composition, which entails that a contained object is totally dependent on its container object.
+- Aggregation, in which the contained object can live freely without any dependency on its container object.
+- The fact that aggregation can be temporary between objects, but it is defined permanently between their types (or classes).
 
-- Abstract classes and interfaces were initially discussed. Using them, we can have an interface or a partially abstract class, which could be used to create concrete child classes with polymorphic and different behaviors.
-- We then compared the output of the techniques we used in C to bring in some OOP features, with the output of what `g++` produces. This was to demonstrate how similar the results are. We concluded that the techniques that we employed can be very similar in their outcomes.
-- We discussed virtual tables in greater depth.
-- We showed how pure virtual functions (which is a C++ concept but does have a C counterpart) can be used to declare virtual behaviors that have no default definition.
-
-The next chapter is about Unix and its correspondence to C. It will review the history of Unix and the invention of C. It will also explain the layered architecture of a Unix system.
+In the next chapter, we continue to explore OOP, primarily addressing the two further pillars upon which it is based: inheritance and polymorphism.
 

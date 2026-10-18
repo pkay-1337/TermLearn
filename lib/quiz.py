@@ -3,7 +3,7 @@
 import random
 import time
 
-CHOICE_KINDS = {"predict", "why-fails", "mcq", "eipe", "choose-better"}
+CHOICE_KINDS = {"predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug"}
 
 
 def collect_checks(data: dict) -> list[tuple[str, int, dict]]:
@@ -12,6 +12,17 @@ def collect_checks(data: dict) -> list[tuple[str, int, dict]]:
         for i, ck in enumerate(b.get("checks", [])):
             out.append((b.get("id", "?"), i, ck))
     return out
+
+
+def collect_quiz_questions(data: dict) -> list[tuple[str, int, dict]]:
+    """Collect questions for the chapter-level quiz.
+    Uses top-level `quiz` stanza if present and non-empty (dedicated 30-50 questions).
+    Falls back to collect_checks(data) for backward compatibility with older packs.
+    """
+    quiz_items = data.get("quiz")
+    if isinstance(quiz_items, list) and quiz_items:
+        return [("quiz", i, ck) for i, ck in enumerate(quiz_items) if isinstance(ck, dict)]
+    return collect_checks(data)
 
 
 def filter_checks(checks: list[tuple[str, int, dict]],
@@ -47,7 +58,9 @@ def ask_choice(console, ck: dict, rng=None) -> bool:
     chs, ans = _shuffled_choices(ck, rng)
     if ck.get("code"):
         from rich.syntax import Syntax
-        console.print(Syntax(ck["code"], "c", theme="monokai"))
+        console.print(Syntax(ck["code"], ck.get("lang", "c"), theme="monokai"))
+    if ck.get("diagnostic_log"):
+        console.print(f"[bold red]Diagnostic Log:[/bold red]\n{ck['diagnostic_log']}")
     for i, opt in enumerate(chs, 1):
         console.print(f"  {i}. {opt}")
     raw = _k.ask(console, f"answer [1-{len(chs)}] · ? help · q quit: ", "quiz").lower()
@@ -67,7 +80,7 @@ def ask_fillblank(console, ck: dict) -> bool:
     from lib import keys as _k
     if ck.get("code"):
         from rich.syntax import Syntax
-        console.print(Syntax(ck["code"], "c", theme="monokai"))
+        console.print(Syntax(ck["code"], ck.get("lang", "c"), theme="monokai"))
     raw = _k.ask(console, "fill in the blank · ? help · q quit: ", "quiz")
     if raw.lower() == "q":
         raise KeyboardInterrupt
@@ -84,7 +97,7 @@ def ask_microlab(console, ck: dict, book: str | None = None) -> bool:
     expect = ck.get("expect", "")
     if code:
         from rich.syntax import Syntax
-        console.print(Syntax(code, "c", theme="monokai"))
+        console.print(Syntax(code, ck.get("lang", "c"), theme="monokai"))
     console.print("[dim]predict-then-verify: type expected output, r=run it:[/dim]")
     raw = _k.ask(console, "expected output (r runs the code) · ? help: ", "quiz").strip()
     if raw.lower() == "q":
@@ -105,10 +118,11 @@ def ask_microlab(console, ck: dict, book: str | None = None) -> bool:
 def run_check(console, block_id: str, idx: int, ck: dict, rng=None,
               book: str | None = None) -> tuple[bool, int]:
     kind = ck.get("kind")
-    console.print(f"\n[bold][{kind}][/bold] {ck.get('q', '')}")
+    level_tag = f" · {ck['level'].upper()}" if ck.get("level") else ""
+    console.print(f"\n[bold][{kind}{level_tag}][/bold] {ck.get('q', '')}")
     t0 = time.time()
     try:
-        if kind in CHOICE_KINDS:
+        if kind in CHOICE_KINDS or ck.get("choices"):
             ok = ask_choice(console, ck, rng)
         elif kind == "fillblank":
             ok = ask_fillblank(console, ck)
@@ -119,7 +133,7 @@ def run_check(console, block_id: str, idx: int, ck: dict, rng=None,
             ok = ask_microlab(console, ck, book)
         else:
             console.print(f"[red]unsupported kind {kind!r} — skipped[/red]")
-            return False
+            return False, 0
     except KeyboardInterrupt:
         console.print("[dim]quit.[/dim]")
         raise
@@ -128,7 +142,7 @@ def run_check(console, block_id: str, idx: int, ck: dict, rng=None,
 
 
 def run(book: str, chapter: str, sample=None, seed=None, concept=None):
-    """Interactive quiz over chapter checks, shuffled. Persists answers + run score."""
+    """Interactive quiz over chapter checks or dedicated quiz questions, shuffled. Persists answers + run score."""
     import yaml
     from rich.console import Console
     from rich.table import Table
@@ -141,7 +155,7 @@ def run(book: str, chapter: str, sample=None, seed=None, concept=None):
     except FileNotFoundError:
         console.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, paste YAML to packs/{book}/{chapter}.yaml, then validate.[/yellow]")
         return
-    checks = filter_checks(collect_checks(data), concept)
+    checks = filter_checks(collect_quiz_questions(data), concept)
     rng = random.Random(seed) if seed else None
     if rng:
         rng.shuffle(checks)

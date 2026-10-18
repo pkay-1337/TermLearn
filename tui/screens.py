@@ -21,6 +21,9 @@ class _Base(Screen):
     def on_mount(self) -> None:
         self.app.set_help(self.HELP_TITLE, self.HELP_LINES)
 
+    def action_help(self) -> None:
+        self.app.action_help()
+
 
 class HomeScreen(_Base):
     HELP_TITLE = "books"

@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 BOOK_REQUIRED_TOP = {"book", "order", "chapters"}
 CHAPTER_REQUIRED_TOP = {"meta", "objectives", "blocks"}
-CHAPTER_KNOWN_TOP = {"meta", "objectives", "blocks", "cards", "lab", "test", "draft"}
+CHAPTER_KNOWN_TOP = {"meta", "objectives", "blocks", "cards", "lab", "labs", "test", "draft", "quiz"}
 BLOCK_TYPES = {"model", "syntax", "design", "algorithm"}
 CHECK_KINDS = {"predict", "why-fails", "mcq", "fillblank", "order",
                "eipe", "choose-better", "micro-lab",
@@ -115,6 +115,18 @@ def suggest_fixes(data: dict) -> list[str]:
                     hints.append(f"HINT: {cloc}: spot-bug check needs 'diagnostic_log:' with compiler/sanitizer report")
                 if "code" not in ck:
                     hints.append(f"HINT: {cloc}: spot-bug check needs 'code:' snippet")
+    if "quiz" in data:
+        if not isinstance(data["quiz"], list):
+            hints.append("HINT: top-level 'quiz:' must be a list of questions")
+        else:
+            for qi, q in enumerate(data["quiz"]):
+                if not isinstance(q, dict):
+                    continue
+                qloc = f"quiz[{qi}]"
+                if q.get("kind") not in CHECK_KINDS:
+                    hints.append(f"HINT: {qloc}: kind {q.get('kind')!r} invalid — use one of {sorted(CHECK_KINDS)}")
+                if "why" not in q or not str(q.get("why", "")).strip():
+                    hints.append(f"HINT: {qloc}: add 'why:' explanation")
     return hints
 
 
@@ -188,6 +200,90 @@ def validate_book_data(book: dict, fname: str = "book.yaml") -> tuple[list[str],
             if p not in ids:
                 errors.append(_err("BOOK-PREREQ", f"{fname}: chapter {c.get('id')} prereq '{p}' unknown"))
     return errors, warnings
+
+
+def _validate_check_item(ck: dict, cloc: str,
+                         known_chapters: set | None = None,
+                         chapter_blocks: dict[str, set | None] | None = None) -> tuple[list[str], bool, bool]:
+    errors = []
+    if not isinstance(ck, dict) or "kind" not in ck or "q" not in ck:
+        return [_err("CHECK-SHAPE", f"{cloc} needs kind+q")], False, False
+    kind = ck["kind"]
+    if kind not in CHECK_KINDS:
+        return [_err("CHECK-KIND", f"{cloc} unknown kind {kind!r}")], False, False
+    has_why = False
+    is_conceptual = False
+    if "why" not in ck or not str(ck["why"]).strip():
+        errors.append(_err("CHECK-WHY", f"{cloc} missing required 'why' explanation"))
+    else:
+        has_why = True
+        if kind in ("predict", "why-fails", "eipe", "choose-better", "trace", "spot-bug"):
+            is_conceptual = True
+    if "level" in ck and ck["level"] not in ("intro", "core", "advanced"):
+        errors.append(_err("CHECK-LEVEL", f"{cloc} level must be intro|core|advanced"))
+    if kind in CHOICE_KINDS:
+        chs = ck.get("choices")
+        ans = ck.get("answer")
+        if not isinstance(chs, list) or not (2 <= len(chs) <= 5):
+            errors.append(_err("CHECK-CHOICES", f"{cloc} choices must be list of 2..5"))
+        elif not isinstance(ans, int) or not (0 <= ans < len(chs)):
+            errors.append(_err("CHECK-ANSWER", f"{cloc} answer index {ans!r} out of bounds 0..{len(chs)-1}"))
+    if kind == "order":
+        lines = ck.get("lines")
+        ao = ck.get("answer_order")
+        if not isinstance(lines, list) or len(lines) < 2:
+            errors.append(_err("ORDER-LINES", f"{cloc} lines must be list of >=2"))
+        elif (not isinstance(ao, list) or len(ao) < 2 or len(ao) > len(lines)
+              or len(set(ao)) != len(ao)
+              or not all(isinstance(i, int) and 0 <= i < len(lines) for i in ao)):
+            errors.append(_err("ORDER-PERM", f"{cloc} answer_order {ao!r} must list >=2 unique valid indices into lines (distractor lines are simply omitted)"))
+        if ck.get("faded") is True:
+            blanks = ck.get("blanks")
+            if not isinstance(blanks, list) or not blanks:
+                errors.append(_err("FADED-BLANK", f"{cloc} faded order check requires non-empty 'blanks' list"))
+            else:
+                for bi, blk in enumerate(blanks):
+                    if not isinstance(blk, dict) or "line_idx" not in blk:
+                        errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] requires line_idx"))
+                    elif not isinstance(blk["line_idx"], int) or not (0 <= blk["line_idx"] < len(lines or [])):
+                        errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] line_idx out of bounds"))
+                    elif not blk.get("answer_text") and not blk.get("accepted"):
+                        errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] requires answer_text or accepted list"))
+    if kind == "fillblank":
+        if "answer_text" not in ck or not str(ck["answer_text"]).strip():
+            errors.append(_err("FILL-ANSWER", f"{cloc} fillblank needs answer_text"))
+    if kind == "trace":
+        tr = ck.get("trace")
+        if not isinstance(tr, dict) or not isinstance(tr.get("headers"), list) or len(tr["headers"]) < 2:
+            errors.append(_err("TRACE-SHAPE", f"{cloc} trace check requires 'trace.headers' list of >=2"))
+        elif not isinstance(tr.get("rows"), list) or len(tr["rows"]) < 1:
+            errors.append(_err("TRACE-SHAPE", f"{cloc} trace check requires 'trace.rows' list of >=1"))
+        else:
+            tgt = ck.get("target")
+            if not isinstance(tgt, dict) or "row" not in tgt or "col" not in tgt:
+                errors.append(_err("TRACE-TARGET", f"{cloc} trace check requires 'target' with row and col"))
+            elif (not isinstance(tgt["row"], int) or not (0 <= tgt["row"] < len(tr["rows"]))
+                  or not isinstance(tgt["col"], int) or not (0 <= tgt["col"] < len(tr["headers"]))):
+                errors.append(_err("TRACE-TARGET", f"{cloc} trace target row/col out of bounds"))
+            has_txt = bool(str(ck.get("answer_text", "")).strip())
+            chs = ck.get("choices")
+            ans = ck.get("answer")
+            has_choices = isinstance(chs, list) and len(chs) >= 2 and isinstance(ans, int) and (0 <= ans < len(chs))
+            if not has_txt and not has_choices:
+                errors.append(_err("TRACE-ANSWER", f"{cloc} trace check requires answer_text or choices+answer"))
+    if kind == "spot-bug":
+        if not str(ck.get("code", "")).strip():
+            errors.append(_err("BUG-CODE", f"{cloc} spot-bug check requires 'code' snippet"))
+        if not str(ck.get("diagnostic_log", "")).strip():
+            errors.append(_err("BUG-LOG", f"{cloc} spot-bug check requires 'diagnostic_log' report"))
+    if "from_chapter" in ck and known_chapters is not None:
+        if ck["from_chapter"] not in known_chapters:
+            errors.append(_err("INTERLEAVE-REF", f"{cloc} from_chapter {ck['from_chapter']!r} unknown"))
+        elif ("from_block" in ck and chapter_blocks is not None
+              and chapter_blocks.get(ck["from_chapter"]) is not None
+              and ck["from_block"] not in chapter_blocks[ck["from_chapter"]]):
+            errors.append(_err("INTERLEAVE-BLOCK", f"{cloc} from_block {ck['from_block']!r} not in {ck['from_chapter']}"))
+    return errors, is_conceptual, has_why
 
 
 def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = False,
@@ -268,83 +364,12 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
             warnings.append(_err("MODEL-NOVIZ", f"{loc} model block without viz; SHOULD add ascii-memory (MAP-001)"))
         for ci, ck in enumerate(b["checks"]):
             cloc = f"{loc}:checks[{ci}]"
-            if not isinstance(ck, dict) or "kind" not in ck or "q" not in ck:
-                errors.append(_err("CHECK-SHAPE", f"{cloc} needs kind+q"))
-                continue
-            kind = ck["kind"]
-            if kind not in CHECK_KINDS:
-                errors.append(_err("CHECK-KIND", f"{cloc} unknown kind {kind!r}"))
-                continue
-            if "why" not in ck or not str(ck["why"]).strip():
-                errors.append(_err("CHECK-WHY", f"{cloc} missing required 'why' explanation"))
-            else:
+            errs, is_conc, has_why = _validate_check_item(ck, cloc, known_chapters, chapter_blocks)
+            errors.extend(errs)
+            if has_why:
                 why_total += 1
-                if kind in ("predict", "why-fails", "eipe", "choose-better", "trace", "spot-bug"):
+                if is_conc:
                     why_conceptual += 1
-            if kind in CHOICE_KINDS:
-                chs = ck.get("choices")
-                ans = ck.get("answer")
-                if not isinstance(chs, list) or not (2 <= len(chs) <= 5):
-                    errors.append(_err("CHECK-CHOICES", f"{cloc} choices must be list of 2..5"))
-                elif not isinstance(ans, int) or not (0 <= ans < len(chs)):
-                    errors.append(_err("CHECK-ANSWER", f"{cloc} answer index {ans!r} out of bounds 0..{len(chs)-1}"))
-            if kind == "order":
-                lines = ck.get("lines")
-                ao = ck.get("answer_order")
-                if not isinstance(lines, list) or len(lines) < 2:
-                    errors.append(_err("ORDER-LINES", f"{cloc} lines must be list of >=2"))
-                elif (not isinstance(ao, list) or len(ao) < 2 or len(ao) > len(lines)
-                      or len(set(ao)) != len(ao)
-                      or not all(isinstance(i, int) and 0 <= i < len(lines) for i in ao)):
-                    errors.append(_err("ORDER-PERM", f"{cloc} answer_order {ao!r} must list >=2 unique valid indices into lines (distractor lines are simply omitted)"))
-                if ck.get("faded") is True:
-                    blanks = ck.get("blanks")
-                    if not isinstance(blanks, list) or not blanks:
-                        errors.append(_err("FADED-BLANK", f"{cloc} faded order check requires non-empty 'blanks' list"))
-                    else:
-                        for bi, blk in enumerate(blanks):
-                            if not isinstance(blk, dict) or "line_idx" not in blk:
-                                errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] requires line_idx"))
-                            elif not isinstance(blk["line_idx"], int) or not (0 <= blk["line_idx"] < len(lines or [])):
-                                errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] line_idx out of bounds"))
-                            elif not blk.get("answer_text") and not blk.get("accepted"):
-                                errors.append(_err("FADED-BLANK", f"{cloc} blanks[{bi}] requires answer_text or accepted list"))
-            if kind == "fillblank":
-                if "answer_text" not in ck or not str(ck["answer_text"]).strip():
-                    errors.append(_err("FILL-ANSWER", f"{cloc} fillblank needs answer_text"))
-            if kind == "trace":
-                tr = ck.get("trace")
-                if not isinstance(tr, dict) or not isinstance(tr.get("headers"), list) or len(tr["headers"]) < 2:
-                    errors.append(_err("TRACE-SHAPE", f"{cloc} trace check requires 'trace.headers' list of >=2"))
-                elif not isinstance(tr.get("rows"), list) or len(tr["rows"]) < 1:
-                    errors.append(_err("TRACE-SHAPE", f"{cloc} trace check requires 'trace.rows' list of >=1"))
-                else:
-                    tgt = ck.get("target")
-                    if not isinstance(tgt, dict) or "row" not in tgt or "col" not in tgt:
-                        errors.append(_err("TRACE-TARGET", f"{cloc} trace check requires 'target' with row and col"))
-                    elif (not isinstance(tgt["row"], int) or not (0 <= tgt["row"] < len(tr["rows"]))
-                          or not isinstance(tgt["col"], int) or not (0 <= tgt["col"] < len(tr["headers"]))):
-                        errors.append(_err("TRACE-TARGET", f"{cloc} trace target row/col out of bounds"))
-                    has_txt = bool(str(ck.get("answer_text", "")).strip())
-                    chs = ck.get("choices")
-                    ans = ck.get("answer")
-                    has_choices = isinstance(chs, list) and len(chs) >= 2 and isinstance(ans, int) and (0 <= ans < len(chs))
-                    if not has_txt and not has_choices:
-                        errors.append(_err("TRACE-ANSWER", f"{cloc} trace check requires answer_text or choices+answer"))
-            if kind == "spot-bug":
-                if not str(ck.get("code", "")).strip():
-                    errors.append(_err("BUG-CODE", f"{cloc} spot-bug check requires 'code' snippet"))
-                if not str(ck.get("diagnostic_log", "")).strip():
-                    errors.append(_err("BUG-LOG", f"{cloc} spot-bug check requires 'diagnostic_log' report"))
-            for ref in ("from_chapter", "from_block"):
-                pass
-            if "from_chapter" in ck and known_chapters is not None:
-                if ck["from_chapter"] not in known_chapters:
-                    errors.append(_err("INTERLEAVE-REF", f"{cloc} from_chapter {ck['from_chapter']!r} unknown"))
-                elif ("from_block" in ck and chapter_blocks is not None
-                      and chapter_blocks.get(ck["from_chapter"]) is not None
-                      and ck["from_block"] not in chapter_blocks[ck["from_chapter"]]):
-                    errors.append(_err("INTERLEAVE-BLOCK", f"{cloc} from_block {ck['from_block']!r} not in {ck['from_chapter']}"))
 
     # MAP-005 / FR-AI-005 quality gates -> warnings (errors in --strict)
     interleaved = sum(1 for b in blocks if isinstance(b, dict)
@@ -354,7 +379,52 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
     if why_total and why_conceptual < (why_total + 1) // 2:
         warnings.append(_err("WHY-RATIO", f"{fname}: only {why_conceptual}/{why_total} conceptual (predict/why-fails/eipe/choose-better); SHOULD be >=half (FR-AI-005)"))
 
-    # lab checks (language-aware: only C has a local probe in this version)
+    # lab checks (legacy or multi-lab ISO/IEC/IEEE 29148:2018)
+    labs = ch.get("labs")
+    if isinstance(labs, list):
+        from lib.lab_workspace import is_safe_path
+        for li, lb in enumerate(labs):
+            loc = f"{fname}:labs[{li}]"
+            if not isinstance(lb, dict):
+                errors.append(_err("LAB-SHAPE", f"{loc} must be a dictionary"))
+                continue
+            lid = lb.get("id")
+            if not lid or not isinstance(lid, str):
+                errors.append(_err("LAB-ID", f"{loc} missing valid string id"))
+            if not lb.get("title") or not isinstance(lb.get("title"), str):
+                errors.append(_err("LAB-TITLE", f"{loc} missing valid title"))
+            if not lb.get("instruction_md"):
+                errors.append(_err("LAB-INSTRUCTION", f"{loc} missing instruction_md"))
+            files = lb.get("files")
+            if not isinstance(files, list) or not files:
+                errors.append(_err("LAB-FILES", f"{loc} files must be a non-empty list of file specifications"))
+            else:
+                for fi, f in enumerate(files):
+                    if not isinstance(f, dict) or not f.get("path") or not isinstance(f.get("path"), str):
+                        errors.append(_err("LAB-FILE-PATH", f"{loc} files[{fi}] missing valid path string"))
+                    elif not is_safe_path(f["path"]):
+                        errors.append(_err("LAB-FILE-UNSAFE", f"{loc} files[{fi}] contains unsafe relative path {f['path']!r}"))
+            cmds = lb.get("commands")
+            if not isinstance(cmds, dict) or (not cmds.get("run") and not cmds.get("test")):
+                errors.append(_err("LAB-COMMANDS", f"{loc} commands must specify 'run' and/or 'test'"))
+            else:
+                for ckey in ("run", "test"):
+                    cval = cmds.get(ckey, "")
+                    if cval:
+                        for bad in scan_denylist(cval):
+                            errors.append(_err("LAB-DENY", f"{loc} command '{ckey}' contains denylisted {bad!r}"))
+            tcases = lb.get("test_cases")
+            if tcases is not None:
+                if not isinstance(tcases, list):
+                    errors.append(_err("LAB-CASES", f"{loc} test_cases must be a list"))
+                else:
+                    for ti, tc in enumerate(tcases):
+                        if not isinstance(tc, dict) or "expect" not in tc:
+                            errors.append(_err("LAB-CASE-EXPECT", f"{loc} test_cases[{ti}] missing 'expect'"))
+    elif "labs" in ch:
+        errors.append(_err("LABS-TYPE", f"{fname}:labs must be a list of lab definitions"))
+
+    # legacy single lab checks (language-aware: only C has a local probe in this version)
     lab = ch.get("lab")
     if isinstance(lab, dict):
         starter = lab.get("starter_c", "")
@@ -390,6 +460,17 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
         if isinstance(b, dict) and not _rich_renders(str(b.get("explain_md", ""))):
             errors.append(_err("RENDER", f"{fname}:blocks[{bi}] explain_md crashes Rich renderer"))
 
+    # quiz stanza validation
+    if "quiz" in ch:
+        quiz = ch["quiz"]
+        if not isinstance(quiz, list):
+            errors.append(_err("QUIZ-SHAPE", f"{fname}: 'quiz' must be a list of questions"))
+        else:
+            for qi, q in enumerate(quiz):
+                qloc = f"{fname}:quiz[{qi}]"
+                q_errs, _, _ = _validate_check_item(q, qloc, known_chapters, chapter_blocks)
+                errors.extend(q_errs)
+
     if strict:
         # Informational notes MUST NOT fail strict validation: LANG-NOPROBE
         # (no local probe exists) and GUI-NOTE (hosts vary by design).
@@ -401,9 +482,9 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
 
 
 def _has_runnable(data: dict) -> bool:
-    """True if the chapter has anything needing a toolchain (lab, run_expected,
+    """True if the chapter has anything needing a toolchain (lab, labs, run_expected,
     micro-lab code). Language-agnostic."""
-    if isinstance(data.get("lab"), dict):
+    if isinstance(data.get("lab"), dict) or isinstance(data.get("labs"), list):
         return True
     for b in data.get("blocks", []) or []:
         ex = (b or {}).get("example") or {}
@@ -412,6 +493,9 @@ def _has_runnable(data: dict) -> bool:
         for ck in (b or {}).get("checks", []) or []:
             if (ck or {}).get("kind") == "micro-lab" and (ck or {}).get("code"):
                 return True
+    for q in data.get("quiz", []) or []:
+        if (q or {}).get("kind") == "micro-lab" and (q or {}).get("code"):
+            return True
     return False
 
 

@@ -2,20 +2,24 @@
 # The AI MUST ask these BEFORE emitting YAML. MUST NOT emit final YAML until
 # the user answers or says `use defaults`.
 #
-# IMPORTANT: When authoring quizzes, checks, and questions:
-# 1. NEVER refer to questions or exercises in the book (e.g. never say "refer to question 3 in book").
-#    Always put the whole question with complete, self-contained context and code.
+# 1. 100% SELF-CONTAINED QUESTIONS & EXPLANATIONS: NEVER refer to external book examples, code boxes, listings, figures, or exercises in questions OR explanations
+#    (e.g. NEVER write "In Example 7.2...", "In Code Box 7-6...", "In Listing 3...", "Refer to question 4 in book").
+#    The student is studying in a terminal and does not have the book. Always embed the complete code
+#    snippet directly in `code: |` with `lang: c` or write out the entire concrete scenario in `q:`.
+#    If a question tests what a function does or its return value, SHOW THE FUNCTION CODE directly in the question.
+#    Explanations (`why:`) must explain the underlying mechanics directly, never saying "In Code Box X-Y...".
 # 2. NEVER worry about YAML length — multi-turn generation across sequential steps is supported.
 # 3. Always include thorough, line-by-line explanations for every code block and reveal the Notional Machine.
 # 4. Put all your might and go Plus Ultra — zero half-assing, no placeholders.
+# 5. Author 5–10 scaffolded checks per block according to topic, plus 30–50 dedicated questions under top-level 'quiz:' spanning mixed difficulty levels in no specific order, separate from immediate block checks, including code boxes where relevant.
 
 Ask (compact, one message, numbered):
 
 1. **Level** — novice / comfortable-in-C / experienced? (affects depth of
    `explain_md` and whether `model` blocks get extra `viz` steps.)
    Default: comfortable-in-C.
-2. **Depth vs speed** — deep (more blocks, ≥3 checks each) or fast (fewer
-   blocks, 1-2 checks each) or balanced (2 blocks per major concept)? Default: deep.
+2. **Depth vs speed** — deep (more blocks, 5–10 checks each according to topic) or fast (fewer
+   blocks, 3–5 checks each) or balanced (2 blocks per major concept)? Default: deep.
    *(Note: YAML length is unlimited — multi-turn / multi-step generation is fully supported
    so no concepts or code explanations are ever rushed or cut short).*
 3. **Prioritize / skip** — which sections/examples of this chapter matter most?

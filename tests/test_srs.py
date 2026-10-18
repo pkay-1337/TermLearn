@@ -82,10 +82,10 @@ def test_topup_from_mastered(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from lib import progress
     con = progress.init_db()
-    con.execute("INSERT INTO test_runs(ts,book,chapter,passed,detail) VALUES(1,'extreme-c','ch04',1,'quiz=100% lab_ok=True')")
+    con.execute("INSERT INTO test_runs(ts,book,chapter,passed,detail) VALUES(1,'extreme-c','ch10',1,'quiz=100% lab_ok=True')")
     con.commit()
     con.close()
-    assert srs.mastered_topup(["extreme-c"], 2)[0][:2] == ("extreme-c", "ch04")
+    assert srs.mastered_topup(["extreme-c"], 2)[0][:2] == ("extreme-c", "ch10")
     monkeypatch.setattr(sys, "stdin", io.StringIO("f\n4\n" * 30))
     srs.run("extreme-c")  # grades all 5 cards into the future
     monkeypatch.setattr(sys, "stdin", io.StringIO("5\n1\n"))
@@ -95,4 +95,4 @@ def test_topup_from_mastered(tmp_path, monkeypatch, capsys):
     rows = con.execute("SELECT concept FROM answers WHERE book='extreme-c'").fetchall()
     con.close()
     assert "Interleaved review" in out
-    assert [r[0] for r in rows][-2:] == ["macro-expansion", "macro-expansion"]
+    assert [r[0] for r in rows][-2:] == ["class-vs-object-memory", "lifecycle-sequence"]

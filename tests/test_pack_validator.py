@@ -255,3 +255,75 @@ def test_order_checks_are_scrambled():
             assert ans != list(range(len(ans))), f"{ch_slug} order check has unscrambled answer_order: {ans}"
 
 
+def test_quiz_stanza_validation():
+    ch = _load("valid_ch.yaml")
+    ch["quiz"] = [
+        {
+            "kind": "mcq",
+            "level": "core",
+            "q": "What is the result of pointer arithmetic?",
+            "code": "int arr[3] = {10, 20, 30};\nint *p = arr + 1;",
+            "choices": ["Address of arr[1]", "Value 10", "Value 20"],
+            "answer": 0,
+            "why": "arr + 1 yields pointer to index 1.",
+            "concept": "pointer-arithmetic"
+        },
+        {
+            "kind": "fillblank",
+            "level": "intro",
+            "q": "Which operator dereferences a pointer?",
+            "answer_text": "*",
+            "why": "* dereferences a pointer in C."
+        }
+    ]
+    errs, warns = pack.validate_chapter_data(ch, "valid_ch.yaml", known_chapters={"ch01", "ch00"})
+    assert errs == [], errs
+    assert not any("CH-UNKNOWN-KEY" in w for w in warns), warns
+
+    # Malformed quiz: not a list
+    ch["quiz"] = "not a list"
+    errs, _ = pack.validate_chapter_data(ch, "x.yaml")
+    assert any("QUIZ-SHAPE" in e for e in errs), errs
+
+    # Malformed check in quiz
+    ch["quiz"] = [{"kind": "bad-kind", "q": "test"}]
+    errs, _ = pack.validate_chapter_data(ch, "x.yaml")
+    assert any("CHECK-KIND" in e for e in errs), errs
+
+
+def test_labs_stanza_validation():
+    ch = _load("valid_ch.yaml")
+    ch["labs"] = [
+        {
+            "id": "lab1",
+            "title": "Module Initialization",
+            "instruction_md": "Complete module.c.",
+            "files": [
+                {"path": "module.h", "content": "void init(void);\n"},
+                {"path": "module.c", "content": "#include \"module.h\"\nvoid init(void) {}\n"}
+            ],
+            "commands": {
+                "run": "gcc -Wall module.c -o app && ./app",
+                "test": "gcc -Wall module.c -o app && ./app"
+            },
+            "test_cases": [
+                {"name": "Basic Run", "expect": "", "expect_exit": 0}
+            ]
+        }
+    ]
+    errs, warns = pack.validate_chapter_data(ch, "valid_ch.yaml", known_chapters={"ch01", "ch00"})
+    assert errs == [], errs
+
+    # Unsafe file path
+    ch["labs"][0]["files"][0]["path"] = "../secret.txt"
+    errs, _ = pack.validate_chapter_data(ch, "x.yaml")
+    assert any("LAB-FILE-UNSAFE" in e for e in errs), errs
+
+    # Prohibited denylist command
+    ch["labs"][0]["files"][0]["path"] = "module.h"
+    ch["labs"][0]["commands"]["run"] = "rm -rf /"
+    errs, _ = pack.validate_chapter_data(ch, "x.yaml")
+    assert any("LAB-DENY" in e for e in errs), errs
+
+
+

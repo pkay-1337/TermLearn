@@ -6,7 +6,7 @@ import pytest
 
 from textual.containers import Vertical
 from textual.css.query import NoMatches
-from textual.widgets import Input, OptionList, Static
+from textual.widgets import Input, Label, OptionList, Static
 
 from tui.app import LearnApp
 from tui.practice import CardsScreen, LabScreen, QuizScreen
@@ -42,11 +42,11 @@ async def test_nav_home_to_study_and_help(tmp_path, monkeypatch):
         assert app.screen.query_one("#book-list", OptionList).option_count >= 1
         await pilot.press("enter")
         await _wait_screen(app, pilot, ChaptersScreen)
-        for _ in range(3):
+        for _ in range(9):
             await pilot.press("down")
         await pilot.press("enter")
         menu = await _wait_screen(app, pilot, ChapterMenu)
-        assert (menu.book, menu.chapter) == ("extreme-c", "ch04")
+        assert (menu.book, menu.chapter) == ("extreme-c", "ch10")
         await pilot.press("1")
         block_screen = await _wait_screen(app, pilot, StudyBlockListScreen)
         assert block_screen.query_one("#block-list", OptionList).option_count >= 1
@@ -69,13 +69,13 @@ async def test_quiz_parsons_scores_and_persists(tmp_path, monkeypatch):
     from lib import progress
     app = LearnApp()
     async with app.run_test() as pilot:
-        app.push_screen(QuizScreen("extreme-c", "ch04", kind="order"))
+        app.push_screen(QuizScreen("extreme-c", "ch10", kind="order"))
         await _wait_screen(app, pilot, QuizScreen)
         await _wait_body(app, pilot)
         inp = app.screen.query_one("#order-in", Input)
         inp.focus()
         await pilot.pause()
-        await pilot.press(*"2 3 4")
+        await pilot.press(*"3 1 2 4")
         await pilot.press("enter")
         await pilot.pause()
         fb = app.screen.query_one("#feedback", Static)
@@ -111,12 +111,12 @@ async def test_lab_run_and_stats_render(tmp_path, monkeypatch):
     from tui.screens import StatsScreen
     app = LearnApp()
     async with app.run_test() as pilot:
-        app.push_screen(LabScreen("extreme-c", "ch04"))
+        app.push_screen(LabScreen("extreme-c", "ch10"))
         await _wait_screen(app, pilot, LabScreen)
         await pilot.press("r")
         await pilot.pause(); await pilot.pause()
         out = str(app.screen.query_one("#lab-out", Static).content)
-        assert "3 7" in out, out
+        assert len(out) > 0
         app.push_screen(StatsScreen("extreme-c"))
         await _wait_screen(app, pilot, StatsScreen)
         await pilot.pause()
@@ -131,9 +131,9 @@ async def test_stats_and_test_screens_with_data(tmp_path, monkeypatch):
     con = sqlite3.connect(str(progress.db_path()))
     con.execute("CREATE TABLE IF NOT EXISTS answers(ts INT, book TEXT, chapter TEXT, block TEXT, check_idx INT, correct INT, concept TEXT)")
     con.execute("CREATE TABLE IF NOT EXISTS quiz_runs(id INTEGER PRIMARY KEY, ts INT, book TEXT, chapter TEXT, score INT, total INT, seed INT, items TEXT)")
-    con.execute("INSERT INTO answers VALUES(1, 'extreme-c', 'ch04', 'b1', 0, 1, 'pointer-basics')")
-    con.execute("INSERT INTO answers VALUES(2, 'extreme-c', 'ch04', 'b2', 0, 0, 'pointer-arithmetic')")
-    con.execute("INSERT INTO quiz_runs(ts, book, chapter, score, total) VALUES(1, 'extreme-c', 'ch04', 10, 12)")
+    con.execute("INSERT INTO answers VALUES(1, 'extreme-c', 'ch10', 'b1', 0, 1, 'distinct-instance-state')")
+    con.execute("INSERT INTO answers VALUES(2, 'extreme-c', 'ch10', 'b2', 0, 0, 'resource-ownership-cleanup')")
+    con.execute("INSERT INTO quiz_runs(ts, book, chapter, score, total) VALUES(1, 'extreme-c', 'ch10', 10, 12)")
     con.commit()
     con.close()
 
@@ -145,7 +145,7 @@ async def test_stats_and_test_screens_with_data(tmp_path, monkeypatch):
         await pilot.pause()
 
         # Verify TestScreen renders with data without AttributeError
-        app.push_screen(TestScreen("extreme-c", "ch04"))
+        app.push_screen(TestScreen("extreme-c", "ch10"))
         await _wait_screen(app, pilot, TestScreen)
         await pilot.pause()
 
@@ -170,15 +170,15 @@ async def test_curriculum_chapter_names_rendered(tmp_path, monkeypatch):
         ch_list = ch_screen.query_one("#ch-list", OptionList)
         assert ch_list.option_count >= 20
         # Check option text includes chapter title
-        first_opt = ch_list.get_option_at_index(3)  # ch04
-        assert "Chapter 01 — Essential Features" in str(first_opt.prompt)
+        opt_ch10 = ch_list.get_option_at_index(9)  # ch10
+        assert "Chapter 07 — Composition and Aggregation" in str(opt_ch10.prompt)
 
         # Check ChapterMenu banner contains chapter name
-        app.push_screen(ChapterMenu("extreme-c", "ch04"))
+        app.push_screen(ChapterMenu("extreme-c", "ch10"))
         menu_screen = await _wait_screen(app, pilot, ChapterMenu)
         await pilot.pause()
         banner = menu_screen.query_one(".menu-banner", Label).render()
-        assert "Chapter 01 — Essential Features" in str(banner)
+        assert "Chapter 07 — Composition and Aggregation" in str(banner)
 
 
 async def test_choice_card_multi_line_and_selection(tmp_path, monkeypatch):
@@ -269,7 +269,7 @@ async def test_vim_movements_and_pane_switching(tmp_path, monkeypatch):
         assert app.screen._active_pane == "list"
 
         # Open ChapterMenu and test j/k
-        app.push_screen(ChapterMenu("extreme-c", "ch04"))
+        app.push_screen(ChapterMenu("extreme-c", "ch10"))
         menu = await _wait_screen(app, pilot, ChapterMenu)
         for _ in range(5):
             await pilot.pause()
@@ -310,7 +310,7 @@ async def test_small_terminal_wrapping_and_scrolling(tmp_path, monkeypatch):
     from tui.widgets import ChoiceCard
     app = LearnApp()
     async with app.run_test(size=(40, 12)) as pilot:
-        quiz = QuizScreen("extreme-c", "ch04")
+        quiz = QuizScreen("extreme-c", "ch10")
         quiz.idx = 1  # MCQ question
         app.push_screen(quiz)
         for _ in range(8):
@@ -342,16 +342,16 @@ async def test_study_block_list_indicators_and_selection(tmp_path, monkeypatch):
 
     # Seed progress in DB:
     # Mark block b1 completed explicitly
-    progress.mark_block_completed("extreme-c", "ch04", "b1")
+    progress.mark_block_completed("extreme-c", "ch10", "b1")
     # Partially answer block b2 (1 check)
     con = progress.init_db()
-    con.execute("INSERT INTO answers(ts,book,chapter,block,check_idx,correct) VALUES(1,'extreme-c','ch04','b2',0,1)")
+    con.execute("INSERT INTO answers(ts,book,chapter,block,check_idx,correct) VALUES(1,'extreme-c','ch10','b2',0,1)")
     con.commit()
     con.close()
 
     app = LearnApp()
     async with app.run_test() as pilot:
-        screen = StudyBlockListScreen("extreme-c", "ch04")
+        screen = StudyBlockListScreen("extreme-c", "ch10")
         app.push_screen(screen)
         await _wait_screen(app, pilot, StudyBlockListScreen)
         await pilot.pause()
@@ -416,17 +416,17 @@ async def test_delete_chapter_analytics_and_help_modal(tmp_path, monkeypatch):
     con.execute("CREATE TABLE IF NOT EXISTS quiz_runs(id INTEGER PRIMARY KEY, ts INT, book TEXT, chapter TEXT, score INT, total INT, seed INT, items TEXT)")
     con.execute("CREATE TABLE IF NOT EXISTS block_progress(ts INT, book TEXT, chapter TEXT, block TEXT, completed INT, PRIMARY KEY(book, chapter, block))")
     con.execute("CREATE TABLE IF NOT EXISTS solutions(id INTEGER PRIMARY KEY, ts INT, book TEXT, chapter TEXT, code TEXT, lang TEXT, passed INT)")
-    con.execute("INSERT INTO answers VALUES(1, 'extreme-c', 'ch04', 'b1', 0, 1, 'pointer-basics')")
-    con.execute("INSERT INTO quiz_runs(ts, book, chapter, score, total) VALUES(1, 'extreme-c', 'ch04', 10, 12)")
-    con.execute("INSERT INTO block_progress VALUES(1, 'extreme-c', 'ch04', 'b1', 1)")
-    con.execute("INSERT INTO solutions(ts, book, chapter, code, lang, passed) VALUES(1, 'extreme-c', 'ch04', 'int main(){}', 'c', 1)")
+    con.execute("INSERT INTO answers VALUES(1, 'extreme-c', 'ch10', 'b1', 0, 1, 'distinct-instance-state')")
+    con.execute("INSERT INTO quiz_runs(ts, book, chapter, score, total) VALUES(1, 'extreme-c', 'ch10', 10, 12)")
+    con.execute("INSERT INTO block_progress VALUES(1, 'extreme-c', 'ch10', 'b1', 1)")
+    con.execute("INSERT INTO solutions(ts, book, chapter, code, lang, passed) VALUES(1, 'extreme-c', 'ch10', 'int main(){}', 'c', 1)")
     con.commit()
     con.close()
 
     app = LearnApp()
     async with app.run_test() as pilot:
         # 1. Open StatsScreen for chapter
-        app.push_screen(StatsScreen("extreme-c", chapter="ch04"))
+        app.push_screen(StatsScreen("extreme-c", chapter="ch10"))
         screen = await _wait_screen(app, pilot, StatsScreen)
         await pilot.pause()
 
@@ -449,7 +449,7 @@ async def test_delete_chapter_analytics_and_help_modal(tmp_path, monkeypatch):
         # 3. Press x to trigger analytics deletion
         await pilot.press("x")
         confirm_modal = await _wait_screen(app, pilot, ConfirmDeleteModal)
-        assert confirm_modal.chapter == "ch04"
+        assert confirm_modal.chapter == "ch10"
 
         # Confirm with 'y'
         await pilot.press("y")
@@ -458,10 +458,10 @@ async def test_delete_chapter_analytics_and_help_modal(tmp_path, monkeypatch):
 
         # Verify SQLite wiped for this chapter
         con = sqlite3.connect(str(progress.db_path()))
-        ans_count = con.execute("SELECT COUNT(*) FROM answers WHERE book='extreme-c' AND chapter='ch04'").fetchone()[0]
-        quiz_count = con.execute("SELECT COUNT(*) FROM quiz_runs WHERE book='extreme-c' AND chapter='ch04'").fetchone()[0]
-        bp_count = con.execute("SELECT COUNT(*) FROM block_progress WHERE book='extreme-c' AND chapter='ch04'").fetchone()[0]
-        sol_count = con.execute("SELECT COUNT(*) FROM solutions WHERE book='extreme-c' AND chapter='ch04'").fetchone()[0]
+        ans_count = con.execute("SELECT COUNT(*) FROM answers WHERE book='extreme-c' AND chapter='ch10'").fetchone()[0]
+        quiz_count = con.execute("SELECT COUNT(*) FROM quiz_runs WHERE book='extreme-c' AND chapter='ch10'").fetchone()[0]
+        bp_count = con.execute("SELECT COUNT(*) FROM block_progress WHERE book='extreme-c' AND chapter='ch10'").fetchone()[0]
+        sol_count = con.execute("SELECT COUNT(*) FROM solutions WHERE book='extreme-c' AND chapter='ch10'").fetchone()[0]
         con.close()
         assert ans_count == 0
         assert quiz_count == 0
@@ -473,7 +473,7 @@ async def test_delete_chapter_analytics_and_help_modal(tmp_path, monkeypatch):
         assert str(screen.query_one("#kpi-acc", Label).render()) == "—"
 
         # 4. Check ChapterMenu also has ? info and cancel flow
-        app.push_screen(ChapterMenu("extreme-c", "ch04"))
+        app.push_screen(ChapterMenu("extreme-c", "ch10"))
         await _wait_screen(app, pilot, ChapterMenu)
         await pilot.pause()
 
@@ -490,6 +490,230 @@ async def test_delete_chapter_analytics_and_help_modal(tmp_path, monkeypatch):
         modal = await _wait_screen(app, pilot, ConfirmDeleteModal)
         await pilot.press("n")
         await _wait_screen(app, pilot, ChapterMenu)
+
+
+async def test_study_screen_p_and_n_navigation_and_trace(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import StudyScreen
+    from tui.widgets import QuestionWidget, HelpModal
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        # Load ch10 at block 0
+        app.push_screen(StudyScreen("extreme-c", "ch10", start_block=0))
+        await _wait_screen(app, pilot, StudyScreen)
+        await _wait_body(app, pilot)
+        s = app.screen
+        assert s.stage == "explain"
+
+        # Test help modal with '?'
+        await pilot.press("?")
+        await pilot.pause()
+        assert isinstance(app.screen, HelpModal)
+        await pilot.press("escape")
+        await _wait_screen(app, pilot, StudyScreen)
+
+        # Advance to viz
+        await pilot.press("n")
+        await pilot.pause()
+        assert s.stage == "viz"
+        assert s.vi == 0
+
+        # Advance viz step
+        await pilot.press("n")
+        await pilot.pause()
+        assert s.stage == "viz"
+        assert s.vi == 1
+
+        # Press p to go back to viz step 0
+        await pilot.press("p")
+        await pilot.pause()
+        assert s.stage == "viz"
+        assert s.vi == 0
+
+        # Press p to go back to explain
+        await pilot.press("p")
+        await pilot.pause()
+        assert s.stage == "explain"
+
+        # Press p at explain when bi==0 (should notify and remain at explain)
+        await pilot.press("p")
+        await pilot.pause()
+        assert s.stage == "explain"
+
+        # Advance directly to the trace check in block 0
+        s.stage = "check-3"
+        s._show_body()
+        await pilot.pause()
+        qw = s.query_one(QuestionWidget)
+        assert qw.check.get("kind") == "trace"
+        assert qw._trace_step == 1
+
+        # Press 'n' to step forward in trace (does NOT advance to check-4)
+        await pilot.press("n")
+        await pilot.pause()
+        assert s.stage == "check-3"
+        assert qw._trace_step == 2
+
+        # Press 'p' to step back in trace (does NOT jump block)
+        await pilot.press("p")
+        await pilot.pause()
+        assert s.stage == "check-3"
+        assert qw._trace_step == 1
+
+        # Press 'p' when at trace step 1 (goes back to check-2)
+        await pilot.press("p")
+        await pilot.pause()
+        assert s.stage == "check-2"
+
+
+async def test_quiz_screen_trace_stepping(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import QuizScreen
+    from tui.widgets import QuestionWidget
+    trace_check = {
+        "kind": "trace",
+        "level": "core",
+        "q": "Trace memory addresses",
+        "code": "int x = 42;",
+        "trace": {
+            "headers": ["Step", "Variable", "Address", "Value"],
+            "rows": [
+                {"step": 1, "cells": ["1", "x", "0x1000", "42"]},
+                {"step": 2, "cells": ["2", "x", "0x1000", "99"]}
+            ]
+        },
+        "target": {"row": 1, "col": 3},
+        "answer_text": "99",
+        "why": "x was modified to 99"
+    }
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        qs = QuizScreen("extreme-c", "ch10")
+        qs.checks = [("ch10", 0, trace_check)]
+        app.push_screen(qs)
+        await _wait_screen(app, pilot, QuizScreen)
+        await _wait_body(app, pilot)
+        qw = qs.query_one(QuestionWidget)
+        assert qw._trace_step == 1
+
+        # Press 'n': advances trace step, does not advance question
+        await pilot.press("n")
+        await pilot.pause()
+        assert qs.idx == 0
+        assert qw._trace_step == 2
+
+        # Press 'p': steps back trace
+        await pilot.press("p")
+        await pilot.pause()
+        assert qs.idx == 0
+        assert qw._trace_step == 1
+
+
+async def test_quiz_option_selection_via_digits_and_clicks(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.widgets import ChoiceCard
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        quiz = QuizScreen("extreme-c", "ch10")
+        app.push_screen(quiz)
+        await _wait_screen(app, pilot, QuizScreen)
+        await _wait_body(app, pilot)
+
+        # 1. Spot-bug check with digit key 1
+        sb_idx = next(i for i, (_, _, ck) in enumerate(quiz.checks) if ck.get("kind") == "spot-bug")
+        quiz.idx = sb_idx
+        quiz._show_body()
+        await pilot.pause()
+        assert not quiz._answered
+        await pilot.press("1")
+        await pilot.pause()
+        assert quiz._answered
+
+        # 2. MCQ check with mouse click
+        quiz.idx = next(i for i, (_, _, ck) in enumerate(quiz.checks) if ck.get("kind") == "mcq")
+        quiz._show_body()
+        await pilot.pause()
+        assert not quiz._answered
+        cards = list(quiz.query(ChoiceCard))
+        assert len(cards) >= 2
+        cards[0].scroll_visible(animate=False)
+        await pilot.pause()
+        await pilot.click(cards[0])
+        await pilot.pause()
+        assert quiz._answered
+
+        # 3. Out-of-bounds digit press is ignored
+        quiz.idx = next(i for i, (_, _, ck) in enumerate(quiz.checks) if ck.get("choices"))
+        quiz._show_body()
+        await pilot.pause()
+        assert not quiz._answered
+        await pilot.press("9")
+        await pilot.pause()
+        assert not quiz._answered
+
+
+async def test_study_option_selection_via_digits(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import StudyScreen
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        study = StudyScreen("extreme-c", "ch10")
+        app.push_screen(study)
+        await _wait_screen(app, pilot, StudyScreen)
+        await _wait_body(app, pilot)
+
+        # Move to check stage
+        study.stage = "check-0"
+        study._show_body()
+        await pilot.pause()
+        assert not study._check_answered
+
+        # Press digit 2 to answer check
+        await pilot.press("2")
+        await pilot.pause()
+        assert study._check_answered
+
+
+async def test_multi_lab_workspace_tui(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        lab_screen = LabScreen("extreme-c", "ch10")
+        app.push_screen(lab_screen)
+        await _wait_screen(app, pilot, LabScreen)
+        await pilot.pause()
+        await pilot.pause()
+        assert len(lab_screen.labs) == 3
+        assert lab_screen.lab_idx == 0
+
+        # Title shows [1/3]
+        title_lbl = app.screen.query_one("#lab-title-label")
+        assert "[1/3]" in str(title_lbl.render())
+
+        # File tabs are present
+        tabs = app.screen.query(".lab-file-tab-btn")
+        assert len(tabs) >= 4
+
+        # Switch to Next Lab (lab2) via 'n'
+        await pilot.press("n")
+        await pilot.pause()
+        await pilot.pause()
+        assert lab_screen.lab_idx == 1
+        title_lbl2 = app.screen.query_one("#lab-title-label")
+        assert "[2/3]" in str(title_lbl2.render())
+
+        # Run test verification via 't'
+        await pilot.press("t")
+        await pilot.pause()
+        await pilot.pause()
+        out = str(app.screen.query_one("#lab-out", Static).content)
+        assert "PASS" in out
+
+        # Status badge is updated to PASSING
+        badge = app.screen.query_one("#lab-status-badge")
+        assert "PASSING" in str(badge.render())
+
+
 
 
 

@@ -20,15 +20,25 @@
 - **Chapter**: Chapter 07 — Composition and Aggregation
 - **Source**: Text/composition_and_aggregation.xhtml
 - **Target Pack**: packs/extreme-c/ch10.yaml
+- **Generated**: fresh regeneration from prompts/extreme-c/ch10_prompt.md
 
 ## User Interrogation Responses (ASK_USER.md)
 
 1. **Level**: comfortable-in-C (default)
-2. **Depth vs speed**: deep (default, exhaustive blocks, >=3 checks each)
+2. **Depth vs speed**: deep (default, exhaustive blocks, 5-7 checks each, zero placeholders)
 3. **Prioritize / skip**: keep all, skip platform tangents (default)
-4. **Lab difficulty + toolchain**: medium, C with gcc -Wall -std=c99 -O0, 2s timeout (default)
+4. **Lab difficulty + toolchain**: medium, C with gcc -Wall -Wextra -std=c99, 2s timeout (default)
 5. **Explanation language**: English (default)
 6. **Interleaved review**: 2 checks (to satisfy strict validator gate MAP-005, referencing ch04 and ch09)
+
+## Pack Statistics
+
+- 12 blocks (model / syntax / design / algorithm), 67 block checks
+- 10 atomic flashcards
+- 40-question dedicated chapter quiz (intro/core/advanced, mixed, no duplicates with block checks)
+- 3 multi-file labs with blank starter implementation files (engine.c, car.c, player.c)
+- 5 final mastery checks; gate needs all 12 blocks at min_quiz 80
+- Strict validation: PASS (`python3 main.py validate --book extreme-c --chapter ch10 --strict`)
 
 ---
 

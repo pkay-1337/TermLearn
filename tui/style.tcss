@@ -49,6 +49,12 @@ Footer {
 }
 
 .screen-title {
+    width: 100%;
+    height: auto;
+    max-height: 2;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     padding: 0 1;
     margin: 0 0 1 0;
     text-style: bold;
@@ -105,6 +111,10 @@ Footer {
 }
 
 .details-header {
+    width: 100%;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     text-style: bold;
     color: $accent-secondary;
     margin-bottom: 1;
@@ -116,6 +126,10 @@ Footer {
 }
 
 .details-section-title {
+    width: 100%;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     text-style: bold;
     color: $accent-cyan;
     margin-top: 1;
@@ -150,7 +164,11 @@ OptionList:focus > .option-list--option-highlighted {
 }
 
 .menu-banner {
-    padding: 1;
+    width: 100%;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
+    padding: 0 1;
     background: $mantle;
     border: round $accent-primary;
     color: $text-primary;
@@ -184,6 +202,11 @@ OptionList:focus > .option-list--option-highlighted {
 }
 
 .study-header-bar {
+    width: 100%;
+    height: auto;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     background: $mantle;
     border: round $surface-0;
     padding: 0 1;
@@ -451,7 +474,10 @@ ChoiceCard.choice-card-selected {
 
 .lab-header-bar > .screen-title {
     margin-bottom: 0;
-    width: auto;
+    width: 1fr;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
 }
 
 .lab-status-pill {
@@ -597,6 +623,10 @@ HelpModal {
 }
 
 #help-title {
+    width: 100%;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     text-style: bold;
     color: $accent-cyan;
     border-bottom: solid $surface-0;
@@ -644,6 +674,9 @@ Button:focus {
 .block-status-banner {
     width: 100%;
     height: 3;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     content-align: center middle;
     background: $mantle;
     color: $accent-cyan;
@@ -682,6 +715,10 @@ ConfirmDeleteModal {
 }
 
 #confirm-delete-title {
+    width: 100%;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     text-style: bold;
     color: $status-danger;
     border-bottom: solid $surface-0;
@@ -814,6 +851,9 @@ ConfirmDeleteModal {
 
 #inspect-modal-title {
     width: 100%;
+    text-wrap: nowrap;
+    text-overflow: ellipsis;
+    overflow-x: hidden;
     text-align: center;
     text-style: bold;
     color: $accent-primary;

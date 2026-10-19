@@ -53,10 +53,11 @@ def _slugify(title: str) -> str:
     return s or "book"
 
 
-def discover_chapters(slug: str) -> list[dict]:
+def discover_chapters(slug: str, packs_root: Path | None = None) -> list[dict]:
     """Author order: packs/<slug>/book.yaml wins, else books/<slug>/meta.json. (FR-CHAP-002)"""
     import yaml
-    book_yaml = ROOT / "packs" / slug / "book.yaml"
+    root_packs = packs_root or (ROOT / "packs")
+    book_yaml = root_packs / slug / "book.yaml"
     if book_yaml.exists():
         try:
             data = yaml.safe_load(book_yaml.read_text(encoding="utf-8")) or {}
@@ -65,12 +66,14 @@ def discover_chapters(slug: str) -> list[dict]:
             result = []
             for cid in order:
                 title = chap_meta.get(cid, {}).get("title", cid)
-                pack_file = ROOT / "packs" / slug / f"{cid}.yaml"
-                has_pack = pack_file.exists()
+                pack_file = root_packs / slug / f"{cid}.yaml"
+                pack_dir = root_packs / slug / cid
+                has_pack = pack_file.is_file() or pack_dir.is_dir()
                 if has_pack:
                     try:
-                        pdata = yaml.safe_load(pack_file.read_text(encoding="utf-8")) or {}
-                        pack_title = pdata.get("meta", {}).get("title")
+                        from lib.pack import load_chapter_mode
+                        pdata = load_chapter_mode(slug, cid, "meta", packs_root=packs_root)
+                        pack_title = (pdata.get("meta") or {}).get("title")
                         if pack_title and len(pack_title) > len(title):
                             title = pack_title
                     except Exception:
@@ -78,7 +81,7 @@ def discover_chapters(slug: str) -> list[dict]:
                 result.append({"id": cid,
                                "title": title,
                                "has_pack": has_pack,
-                               "has_lab": _pack_has_lab(slug, cid)})
+                               "has_lab": _pack_has_lab(slug, cid, packs_root=packs_root)})
             return result
         except Exception:
             pass
@@ -88,12 +91,14 @@ def discover_chapters(slug: str) -> list[dict]:
         for c in meta.get("chapters", []):
             cid = c["id"]
             title = c.get("title", cid)
-            pack_file = ROOT / "packs" / slug / f"{cid}.yaml"
-            has_pack = pack_file.exists()
+            pack_file = root_packs / slug / f"{cid}.yaml"
+            pack_dir = root_packs / slug / cid
+            has_pack = pack_file.is_file() or pack_dir.is_dir()
             if has_pack:
                 try:
-                    pdata = yaml.safe_load(pack_file.read_text(encoding="utf-8")) or {}
-                    pack_title = pdata.get("meta", {}).get("title")
+                    from lib.pack import load_chapter_mode
+                    pdata = load_chapter_mode(slug, cid, "meta", packs_root=packs_root)
+                    pack_title = (pdata.get("meta") or {}).get("title")
                     if pack_title and len(pack_title) > len(title):
                         title = pack_title
                 except Exception:
@@ -101,20 +106,24 @@ def discover_chapters(slug: str) -> list[dict]:
             result.append({"id": cid,
                            "title": title,
                            "has_pack": has_pack,
-                           "has_lab": _pack_has_lab(slug, cid)})
+                           "has_lab": _pack_has_lab(slug, cid, packs_root=packs_root)})
         return result
     return []
 
 
-def _pack_has_lab(slug: str, cid: str) -> bool:
+def _pack_has_lab(slug: str, cid: str, packs_root: Path | None = None) -> bool:
     try:
-        import yaml
-        p = ROOT / "packs" / slug / f"{cid}.yaml"
-        if not p.exists():
-            return False
-        return bool((yaml.safe_load(p.read_text(encoding="utf-8")) or {}).get("lab"))
+        root_packs = packs_root or (ROOT / "packs")
+        pack_dir = root_packs / slug / cid
+        if pack_dir.is_dir():
+            if (pack_dir / "labs.yaml").is_file() or (pack_dir / "lab.yaml").is_file():
+                return True
+        from lib.pack import load_chapter_mode
+        pdata = load_chapter_mode(slug, cid, "lab", packs_root=packs_root)
+        return bool(pdata.get("labs") or pdata.get("lab"))
     except Exception:
         return False
+
 
 
 def list_books():

@@ -7,14 +7,14 @@ def run(book: str, chapter: str):
     from rich.console import Console
     from rich.syntax import Syntax
     from rich.panel import Panel
-    from lib.pack import require_chapter
+    from lib.pack import load_chapter_mode
     from lib.quiz import run_check
     from lib.srs import init_db, log_answer
     from lib import keys as _k
     from lib import pager as _pager
     console = Console()
     try:
-        data = yaml.safe_load(require_chapter(book, chapter).read_text(encoding="utf-8"))
+        data = load_chapter_mode(book, chapter, "study")
     except FileNotFoundError:
         console.print(f"[yellow]No pack for {book}/{chapter} yet.[/yellow]")
         return

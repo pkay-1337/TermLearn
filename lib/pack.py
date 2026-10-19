@@ -553,10 +553,8 @@ def validate_book(book: str, chapter: str | None = None, strict: bool = False,
     # Unloadable chapters map to None: their refs stay chapter-level only.
     blockmap: dict[str, set | None] = {}
     for _cid in order:
-        _f = base / f"{_cid}.yaml"
         try:
-            import yaml as _y
-            _d = _y.safe_load(_f.read_text(encoding="utf-8")) or {}
+            _d = load_chapter(book, _cid, packs_root=packs_root)
             blockmap[_cid] = {b.get("id") for b in _d.get("blocks", [])
                               if isinstance(b, dict)}
         except Exception:
@@ -565,16 +563,34 @@ def validate_book(book: str, chapter: str | None = None, strict: bool = False,
     ok = True
     for cid in targets:
         f = base / f"{cid}.yaml"
-        if not f.exists():
-            c.print(f"[red]ERR CH-MISSING: {f} not found (FR-CHAP-003)[/red]")
+        ch_dir = base / cid
+        is_dir = ch_dir.is_dir()
+        is_file = f.is_file()
+        if not (is_dir or is_file):
+            c.print(f"[red]ERR CH-MISSING: pack {f} or directory {ch_dir} not found (FR-CHAP-003)[/red]")
             ok = False
             continue
-        data, yerr = _load_yaml(f)
+        yerr = None
+        if is_dir:
+            for yf in ch_dir.glob("*.yaml"):
+                _, err = _load_yaml(yf)
+                if err:
+                    yerr = err
+                    break
+        else:
+            _, yerr = _load_yaml(f)
         if yerr:
             c.print(f"[red]{yerr}[/red]")
             ok = False
             continue
-        errs, warns = validate_chapter_data(data, f"{cid}.yaml", strict=strict, known_chapters=known,
+        try:
+            data = load_chapter(book, cid, packs_root=packs_root)
+        except Exception as e:
+            c.print(f"[red]ERR LOAD: {e}[/red]")
+            ok = False
+            continue
+        display_name = f"{cid}/" if is_dir else f"{cid}.yaml"
+        errs, warns = validate_chapter_data(data, display_name, strict=strict, known_chapters=known,
                                             chapter_blocks=blockmap)
         for w in warns:
             c.print(f"[yellow]WARN {w}[/yellow]")
@@ -611,7 +627,7 @@ def validate_book(book: str, chapter: str | None = None, strict: bool = False,
                     c.print(f"[yellow]WARN {msg}[/yellow]")
             ok = ok and ch_ok
             if ch_ok:
-                c.print(f"[green]OK {cid}.yaml[/green]")
+                c.print(f"[green]OK {display_name}[/green]")
     rok, rmsgs = check_generated_runner(book, strict=strict,
                                           packs_root=packs_root or (ROOT / "packs"))
     for m in rmsgs:
@@ -626,10 +642,15 @@ def validate_book(book: str, chapter: str | None = None, strict: bool = False,
 
 
 def require_chapter(book: str, chapter: str, packs_root: Path | None = None) -> Path:
-    p = (packs_root or (ROOT / "packs")) / book / f"{chapter}.yaml"
-    if not p.exists():
-        raise FileNotFoundError(f"missing pack: {p} — run gen-prompt + validate first (FR-CHAP-003)")
-    return p
+    base = (packs_root or (ROOT / "packs")) / book
+    p_dir = base / chapter
+    if p_dir.is_dir():
+        return p_dir
+    p_file = base / f"{chapter}.yaml"
+    if p_file.is_file():
+        return p_file
+    raise FileNotFoundError(f"missing pack: {p_file} or directory {p_dir} — run gen-prompt + validate first (FR-CHAP-003)")
+
 
 
 def _read_toolchain(packs_root: Path, book: str) -> dict:
@@ -716,7 +737,265 @@ def check_generated_runner(book: str, strict: bool = False,
     return ok, msgs
 
 
-def load_chapter(book: str, chapter: str) -> dict:
+_PACK_CACHE: dict[tuple[str, str | None], tuple[float, dict]] = {}
+
+
+def clear_pack_cache() -> None:
+    """Clear in-memory pack cache (used in tests/resets)."""
+    _PACK_CACHE.clear()
+
+
+def _load_yaml_file(p: Path):
     import yaml
-    p = require_chapter(book, chapter)
-    return yaml.safe_load(p.read_text(encoding="utf-8"))
+    if not p.is_file():
+        return None
+    try:
+        return yaml.safe_load(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def _get_path_mtime(p: Path) -> float:
+    if p.is_file():
+        return p.stat().st_mtime
+    elif p.is_dir():
+        mtimes = [f.stat().st_mtime for f in p.glob("*.yaml") if f.is_file()]
+        return max(mtimes, default=p.stat().st_mtime)
+    return 0.0
+
+
+def load_chapter_mode(book: str, chapter: str, mode: str | None = None, packs_root: Path | None = None) -> dict:
+    """Load chapter pack data, optimized for the requested mode.
+    
+    If `packs/<book>/<chapter>/` is a directory, selectively loads the mode's YAML files.
+    If `packs/<book>/<chapter>.yaml` is a single file, loads the full pack.
+    Results are cached in-memory with timestamp validation.
+    """
+    p = require_chapter(book, chapter, packs_root)
+    mtime = _get_path_mtime(p)
+    cache_key = (str(p), mode)
+    if cache_key in _PACK_CACHE:
+        cached_mtime, cached_data = _PACK_CACHE[cache_key]
+        if cached_mtime == mtime:
+            return cached_data
+
+    import yaml
+    if p.is_file():
+        data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+        _PACK_CACHE[cache_key] = (mtime, data)
+        return data
+
+    # Directory-based modular pack: packs/<book>/<chapter>/
+    result: dict = {}
+
+    # 1. Load meta if needed
+    needs_meta = mode in (None, "all", "meta", "study", "quiz", "lab", "labs", "test", "revise", "parsons")
+    if needs_meta:
+        mfile = p / "meta.yaml"
+        if mfile.is_file():
+            meta_raw = _load_yaml_file(mfile)
+            if isinstance(meta_raw, dict):
+                if "meta" in meta_raw:
+                    result["meta"] = meta_raw["meta"]
+                    if "objectives" in meta_raw:
+                        result["objectives"] = meta_raw["objectives"]
+                    if "draft" in meta_raw:
+                        result["draft"] = meta_raw["draft"]
+                else:
+                    result["meta"] = {k: v for k, v in meta_raw.items() if k not in ("objectives", "draft")}
+                    if "objectives" in meta_raw:
+                        result["objectives"] = meta_raw["objectives"]
+                    if "draft" in meta_raw:
+                        result["draft"] = meta_raw["draft"]
+        if mode == "meta":
+            _PACK_CACHE[cache_key] = (mtime, result)
+            return result
+
+    # 2. Cards mode
+    if mode in (None, "all", "cards"):
+        cfile = p / "cards.yaml"
+        if cfile.is_file():
+            c_raw = _load_yaml_file(cfile)
+            if isinstance(c_raw, list):
+                result["cards"] = c_raw
+            elif isinstance(c_raw, dict) and "cards" in c_raw:
+                result["cards"] = c_raw["cards"]
+        if mode == "cards":
+            _PACK_CACHE[cache_key] = (mtime, result)
+            return result
+
+    # 3. Study / Blocks
+    needs_study = mode in (None, "all", "study", "revise", "parsons")
+    if needs_study:
+        sfile = p / "study.yaml"
+        if sfile.is_file():
+            s_raw = _load_yaml_file(sfile)
+            if isinstance(s_raw, list):
+                result["blocks"] = s_raw
+            elif isinstance(s_raw, dict):
+                if "blocks" in s_raw:
+                    result["blocks"] = s_raw["blocks"]
+                if "objectives" in s_raw and "objectives" not in result:
+                    result["objectives"] = s_raw["objectives"]
+                if "meta" in s_raw and "meta" not in result:
+                    result["meta"] = s_raw["meta"]
+                if "common_bugs" in s_raw:
+                    result["common_bugs"] = s_raw["common_bugs"]
+
+    # 4. Revise mode
+    if mode == "revise":
+        rfile = p / "revise.yaml"
+        if rfile.is_file():
+            r_raw = _load_yaml_file(rfile)
+            if isinstance(r_raw, dict):
+                result["revise"] = r_raw
+        _PACK_CACHE[cache_key] = (mtime, result)
+        return result
+
+    # 5. Parsons mode
+    if mode == "parsons":
+        pfile = p / "parsons.yaml"
+        if pfile.is_file():
+            p_raw = _load_yaml_file(pfile)
+            if isinstance(p_raw, list):
+                result["parsons"] = p_raw
+            elif isinstance(p_raw, dict) and "parsons" in p_raw:
+                result["parsons"] = p_raw["parsons"]
+        _PACK_CACHE[cache_key] = (mtime, result)
+        return result
+
+    # 6. Quiz mode
+    if mode in (None, "all", "quiz"):
+        qfile = p / "quiz.yaml"
+        if qfile.is_file():
+            q_raw = _load_yaml_file(qfile)
+            if isinstance(q_raw, list):
+                result["quiz"] = q_raw
+            elif isinstance(q_raw, dict) and "quiz" in q_raw:
+                result["quiz"] = q_raw["quiz"]
+        if mode == "quiz" and not result.get("quiz") and "blocks" not in result:
+            sfile = p / "study.yaml"
+            if sfile.is_file():
+                s_raw = _load_yaml_file(sfile)
+                if isinstance(s_raw, dict) and "blocks" in s_raw:
+                    result["blocks"] = s_raw["blocks"]
+        if mode == "quiz":
+            _PACK_CACHE[cache_key] = (mtime, result)
+            return result
+
+    # 7. Labs mode
+    if mode in (None, "all", "lab", "labs"):
+        lfile = p / "labs.yaml"
+        legacy_lfile = p / "lab.yaml"
+        if lfile.is_file():
+            l_raw = _load_yaml_file(lfile)
+            if isinstance(l_raw, list):
+                result["labs"] = l_raw
+            elif isinstance(l_raw, dict):
+                if "labs" in l_raw:
+                    result["labs"] = l_raw["labs"]
+                elif "lab" in l_raw:
+                    result["lab"] = l_raw["lab"]
+        elif legacy_lfile.is_file():
+            l_raw = _load_yaml_file(legacy_lfile)
+            if isinstance(l_raw, dict):
+                result["lab"] = l_raw.get("lab", l_raw)
+        if mode in ("lab", "labs"):
+            _PACK_CACHE[cache_key] = (mtime, result)
+            return result
+
+    # 8. Test mode
+    if mode in (None, "all", "test"):
+        tfile = p / "test.yaml"
+        if tfile.is_file():
+            t_raw = _load_yaml_file(tfile)
+            if isinstance(t_raw, dict):
+                result["test"] = t_raw.get("test", t_raw)
+        if mode == "test" and "blocks" not in result:
+            sfile = p / "study.yaml"
+            if sfile.is_file():
+                s_raw = _load_yaml_file(sfile)
+                if isinstance(s_raw, dict) and "blocks" in s_raw:
+                    result["blocks"] = s_raw["blocks"]
+        if mode == "test":
+            _PACK_CACHE[cache_key] = (mtime, result)
+            return result
+
+    _PACK_CACHE[cache_key] = (mtime, result)
+    return result
+
+
+def load_chapter(book: str, chapter: str, packs_root: Path | None = None) -> dict:
+    return load_chapter_mode(book, chapter, mode=None, packs_root=packs_root)
+
+
+def split_chapter_to_modular(book: str, chapter: str, backup: bool = True, packs_root: Path | None = None) -> Path:
+    """Non-destructively split an existing monolithic chNN.yaml into a modular directory pack."""
+    import yaml
+    from rich.console import Console
+    c = Console()
+    base = (packs_root or (ROOT / "packs")) / book
+    src_file = base / f"{chapter}.yaml"
+    dest_dir = base / chapter
+    if not src_file.is_file():
+        raise FileNotFoundError(f"monolithic pack file not found: {src_file}")
+    if dest_dir.exists():
+        c.print(f"[yellow]Target directory {dest_dir} already exists — aborting to prevent overwrite.[/yellow]")
+        return dest_dir
+
+    raw = yaml.safe_load(src_file.read_text(encoding="utf-8")) or {}
+    dest_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. meta.yaml
+    meta_content = {}
+    if "meta" in raw:
+        meta_content["meta"] = raw["meta"]
+    if "objectives" in raw:
+        meta_content["objectives"] = raw["objectives"]
+    if "draft" in raw:
+        meta_content["draft"] = raw["draft"]
+    if meta_content:
+        (dest_dir / "meta.yaml").write_text(yaml.safe_dump(meta_content, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    # 2. study.yaml
+    study_content = {}
+    if "blocks" in raw:
+        study_content["blocks"] = raw["blocks"]
+    if "common_bugs" in raw:
+        study_content["common_bugs"] = raw["common_bugs"]
+    if study_content:
+        (dest_dir / "study.yaml").write_text(yaml.safe_dump(study_content, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    # 3. quiz.yaml
+    if "quiz" in raw:
+        (dest_dir / "quiz.yaml").write_text(yaml.safe_dump({"quiz": raw["quiz"]}, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    # 4. labs.yaml
+    labs_content = {}
+    if "labs" in raw:
+        labs_content["labs"] = raw["labs"]
+    elif "lab" in raw:
+        labs_content["lab"] = raw["lab"]
+    if labs_content:
+        (dest_dir / "labs.yaml").write_text(yaml.safe_dump(labs_content, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    # 5. cards.yaml
+    if "cards" in raw:
+        (dest_dir / "cards.yaml").write_text(yaml.safe_dump({"cards": raw["cards"]}, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    # 6. test.yaml
+    if "test" in raw:
+        (dest_dir / "test.yaml").write_text(yaml.safe_dump({"test": raw["test"]}, sort_keys=False, allow_unicode=True), encoding="utf-8")
+
+    if backup:
+        bak_file = base / f"{chapter}.yaml.bak"
+        src_file.rename(bak_file)
+        c.print(f"[green]Moved {src_file.name} -> {bak_file.name}[/green]")
+    else:
+        src_file.unlink()
+
+    clear_pack_cache()
+    c.print(f"[bold green]Successfully converted {chapter} to modular directory pack at {dest_dir}[/bold green]")
+    return dest_dir
+
+

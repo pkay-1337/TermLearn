@@ -18,7 +18,7 @@
 # Rules marked MUST/SHOULD follow RFC 2119. Do not soften them.
 
 You turn ONE pasted book chapter (plain text, code kept verbatim) into ONE
-chapter YAML file for the `termlearn` terminal course. The learner will study
+chapter course pack for the `termlearn` terminal course. The learner will study
 ONLY from your YAML — never from the book. Teach, don't summarize.
 
 ### Source paths you are working with (MUST respect)
@@ -27,23 +27,33 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   (runner protocol) excerpts are appended to this prompt; treat them as
   binding. All other `docs/SRS.md` references below name their section.
 - `prompts/ASK_USER.md` — interrogate the user per that file first.
-- `books/<slug>/raw_chapters/<id>.txt` — the pasted chapter source.
-- `packs/<slug>/<id>.yaml` — TARGET OUTPUT FILE.
-  - If you are an AI coding agent with file-creation tools: write the completed
-    YAML pack directly to `packs/<slug>/<id>.yaml`, then execute
-    `python main.py validate --book <slug> --chapter <id> --strict` to verify it.
-  - If you are in a chat-only environment: output inside a single `yaml`-fenced
-    code block and state `packs/<slug>/<id>.yaml` as the save destination.
+- `books/<slug>/raw_chapters/<id>.txt` — SOURCE CHAPTER TEXT: The raw, extracted
+  chapter text lives here on disk (created via `python main.py extract --book <slug>`).
+  The full text is also appended directly at the bottom of this prompt.
+- `books/<slug>/meta.json` — BOOK METADATA: Table of contents, chapter titles, spine order.
+- `packs/<slug>/book.yaml` — COURSE CONFIGURATION: Language toolchain and runner declarations.
+- `packs/<slug>/<id>/` — RECOMMENDED MODULAR TARGET DIRECTORY:
+  For highest pedagogical depth and to prevent token truncation, author focused
+  modular YAML files inside this directory:
+  - `meta.yaml` — metadata, prerequisites, and 1–6 falsifiable objectives.
+  - `study.yaml` — 6–15 concept blocks, Notional Machine state transitions, and scaffolded checks.
+  - `quiz.yaml` — 30–50 dedicated synthesis questions across difficulty levels.
+  - `labs.yaml` — 1–4 practical coding workspaces with blank starters and test runners.
+  - `cards.yaml` — 15–25 atomic SM-2 spaced repetition flashcards.
+  - `test.yaml` — mastery gates and passing thresholds.
+- `packs/<slug>/<id>.yaml` — LEGACY MONOLITHIC TARGET FILE: Single unified YAML pack.
 - `packs/<slug>/runner/run` — runner script (only when authoring a runner, §5).
 
 ## 0. Output destination & protocol (MUST)
 
-- **Target File**: `packs/<slug>/<id>.yaml` (e.g. `packs/extreme-c/ch09.yaml`).
-  - **Autonomous Agents with Tools**: Write the generated file directly to
-    `packs/<slug>/<id>.yaml` using your file creation tool, then validate it
-    via `python main.py validate --book <slug> --chapter <id> --strict`.
-  - **Chat-Only Models**: Output exactly ONE `yaml`-fenced block with the full
-    chapter file and direct the user to save it to `packs/<slug>/<id>.yaml`.
+- **Target Output**:
+  - **Modular Pack (Recommended)**: Create directory `packs/<slug>/<id>/` and write the
+    mode files (`meta.yaml`, `study.yaml`, `quiz.yaml`, `labs.yaml`, `cards.yaml`, `test.yaml`).
+  - **Monolithic Pack (Legacy)**: Single file `packs/<slug>/<id>.yaml` (e.g. `packs/extreme-c/ch09.yaml`).
+  - **Autonomous Agents with Tools**: Write files directly, then validate via:
+    `python main.py validate --book <slug> --chapter <id> --strict`
+  - **Chat-Only Models**: Output inside single `yaml`-fenced code blocks and state the
+    save destination for each file.
 - First interrogate the user per ASK_USER.md. MUST NOT emit final YAML until
   the user answers or says `use defaults`.
 - If you emit without interrogation answers (user said nothing and gave no

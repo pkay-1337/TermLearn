@@ -4,11 +4,11 @@ def run(book: str, chapter: str):
     import yaml
     from rich.console import Console
     from rich.syntax import Syntax
-    from lib.pack import require_chapter
+    from lib.pack import load_chapter_mode
     from lib import pager as _pager
     console = Console()
     try:
-        data = yaml.safe_load(require_chapter(book, chapter).read_text(encoding="utf-8"))
+        data = load_chapter_mode(book, chapter, "revise")
     except FileNotFoundError:
         console.print(f"[yellow]No pack for {book}/{chapter} yet.[/yellow]")
         return

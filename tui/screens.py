@@ -48,10 +48,16 @@ class HomeScreen(_Base):
         self._slugs: list[str] = []
         self._active_pane: str = "list"
 
+    def _title_text(self) -> str:
+        w = self.size.width or 80
+        if w < 55:
+            return "📚 LIBRARY"
+        return "📚  YOUR LIBRARY"
+
     def compose(self) -> ComposeResult:
         with Horizontal(classes="master-detail-row"):
             with Vertical(classes="sidebar-pane"):
-                yield Label("📚  YOUR LIBRARY", classes="screen-title")
+                yield Label(self._title_text(), id="home-screen-title", classes="screen-title")
                 yield OptionList(id="book-list")
             with Vertical(classes="content-pane", id="book-details"):
                 yield Label("📖  BOOK DOSSIER", classes="details-header")
@@ -87,6 +93,7 @@ class HomeScreen(_Base):
     def _apply_responsive_layout(self) -> None:
         try:
             width = self.size.width or 80
+            self.query_one("#home-screen-title", Label).update(self._title_text())
             sidebar = self.query_one(".sidebar-pane")
             dossier = self.query_one("#book-details")
             if width < 70:
@@ -248,9 +255,12 @@ class HomeScreen(_Base):
 class ChaptersScreen(_Base):
     HELP_TITLE = "chapters"
     HELP_LINES = [("enter", "open chapter"), ("j/k", "move cursor / scroll"),
-                  ("l/tab", "dossier"), ("h", "back to list"), ("x", "delete chapter stats"), ("q", "back")]
+                  ("p", "generate prompts"), ("l/tab", "dossier"),
+                  ("h", "back to list"), ("x", "delete chapter stats"), ("q", "back")]
     BINDINGS = [
         Binding("q", "back", "Back"),
+        Binding("p", "generate_prompts", "Prompts"),
+        Binding("P", "generate_prompts", "Prompts", show=False),
         Binding("x", "delete_analytics", "Delete Chapter Analytics", show=False),
         Binding("X", "delete_analytics", "Delete Chapter Analytics", show=False),
         Binding("j", "cursor_down", "Down", show=False),
@@ -271,10 +281,16 @@ class ChaptersScreen(_Base):
         self._ch_ids: list[str] = []
         self._active_pane: str = "list"
 
+    def _title_text(self) -> str:
+        w = self.size.width or 80
+        if w < 55:
+            return f"🗺️ {self.book}"
+        return f"🗺️  CURRICULUM: {self.book}"
+
     def compose(self) -> ComposeResult:
         with Horizontal(classes="master-detail-row"):
             with Vertical(classes="sidebar-pane"):
-                yield Label(f"🗺️  CURRICULUM: {self.book}", classes="screen-title")
+                yield Label(self._title_text(), id="chapters-screen-title", classes="screen-title")
                 yield OptionList(id="ch-list")
             with Vertical(classes="content-pane", id="ch-details"):
                 yield Label("📑  CHAPTER DOSSIER", classes="details-header")
@@ -316,6 +332,7 @@ class ChaptersScreen(_Base):
     def _apply_responsive_layout(self) -> None:
         try:
             width = self.size.width or 80
+            self.query_one("#chapters-screen-title", Label).update(self._title_text())
             sidebar = self.query_one(".sidebar-pane")
             dossier = self.query_one("#ch-details")
             if width < 70:
@@ -437,7 +454,8 @@ class ChaptersScreen(_Base):
                 f"- **Title:** **{ch['title']}**\n\n"
                 f"> [!WARNING]\n"
                 f"> **No Pack Available**\n"
-                f"> Generate a course pack first via `python main.py gen-prompt --book {self.book} --chapter {cid}`."
+                f"> Press **p** to generate modular AI prompts in `prompts/{self.book}/{cid}-prompts/`,\n"
+                f"> or run `python main.py gen-prompt --book {self.book} --chapter {cid}`."
             )
         else:
             try:
@@ -461,7 +479,7 @@ class ChaptersScreen(_Base):
                 f"### Learning Objectives\n"
                 f"{objs_list}\n\n"
                 f"---\n\n"
-                f"Press **Enter** to launch learning modes, **l/tab** to read objectives, or **q** to back."
+                f"Press **Enter** to launch learning modes, **p** to re-generate prompts, **l/tab** to read objectives, or **q** to back."
             )
         try:
             self.query_one("#ch-details-md", Markdown).update(md_text)
@@ -479,11 +497,29 @@ class ChaptersScreen(_Base):
         cid = str(event.option.id)
         info = {c["id"]: c for c in discover_chapters(self.book)}.get(cid, {})
         if not info.get("has_pack"):
-            self.app.notify(f"No pack for {cid} yet — run gen-prompt first.")
+            self.app.notify(f"No pack for {cid} yet — press 'p' to generate prompts.")
             return
         self.app.chapter = cid
         from tui.screens import ChapterMenu
         self.app.push_screen(ChapterMenu(self.book, cid))
+
+    def action_generate_prompts(self) -> None:
+        try:
+            lst = self.query_one("#ch-list", OptionList)
+            if lst.highlighted is not None and 0 <= lst.highlighted < len(self._ch_ids):
+                cid = self._ch_ids[lst.highlighted]
+            else:
+                return
+        except Exception:
+            return
+        try:
+            from lib.ai_prompt import emit_prompt_bundle, ROOT
+            dest = emit_prompt_bundle(self.book, cid)
+            rel = dest.relative_to(ROOT) if dest.is_relative_to(ROOT) else dest
+            self.app.notify(f"Prompts generated in {rel}", title="Prompts Ready")
+            self._update_details(cid)
+        except Exception as e:
+            self.app.notify(f"Failed to generate prompts: {e}", severity="error")
 
     def action_delete_analytics(self) -> None:
         try:
@@ -504,6 +540,7 @@ class ChaptersScreen(_Base):
 
         from tui.widgets import ConfirmDeleteModal
         self.app.push_screen(ConfirmDeleteModal(self.book, cid), _on_confirm)
+
 
 class StudyBlockListScreen(_Base):
     HELP_TITLE = "study blocks"
@@ -562,8 +599,23 @@ class StudyBlockListScreen(_Base):
     def on_resize(self) -> None:
         self._apply_responsive_layout()
 
+    def _banner_text(self) -> str:
+        if not hasattr(self, "_banner_info"):
+            return ""
+        completed_count, total_count, pct, ch_title = self._banner_info
+        w = self.size.width or 80
+        if w < 55:
+            return f"📖 {self.book}/{self.chapter} · Completed: {completed_count}/{total_count} ({pct}%)"
+        elif w < 85:
+            return f"📖 {self.book}/{self.chapter}: {ch_title} [Completed: {completed_count}/{total_count}]"
+        return (
+            f"📖  STUDY BLOCKS — {self.book} / {self.chapter}: {ch_title}  "
+            f"[Completed: {completed_count}/{total_count} blocks · {pct}%]"
+        )
+
     def _apply_responsive_layout(self) -> None:
         try:
+            self.query_one("#study-blocks-banner", Label).update(self._banner_text())
             sidebar = self.query_one("#study-blocks-list-pane")
             dossier = self.query_one("#study-block-details")
             if (self.size.width or 80) < 70:
@@ -601,13 +653,11 @@ class StudyBlockListScreen(_Base):
         total_count = len(self._blocks)
         pct = int(100.0 * completed_count / total_count) if total_count else 0
         ch_title = data.get("meta", {}).get("title", self.chapter)
+        self._banner_info = (completed_count, total_count, pct, ch_title)
 
         try:
             banner = self.query_one("#study-blocks-banner", Label)
-            banner.update(
-                f"📖  STUDY BLOCKS — {self.book} / {self.chapter}: {ch_title}  "
-                f"[Completed: {completed_count}/{total_count} blocks · {pct}%]"
-            )
+            banner.update(self._banner_text())
         except Exception:
             pass
 
@@ -859,15 +909,29 @@ class ChapterMenu(_Base):
         self.book = book
         self.chapter = chapter
 
-    def compose(self) -> ComposeResult:
+    def _banner_text(self) -> str:
         from lib.books import discover_chapters
         ch_title = next((c["title"] for c in discover_chapters(self.book) if c["id"] == self.chapter), self.chapter)
+        w = self.size.width or 80
+        if w < 50:
+            return f"🎯 {self.book}/{self.chapter}"
+        elif w < 75:
+            return f"🎯 {self.book}/{self.chapter} — {ch_title}"
+        return f"🎯  {self.book} / {self.chapter} — {ch_title}"
+
+    def compose(self) -> ComposeResult:
         with Vertical(classes="menu-container"):
-            yield Label(f"🎯  {self.book} / {self.chapter} — {ch_title}", classes="menu-banner")
+            yield Label(self._banner_text(), id="menu-banner-label", classes="menu-banner")
             with ScrollableContainer(classes="menu-list-box"):
                 yield OptionList(*[Option(f"[{i}] {self.MODE_TITLES.get(m, m)}", id=m)
                                    for i, m in enumerate(self.MODES, 1)],
                                  id="mode-list")
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#menu-banner-label", Label).update(self._banner_text())
+        except Exception:
+            pass
 
     def on_mount(self) -> None:
         super().on_mount()
@@ -964,12 +1028,26 @@ class ReviseScreen(VimScrollMixin, _Base):
         self.book = book
         self.chapter = chapter
 
+    def _title_text(self) -> str:
+        w = self.size.width or 80
+        ch_title = getattr(self, "data", {}).get("meta", {}).get("title", self.chapter)
+        if w < 55:
+            return f"📝 REVISE — {self.book}/{self.chapter}"
+        elif w < 80:
+            return f"📝  REVISE — {self.book} / {self.chapter}"
+        return f"📝  REVISE: {self.book} / {self.chapter} — {ch_title} (No Scoring)"
+
     def compose(self) -> ComposeResult:
         from lib.pack import load_chapter
-        data = load_chapter(self.book, self.chapter)
+        self.data = load_chapter(self.book, self.chapter)
         with ScrollableContainer(classes="study-container"):
-            yield Label(f"📝  REVISE: {data.get('meta', {}).get('title', self.chapter)} (No Scoring)",
-                        classes="study-header-bar")
+            yield Label(self._title_text(), id="revise-screen-title", classes="study-header-bar")
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#revise-screen-title", Label).update(self._title_text())
+        except Exception:
+            pass
             for b in data.get("blocks", []):
                 with Vertical(classes="study-block-card"):
                     yield Label(f"━━ {b.get('title', b.get('id'))}", classes="details-header")
@@ -1005,10 +1083,17 @@ class StatsScreen(VimScrollMixin, _Base):
         self.book = book
         self.chapter = chapter
 
+    def _title_text(self) -> str:
+        w = self.size.width or 80
+        ch_suffix = f"/{self.chapter}" if self.chapter else ""
+        ch_suffix_long = f" / {self.chapter}" if self.chapter else ""
+        if w < 55:
+            return f"📊 STATS — {self.book}{ch_suffix}"
+        return f"📊  LEARNING ANALYTICS — {self.book}{ch_suffix_long}"
+
     def compose(self) -> ComposeResult:
         with ScrollableContainer(classes="stats-container"):
-            title_text = f"📊  LEARNING ANALYTICS — {self.book}" + (f" / {self.chapter}" if self.chapter else "")
-            yield Label(title_text, classes="screen-title")
+            yield Label(self._title_text(), id="stats-screen-title", classes="screen-title")
 
             with Horizontal(classes="kpi-row"):
                 with Vertical(classes="kpi-card"):
@@ -1040,6 +1125,12 @@ class StatsScreen(VimScrollMixin, _Base):
 
             btn_label = f"🗑️  Delete {self.chapter} Analytics (x)" if self.chapter else "🗑️  Delete Chapter Analytics (x)"
             yield Button(btn_label, id="btn-delete-chapter", classes="delete-stats-btn")
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#stats-screen-title", Label).update(self._title_text())
+        except Exception:
+            pass
 
     def on_mount(self) -> None:
         super().on_mount()
@@ -1155,12 +1246,18 @@ class TestScreen(VimScrollMixin, _Base):
         self.book = book
         self.chapter = chapter
 
+    def _title_text(self) -> str:
+        w = self.size.width or 80
+        if w < 55:
+            return f"🏆 TEST — {self.book}/{self.chapter}"
+        return f"🏆  MASTERY GATE TEST — {self.book} / {self.chapter}"
+
     def compose(self) -> ComposeResult:
         from lib import lab as _lab
         from lib import progress as _prog
         from lib import quiz as _quiz
         with ScrollableContainer(classes="study-container"):
-            yield Label(f"🏆  MASTERY GATE TEST — {self.book} / {self.chapter}", classes="screen-title")
+            yield Label(self._title_text(), id="test-screen-title", classes="screen-title")
             q = _quiz.score_chapter(self.book, self.chapter) or {}
             lab_result = _lab.check_lab(self.book, self.chapter)
             ok = _prog.record_test(self.book, self.chapter, q, lab_result)
@@ -1192,6 +1289,12 @@ class TestScreen(VimScrollMixin, _Base):
                         "drill checks in [bold cyan]quiz[/], and verify your code in [bold cyan]lab[/].",
                         classes="card-hint"
                     )
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#test-screen-title", Label).update(self._title_text())
+        except Exception:
+            pass
 
     def action_back(self) -> None:
         self.app.pop_screen()

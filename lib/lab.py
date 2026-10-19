@@ -372,12 +372,12 @@ def run(book: str, chapter: str, save_solution_on_test: bool = True):
     """Interactive lab: edit starter, r=run, t=hidden tests, h=hint. (FR-LAB-001)"""
     import yaml
     from rich.console import Console
-    from lib.pack import require_chapter
+    from lib.pack import load_chapter_mode
     c = Console()
     try:
-        data = yaml.safe_load(require_chapter(book, chapter).read_text(encoding="utf-8"))
+        data = load_chapter_mode(book, chapter, "lab")
     except FileNotFoundError:
-        c.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, paste YAML to packs/{book}/{chapter}.yaml, then validate.[/yellow]")
+        c.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, then validate.[/yellow]")
         return
     lab = data.get("lab")
     if not lab and data.get("labs"):
@@ -465,9 +465,8 @@ def run(book: str, chapter: str, save_solution_on_test: bool = True):
 
 
 def check_lab(book: str, chapter: str, non_interactive=True, packs_root=None):
-    import yaml
-    from lib.pack import require_chapter
-    data = yaml.safe_load(require_chapter(book, chapter, packs_root).read_text(encoding="utf-8"))
+    from lib.pack import load_chapter_mode
+    data = load_chapter_mode(book, chapter, "lab", packs_root=packs_root)
     labs = data.get("labs")
     if isinstance(labs, list) and labs:
         from lib import lab_workspace as lw

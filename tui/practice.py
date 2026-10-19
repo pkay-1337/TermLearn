@@ -67,6 +67,16 @@ class StudyScreen(VimScrollMixin, _Base):
         self.vi = 0
         self._check_answered = False
 
+    def _screen_title_text(self) -> str:
+        w = self.size.width or 80
+        ch_title = getattr(self, "data", {}).get("meta", {}).get("title", self.chapter)
+        if w < 55:
+            return f"📖 STUDY — {self.book}/{self.chapter}"
+        elif w < 80:
+            return f"📖  STUDY — {self.book} / {self.chapter}"
+        else:
+            return f"📖  STUDY — {self.book} / {self.chapter}: {ch_title}"
+
     def compose(self) -> ComposeResult:
         from lib.pack import load_chapter
         from lib.srs import init_db
@@ -76,6 +86,7 @@ class StudyScreen(VimScrollMixin, _Base):
             self.bi = max(0, min(self.bi, len(self.blocks) - 1))
         self._con = init_db()
         with ScrollableContainer(classes="study-container"):
+            yield Label(self._screen_title_text(), id="study-screen-title", classes="screen-title")
             yield Vertical(id="body")
 
     def on_mount(self) -> None:
@@ -84,6 +95,12 @@ class StudyScreen(VimScrollMixin, _Base):
         # modal dismiss can otherwise fire on_mount before compose children
         # attach (NoMatches on #body). Refresh-then-render is always safe.
         self.call_after_refresh(self._show_body)
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#study-screen-title", Label).update(self._screen_title_text())
+        except Exception:
+            pass
 
     def _block(self):
         return self.blocks[self.bi]
@@ -96,10 +113,13 @@ class StudyScreen(VimScrollMixin, _Base):
         body = self.query_one("#body", Vertical)
         body.remove_children()
         b = self._block()
-        body.mount(Label(
-            f"📖  STUDY: {b.get('title', b.get('id'))} (Block {self.bi + 1} of {len(self.blocks)})",
-            classes="study-header-bar"
-        ))
+        w = self.size.width or 80
+        b_title = b.get("title", b.get("id"))
+        if w < 55:
+            hdr = f"Block {self.bi + 1}/{len(self.blocks)}: {b_title}"
+        else:
+            hdr = f"📖  STUDY: {b_title} (Block {self.bi + 1} of {len(self.blocks)})"
+        body.mount(Label(hdr, classes="study-header-bar"))
         if self.stage == "explain":
             body.mount(Markdown(str(b.get("explain_md", "")), classes="study-block-card"))
             ex = b.get("example") or {}
@@ -358,14 +378,29 @@ class QuizScreen(VimScrollMixin, _Base):
                 self.checks = [(b, i, ck) for b, i, ck in raw_checks
                                if ck.get("kind") == self.kind]
         self._con = init_db()
-        title = "QUIZ & CHECKS" if self.kind is None else "PARSONS (ORDERING)"
         with ScrollableContainer(classes="study-container"):
-            yield Label(f"⚡  {title} — {self.book} / {self.chapter}", classes="screen-title")
+            yield Label(self._screen_title_text(), id="quiz-screen-title", classes="screen-title")
             yield Vertical(id="body")
+
+    def _screen_title_text(self) -> str:
+        w = self.size.width or 80
+        mode_label = "QUIZ" if self.kind is None else "PARSONS"
+        full_mode = "QUIZ & CHECKS" if self.kind is None else "PARSONS (ORDERING)"
+        if w < 55:
+            return f"⚡ {mode_label} — {self.book}/{self.chapter}"
+        elif w < 80:
+            return f"⚡  {full_mode} — {self.book} / {self.chapter}"
+        return f"⚡  {full_mode} — {self.book} / {self.chapter}"
 
     def on_mount(self) -> None:
         super().on_mount()
         self.call_after_refresh(self._first_show)
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#quiz-screen-title", Label).update(self._screen_title_text())
+        except Exception:
+            pass
 
     def _first_show(self) -> None:
         if not self.checks:
@@ -385,10 +420,12 @@ class QuizScreen(VimScrollMixin, _Base):
         body = self.query_one("#body", Vertical)
         body.remove_children()
         b, i, ck = self.checks[self.idx]
-        body.mount(Label(
-            f"QUESTION {self.idx + 1} OF {len(self.checks)}  ·  CURRENT SCORE: {self.score}",
-            classes="study-header-bar"
-        ))
+        w = self.size.width or 80
+        if w < 55:
+            hdr = f"Q{self.idx + 1}/{len(self.checks)} · Score: {self.score}"
+        else:
+            hdr = f"QUESTION {self.idx + 1} OF {len(self.checks)}  ·  CURRENT SCORE: {self.score}"
+        body.mount(Label(hdr, classes="study-header-bar"))
         body.mount(QuestionWidget(ck, self._checked, shuffle=True))
 
     def _checked(self, ok: bool) -> None:
@@ -538,21 +575,37 @@ class CardsScreen(_Base):
         import yaml
         from lib.books import discover_chapters
         from lib.srs import due_cards, init_db, upsert_cards
+        from lib.pack import load_chapter_mode
         self._con = init_db()
         for ch in discover_chapters(self.book):
-            p = Path(__file__).resolve().parents[1] / "packs" / self.book / f"{ch['id']}.yaml"
-            if p.exists():
-                data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+            if not ch.get("has_pack"):
+                continue
+            try:
+                data = load_chapter_mode(self.book, ch["id"], "cards")
                 if data.get("cards"):
                     upsert_cards(self._con, self.book, ch["id"], data["cards"])
+            except Exception:
+                continue
         self.due = due_cards(self._con, self.book)
         with ScrollableContainer(classes="cards-outer"):
-            yield Label(f"🗂️  SPACED REPETITION (SRS) — {self.book} ({len(self.due)} due)", classes="screen-title")
+            yield Label(self._title_text(), id="cards-screen-title", classes="screen-title")
             yield Vertical(id="body")
+
+    def _title_text(self) -> str:
+        w = self.size.width or 80
+        if w < 55:
+            return f"🗂️ SRS — {self.book} ({len(self.due)} due)"
+        return f"🗂️  SPACED REPETITION (SRS) — {self.book} ({len(self.due)} due)"
 
     def on_mount(self) -> None:
         super().on_mount()
         self.call_after_refresh(self._render_card)
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#cards-screen-title", Label).update(self._title_text())
+        except Exception:
+            pass
 
     def _render_card(self) -> None:
         body = self.query_one("#body", Vertical)
@@ -868,13 +921,27 @@ class LabScreen(_Base):
             return "PASSING ✔"
         return "UNTESTED"
 
+    def _title_text(self) -> str:
+        cur = self._current_lab()
+        w = self.size.width or 80
+        total = max(1, len(self.labs))
+        ltitle = cur.get("title", "Lab")
+        if w < 55:
+            return f"💻 LAB [{self.lab_idx + 1}/{total}]: {ltitle}"
+        return f"💻  CODE LAB [{self.lab_idx + 1}/{total}]: {ltitle}"
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#lab-title-label", Label).update(self._title_text())
+        except Exception:
+            pass
+
     def compose(self) -> ComposeResult:
         from textual.widgets import TextArea
         cur = self._current_lab()
         with ScrollableContainer(classes="lab-container", id="lab-scroll"):
             with Horizontal(classes="lab-header-bar"):
-                title_txt = f"💻  CODE LAB [{self.lab_idx + 1}/{max(1, len(self.labs))}]: {cur.get('title', 'Lab')}"
-                yield Label(title_txt, id="lab-title-label", classes="screen-title")
+                yield Label(self._title_text(), id="lab-title-label", classes="screen-title")
                 yield Label(self._status_badge_text(), id="lab-status-badge", classes="lab-status-pill")
 
             with Horizontal(classes="lab-split-top"):
@@ -935,8 +1002,7 @@ class LabScreen(_Base):
         self._setup_workspace()
         cur = self._current_lab()
         try:
-            self.query_one("#lab-title-label", Label).update(
-                f"💻  CODE LAB [{self.lab_idx + 1}/{len(self.labs)}]: {cur.get('title', 'Lab')}")
+            self.query_one("#lab-title-label", Label).update(self._title_text())
             self.query_one("#lab-status-badge", Label).update(self._status_badge_text())
             inst = cur.get("instruction_md") or cur.get("prompt_md", "No instructions.")
             self.query_one("#lab-instructions", Markdown).update(str(inst))

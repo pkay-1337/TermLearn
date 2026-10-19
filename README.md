@@ -15,7 +15,8 @@ Or run headless CLI modes:
 python main.py books                  # list books (FR-BOOK)
 python main.py chapters --book extreme-c
 python main.py extract --book extreme-c
-python main.py gen-prompt --book extreme-c --chapter ch01
+python main.py gen-prompt --book extreme-c --chapter ch01 [--mode master|quiz|study|all]
+python main.py split --book extreme-c --chapter ch01    # split monolithic YAML to modular folder
 python main.py validate --book extreme-c [--chapter ch01] [--strict]
 python main.py study --book extreme-c --chapter ch01
 python main.py revise --book extreme-c --chapter ch01
@@ -43,7 +44,8 @@ python main.py export --book extreme-c --format md
 - `lib/` — core domain logic, pack validator, and runner dispatch
 - `tui/` — modern Textual TUI screens, custom TCSS themes, and interactive widgets
 - `books/<slug>/source.epub` — source truth; `raw_chapters/*.txt` + `meta.json` generated
-- `packs/<slug>/book.yaml` + `chNN.yaml` — AI-generated teaching packs (sole runtime source)
+- `packs/<slug>/book.yaml` + `chNN.yaml` or `chNN/` directory — AI-generated teaching packs (sole runtime source)
+- `prompts/<slug>/chNN-prompts/` — modular AI generation prompts (meta, study, quiz, labs, cards, test)
 - `prompts/GENERATE.md`, `ASK_USER.md` — normative AI generation contract
 - `docs/` — specifications (`docs/SRS.md`, `docs/INTERACTIVE_LEARNING_SPEC.md`, `docs/USER_MANUAL.md`)
 - `tests/` — automated test suite (`pytest`)

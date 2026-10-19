@@ -111,11 +111,9 @@ def mastered_topup(slugs: list[str], n: int) -> list[tuple[str, str, str, int, d
         for ch in discover_chapters(slug):
             if chapter_status(slug, ch["id"]) != "mastered":
                 continue
-            p = Path(__file__).resolve().parents[1] / "packs" / slug / f"{ch['id']}.yaml"
-            if not p.exists():
-                continue
             try:
-                data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+                from lib.pack import load_chapter_mode
+                data = load_chapter_mode(slug, ch["id"], "study")
             except Exception:
                 continue
             for block_id, idx, ck in collect_checks(data):
@@ -138,14 +136,18 @@ def run(book=None):
     # sync cards from packs into db (idempotent)
     import yaml
     from lib.books import discover_chapters
+    from lib.pack import load_chapter_mode
     slugs = [book] if book else [b["slug"] for b in __import__("lib.books", fromlist=["x"]).discover_books()]
     for slug in slugs:
         for ch in discover_chapters(slug):
-            p = Path(__file__).resolve().parents[1] / "packs" / slug / f"{ch['id']}.yaml"
-            if p.exists():
-                data = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
+            if not ch.get("has_pack"):
+                continue
+            try:
+                data = load_chapter_mode(slug, ch["id"], "cards")
                 if data.get("cards"):
                     upsert_cards(con, slug, ch["id"], data["cards"])
+            except Exception:
+                continue
     due = due_cards(con, book)
     c = Console()
     topup = mastered_topup(slugs, max(0, min(2, 5 - len(due)))) if len(due) < 5 else []

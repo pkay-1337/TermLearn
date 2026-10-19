@@ -46,7 +46,8 @@ def run(book: str, chapter=None, fmt: str = "md", out: str | None = None):
     pieces = []
     for cid in targets:
         try:
-            data = yaml.safe_load(require_chapter(book, cid).read_text(encoding="utf-8"))
+            from lib.pack import load_chapter
+            data = load_chapter(book, cid)
         except FileNotFoundError:
             console.print(f"[yellow]skip {cid}: no pack yet.[/yellow]")
             continue

@@ -1,10 +1,16 @@
 """gen-prompt emitter: GENERATE.md + ASK_USER.md + chapter text, chunked,
-plus normative docs/SRS.md excerpts (FR-GEN-001: self-contained prompt)."""
+plus normative docs/SRS.md excerpts (FR-GEN-001: self-contained prompt).
+
+Supports modular mode generation (--mode meta|study|quiz|labs|cards|test|master|all|legacy)
+and prompt bundle export to prompts/<book>/<chapter>-prompts/.
+"""
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BUDGET = 12000
 OVERLAP = 500
+
+VALID_MODES = ("meta", "study", "quiz", "labs", "cards", "test", "master", "all", "legacy")
 
 
 def chunk(text: str, budget: int = BUDGET, overlap: int = OVERLAP) -> list[str]:
@@ -35,7 +41,178 @@ def normative_excerpts() -> str:
     return schema + "\n\n" + proto
 
 
-def build_prompt(book: str, chapter: str) -> str:
+def _get_mode_header(book: str, chapter: str, mode: str) -> str:
+    dir_path = f"packs/{book}/{chapter}"
+    source_file = f"books/{book}/raw_chapters/{chapter}.txt"
+    book_meta = f"books/{book}/meta.json"
+    book_config = f"packs/{book}/book.yaml"
+    
+    src_info = (
+        f"# [SOURCE ASSET LOCATIONS — WHERE TO FIND CHAPTER DATA]\n"
+        f"# 1. Extracted Chapter Text: {source_file}\n"
+        f"#    (The full extracted text is also appended at the bottom of this prompt)\n"
+        f"# 2. Book Table of Contents & Metadata: {book_meta}\n"
+        f"# 3. Book Toolchain & Course Pack Config: {book_config}\n"
+        f"#\n"
+    )
+
+    if mode == "meta":
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AI AGENT / CHAT: CHAPTER METADATA & OBJECTIVES\n"
+            f"# TARGET OUTPUT FILE: {dir_path}/meta.yaml\n"
+            f"#\n"
+            f"{src_info}"
+            f"# [DIRECTIVES FOR meta.yaml]\n"
+            f"# 1. Read the full chapter text from `{source_file}` (or see below).\n"
+            f"# 2. Enumerate all core idea units in the chapter (concepts, mechanics, procedures).\n"
+            f"# 3. Identify prerequisites from previous chapters (or [] if none).\n"
+            f"# 4. Formulate 1 to 6 falsifiable, measurable learning objectives.\n"
+            f"# 5. OUTPUT FORMAT (exact YAML mapping inside a single yaml code fence):\n"
+            f"#    meta:\n"
+            f"#      book: {book}\n"
+            f"#      chapter_id: {chapter}\n"
+            f"#      title: \"Descriptive Chapter Title\"\n"
+            f"#      source_ref: \"Ch.X pp.Y-Z\"\n"
+            f"#      level: intro | core | advanced\n"
+            f"#      prereqs: []\n"
+            f"#    objectives:\n"
+            f"#      - \"Observable skill/mastery 1\"\n"
+            f"#      - \"Observable skill/mastery 2\"\n"
+            f"# =============================================================================\n\n"
+        )
+    elif mode == "study":
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AI AGENT / CHAT: CONCEPT BLOCKS & STUDY CONTENT\n"
+            f"# TARGET OUTPUT FILE: {dir_path}/study.yaml\n"
+            f"#\n"
+            f"{src_info}"
+            f"# [DIRECTIVES FOR study.yaml]\n"
+            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 2. Dedicate your full cognitive might to deep, pedagogical explanations.\n"
+            f"# 3. Break the chapter into 6–15 single-concept blocks ('blocks: [...]').\n"
+            f"# 4. For each block:\n"
+            f"#    - 'id': unique block id ('b1', 'b2', ...)\n"
+            f"#    - 'type': 'model' | 'syntax' | 'design' | 'algorithm'\n"
+            f"#    - 'title': functional, action-oriented concept title\n"
+            f"#    - 'explain_md': rich, intuitive Markdown explanation (5–20 lines) breaking down\n"
+            f"#      syntax, Notional Machine state transitions, and memory lifecycle.\n"
+            f"#    - 'example': runnable code snippet with 'run_expected' stdout, and optional 'subgoals'\n"
+            f"#    - 'viz': stepped ASCII memory diagrams for every 'model' block (2–6 steps).\n"
+            f"#    - 'checks': 5 to 10 scaffolded micro-checks per block ('predict', 'why-fails',\n"
+            f"#      'mcq', 'fillblank', 'order' with 'faded: true', 'eipe', 'choose-better', 'trace', 'spot-bug').\n"
+            f"#      Every check MUST have an elaborated 'why:' explaining the principle and diagnosing distractors.\n"
+            f"# 5. OUTPUT FORMAT: Single YAML document with top-level 'blocks: [...]'.\n"
+            f"# =============================================================================\n\n"
+        )
+    elif mode == "quiz":
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AI AGENT / CHAT: CHAPTER QUIZ QUESTIONS\n"
+            f"# TARGET OUTPUT FILE: {dir_path}/quiz.yaml\n"
+            f"#\n"
+            f"{src_info}"
+            f"# [DIRECTIVES FOR quiz.yaml]\n"
+            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 2. Author 30 to 50 dedicated, standalone diagnostic questions testing cumulative synthesis.\n"
+            f"# 3. Distribute questions across three difficulty levels: 'level: intro | core | advanced'.\n"
+            f"# 4. Mix question kinds: 'mcq', 'predict', 'why-fails', 'fillblank', 'order', 'trace', 'spot-bug'.\n"
+            f"# 5. SELF-CONTAINED CODE: Whenever testing code behavior or bugs, embed the code snippet directly\n"
+            f"#    in the question via 'code: |'. Never reference external book exercise numbers or listings.\n"
+            f"# 6. ANSWER RANDOMIZATION: Uniformly distribute correct answer positions across 0, 1, 2, and 3.\n"
+            f"# 7. ELABORATED WHY: Every question MUST provide a comprehensive 'why:' explaining the core rule\n"
+            f"#    and naming the exact misconception each wrong distractor traps.\n"
+            f"# 8. OUTPUT FORMAT: Single YAML document with top-level 'quiz: [...]'.\n"
+            f"# =============================================================================\n\n"
+        )
+    elif mode == "labs":
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AI AGENT / CHAT: PRACTICAL LAB WORKSPACES\n"
+            f"# TARGET OUTPUT FILE: {dir_path}/labs.yaml\n"
+            f"#\n"
+            f"{src_info}"
+            f"# [DIRECTIVES FOR labs.yaml]\n"
+            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 2. Author 1 to 4 practical, multi-file coding challenges.\n"
+            f"# 3. STUDENT ACTION REQUIRED — NEVER EMIT PRE-SOLVED SOLUTIONS:\n"
+            f"#    - Student implementation files MUST BE SCAFFOLDED OR BLANK (empty string, stubs, '/* TODO */').\n"
+            f"#    - Supporting framework files (headers '.h', interactive drivers 'main.c', and unit test runners\n"
+            f"#      'test_runner.c') provide the deterministic assertions.\n"
+            f"# 4. Initial verification test MUST fail on unedited starter files, and pass once implemented.\n"
+            f"# 5. Provide language-agnostic commands ('run' and 'test'), automated 'test_cases' with unified diffs,\n"
+            f"#    and 1–3 progressive hints (general -> specific).\n"
+            f"# 6. OUTPUT FORMAT: Single YAML document with top-level 'labs: [...]'.\n"
+            f"# =============================================================================\n\n"
+        )
+    elif mode == "cards":
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AI AGENT / CHAT: SPACED REPETITION FLASHCARDS (SM-2)\n"
+            f"# TARGET OUTPUT FILE: {dir_path}/cards.yaml\n"
+            f"#\n"
+            f"{src_info}"
+            f"# [DIRECTIVES FOR cards.yaml]\n"
+            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 2. Author 15 to 25 atomic flashcards for durable concepts, rules, syntax, and memory models.\n"
+            f"# 3. Each card must be answerable in <10s: front = concise prompt; back = answer + 1-line 'why'.\n"
+            f"# 4. Include 'why/when' conceptual cards ('When must X be used?') alongside 'what' cards.\n"
+            f"# 5. Assign a descriptive 'concept:' tag to each card for telemetry tracking.\n"
+            f"# 6. OUTPUT FORMAT: Single YAML document with top-level 'cards: [...]'.\n"
+            f"# =============================================================================\n\n"
+        )
+    elif mode == "test":
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AI AGENT / CHAT: CHAPTER MASTERY TEST GATES\n"
+            f"# TARGET OUTPUT FILE: {dir_path}/test.yaml\n"
+            f"#\n"
+            f"{src_info}"
+            f"# [DIRECTIVES FOR test.yaml]\n"
+            f"# 1. Define mastery gate criteria referencing prerequisite concept blocks and minimum quiz accuracy.\n"
+            f"# 2. OUTPUT FORMAT:\n"
+            f"#    test:\n"
+            f"#      gates:\n"
+            f"#        - needs: [b1, b2, b3]\n"
+            f"#          min_quiz: 80\n"
+            f"#      final_checks: []\n"
+            f"# =============================================================================\n\n"
+        )
+    elif mode == "master":
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AUTONOMOUS AI AGENTS & CODING ASSISTANTS:\n"
+            f"# TARGET DIRECTORY: {dir_path}/\n"
+            f"#\n"
+            f"{src_info}"
+            f"# [MANDATORY DIRECTIVES FOR MODULAR CHAPTER GENERATION]\n"
+            f"# DO NOT write a single monolithic chNN.yaml file!\n"
+            f"# Instead, create directory '{dir_path}/' and author focused, modular YAML files:\n"
+            f"#\n"
+            f"# Step 1: Write '{dir_path}/meta.yaml' (metadata, prerequisites, 1–6 objectives)\n"
+            f"# Step 2: Write '{dir_path}/study.yaml' (6–15 concept blocks, Notional Machine viz, micro-checks)\n"
+            f"# Step 3: Write '{dir_path}/quiz.yaml' (30–50 standalone diagnostic questions across difficulty levels)\n"
+            f"# Step 4: Write '{dir_path}/labs.yaml' (1–4 multi-file coding projects with stubs & test harnesses)\n"
+            f"# Step 5: Write '{dir_path}/cards.yaml' (15–25 atomic SM-2 flashcards)\n"
+            f"# Step 6: Write '{dir_path}/test.yaml' (mastery gates and certification criteria)\n"
+            f"#\n"
+            f"# After writing the files, execute verification:\n"
+            f"#   python main.py validate --book {book} --chapter {chapter} --strict\n"
+            f"# =============================================================================\n\n"
+        )
+    else:  # legacy monolithic
+        return (
+            f"# =============================================================================\n"
+            f"# INSTRUCTIONS FOR AI AGENTS: MONOLITHIC PACK\n"
+            f"# TARGET OUTPUT FILE: packs/{book}/{chapter}.yaml\n"
+            f"#\n"
+            f"{src_info}"
+            f"# =============================================================================\n\n"
+        )
+
+
+def build_prompt(book: str, chapter: str, mode: str = "master") -> str:
     gen = (ROOT / "prompts" / "GENERATE.md").read_text(encoding="utf-8")
     ask = (ROOT / "prompts" / "ASK_USER.md").read_text(encoding="utf-8")
     raw = ROOT / "books" / book / "raw_chapters" / f"{chapter}.txt"
@@ -43,89 +220,88 @@ def build_prompt(book: str, chapter: str) -> str:
         raise FileNotFoundError(f"no extracted text: {raw} — run extract first")
     text = raw.read_text(encoding="utf-8")
     parts = chunk(text)
-    target_path = f"packs/{book}/{chapter}.yaml"
-    agent_header = (
-        f"# =============================================================================\n"
-        f"# INSTRUCTIONS FOR AI AGENTS & CODING ASSISTANTS:\n"
-        f"# TARGET OUTPUT FILE: {target_path}\n"
-        f"#\n"
-        f"# [MANDATORY DIRECTIVES — READ CAREFULLY BEFORE WRITING A SINGLE LINE]\n"
-        f"# 1. PUT ALL YOUR MIGHT & GO PLUS ULTRA (NO HALF-ASSING):\n"
-        f"#    The learner studies ONLY from your generated YAML, never from the book.\n"
-        f"#    Produce a masterwork of pedagogical engineering grounded in cognitive science.\n"
-        f"#    Zero placeholders (NO 'TODO', NO '/* rest of code */', NO lazy hand-waving).\n"
-        f"# 2. DO NOT WORRY ABOUT LENGTH — DEPTH AND CLARITY OVERRIDE BREVITY:\n"
-        f"#    Never rush, compress, or omit blocks to save tokens. An exhaustive, deeply explained\n"
-        f"#    pack with 8–15 blocks and 30+ checks is vastly superior to a short summary.\n"
-        f"# 3. MULTI-TURN / MULTI-STEP GENERATION SUPPORTED & ENCOURAGED:\n"
-        f"#    If the chapter is concept-dense or has many blocks, DO NOT attempt to crush everything\n"
-        f"#    into one rushed output. Write the file incrementally using your file tools (e.g.\n"
-        f"#    create skeleton + blocks 1–4, then append blocks 5–8, blocks 9–12, cards, lab, and test),\n"
-        f"#    or in sequential parts if in chat. Take as many turns/steps as needed to do it justice.\n"
-        f"# 4. COMPREHENSIVE CODE EXPLANATIONS & NOTIONAL MACHINE:\n"
-        f"#    Every single code snippet MUST be accompanied by an exhaustive, intuitive breakdown:\n"
-        f"#    line-by-line syntax, Notional Machine state transitions (stack, heap, pointers, registers),\n"
-        f"#    the architectural 'why' behind the design, and boundary failure traps.\n"
-        f"# 5. INTUITION-FIRST COMPREHENSIBILITY:\n"
-        f"#    Bridge technical jargon with intuitive mental models and physical analogies before\n"
-        f"#    introducing formal syntax. Make every concept deeply understandable for self-study.\n"
-        f"# 6. INTERACTIVE LEARNING INNOVATIONS (v0.8+):\n"
-        f"#    Elevate interactivity beyond basic MCQ: author `trace` checks for tricky pointer/state\n"
-        f"#    mutations, `faded: true` Parsons checks for scaffolded syntax construction, `spot-bug`\n"
-        f"#    checks for reading compiler/sanitizer diagnostics, and `subgoals` on complex code blocks.\n"
-        f"# 7. DUAL QUESTION ARCHITECTURE (BLOCK CHECKS VS. MAIN QUIZ):\n"
-        f"#    - Immediate Block Checks (`blocks[].checks`): 5–10 scaffolded checks directly after each block's\n"
-        f"#      explanation (calibrated according to the topic's depth and complexity) to reinforce\n"
-        f"#      the single concept just taught through diverse angles (syntax, state, edge cases, traps).\n"
-        f"#    - Dedicated Chapter Quiz (`quiz:`): 30 to 50 comprehensive, standalone questions in no\n"
-        f"#      specific order spanning mixed difficulty levels (`level: intro | core | advanced`).\n"
-        f"#      Main quiz questions MUST be different from the block checks and test cumulative chapter synthesis.\n"
-        f"#      Questions can and should include `code:` blocks where relevant with code-related problem solving.\n"
-        f"# 8. 100% SELF-CONTAINED QUESTIONS & EXPLANATIONS (ZERO EXTERNAL/BOOK REFERENCES):\n"
-        f"#    - NEVER refer to external book labels, example numbers, code boxes, or listings:\n"
-        f"#      STRICTLY PROHIBITED in BOTH question stems (`q:`) AND explanations (`why:`):\n"
-        f"#      'In Example 7.2...', 'In Code Box 7-6...', 'In Listing 10.1...', 'As seen in Figure 3...', 'Section 4...'.\n"
-        f"#    - The learner is inside a terminal TUI and DOES NOT have the physical book open in front of them!\n"
-        f"#    - MANDATORY: If a question tests the behavior, state changes, return value, or output\n"
-        f"#      of a function or snippet (e.g. `engine_turn_off`, `player_shoot`, constructor logic),\n"
-        f"#      you MUST SHOW THAT CODE DIRECTLY in the question item via `code: |` with `lang: c`!\n"
-        f"#      Never expect the learner to memorize an unseen function's constants, defaults, or internal logic.\n"
-        f"#    - Explanations (`why:`) MUST explain the underlying mechanics, memory transitions, and language\n"
-        f"#      rules directly on their own merits (e.g. 'The guard check if (engine->state == OFF) return; ensures...').\n"
-        f"# 9. LABS ARE PRACTICAL CODING CHALLENGES (`labs: [...]`):\n"
-        f"#    - A lab is an interactive practical exam / problem-solving challenge. The STUDENT MUST DO THE WORK.\n"
-        f"#    - STRICT PROHIBITION: NEVER provide 100% pre-solved, complete solutions in student implementation files!\n"
-        f"#      If the student opens the lab and the code is already completely implemented and passes out of the box,\n"
-        f"#      there is zero learning value and no challenge for the student.\n"
-        f"#    - STARTER FILES CAN BE BLANK OR SCAFFOLDED:\n"
-        f"#      • Files that the student is tasked with creating or implementing CAN BE BLANK (e.g. empty string `content: \"\"`),\n"
-        f"#        or minimally scaffolded with function stubs (e.g. `return -1;`, `return NULL;`) and `/* TODO: ... */` tasks.\n"
-        f"#      • Supporting framework files (such as headers `.h`, interactive drivers `main.c`, and unit test runners `test_runner.c`)\n"
-        f"#        provide the contract and deterministic assertions so the student's solution can be tested and verified.\n"
-        f"#    - VERIFICATION LIFECYCLE: When initial starter files are tested with `commands.test` or `test_cases`,\n"
-        f"#      the tests MUST initially fail or report missing symbols. Once the student implements the code, tests pass 100%.\n"
-        f"# 10. EXECUTION & VALIDATION PROTOCOL:\n"
-        f"#    - Autonomous Agents with Tools: Write/edit directly to `{target_path}`.\n"
-        f"#      Then execute: python main.py validate --book {book} --chapter {chapter} --strict\n"
-        f"#    - Chat-Only Interfaces: Output in ```yaml``` fenced blocks (or sequential parts) and\n"
-        f"#      direct the user to save to `{target_path}`.\n"
-        f"# =============================================================================\n\n"
-    )
-    out = [agent_header,
+
+    header = _get_mode_header(book, chapter, mode)
+    source_rel = f"books/{book}/raw_chapters/{chapter}.txt"
+    out = [header,
            gen, "\n---\n", ask, "\n---\n",
            normative_excerpts(), "\n---\n",
-           f"# CHAPTER {chapter} OF {book} ({len(parts)} part(s))",
-           f"# TARGET FILE DESTINATION: {target_path}",
-           f"# Process: answer ASK_USER questions first, then emit/write YAML to `{target_path}`.\n"]
+           f"# =============================================================================",
+           f"# CHAPTER CONTENT: {chapter} OF {book} ({len(parts)} part(s))",
+           f"# SOURCE FILE ON DISK: {source_rel}",
+           f"# MODE TARGET: {mode.upper()}",
+           f"# =============================================================================\n"]
     for n, p in enumerate(parts, 1):
         out.append(f"\n## part {n}/{len(parts)}\n\n{p}\n")
     return "\n".join(out)
 
 
-def emit(book: str, chapter: str, out: str | None = None):
-    prompt = build_prompt(book, chapter)
+def emit_prompt_bundle(book: str, chapter: str, dest_dir: Path | str | None = None) -> Path:
+    """Generate all individual mode prompts + master prompt into a dedicated bundle folder.
+    
+    Target location: prompts/<book>/<chapter>-prompts/
+    """
+    if dest_dir:
+        base = Path(dest_dir)
+    else:
+        base = ROOT / "prompts" / book / f"{chapter}-prompts"
+    base.mkdir(parents=True, exist_ok=True)
+
+    mode_files = [
+        ("01_meta.md", "meta"),
+        ("02_study.md", "study"),
+        ("03_quiz.md", "quiz"),
+        ("04_labs.md", "labs"),
+        ("05_cards.md", "cards"),
+        ("06_test.md", "test"),
+        ("master_prompt.md", "master"),
+    ]
+
+    for fname, mode in mode_files:
+        content = build_prompt(book, chapter, mode=mode)
+        (base / fname).write_text(content, encoding="utf-8")
+
+    readme = (
+        f"# AI Generation Prompts for {book} / {chapter}\n\n"
+        f"### Source Asset Locations (Where to Find Chapter Data):\n"
+        f"- **Raw Extracted Chapter Text**: `books/{book}/raw_chapters/{chapter}.txt`\n"
+        f"- **Book Metadata & TOC**: `books/{book}/meta.json`\n"
+        f"- **Book Toolchain & Config**: `packs/{book}/book.yaml`\n"
+        f"- **Target Chapter Output Directory**: `packs/{book}/{chapter}/`\n\n"
+        f"### Available Prompts in this Bundle:\n"
+        f"1. **`01_meta.md`** → generates `packs/{book}/{chapter}/meta.yaml`\n"
+        f"2. **`02_study.md`** → generates `packs/{book}/{chapter}/study.yaml`\n"
+        f"3. **`03_quiz.md`** → generates `packs/{book}/{chapter}/quiz.yaml`\n"
+        f"4. **`04_labs.md`** → generates `packs/{book}/{chapter}/labs.yaml`\n"
+        f"5. **`05_cards.md`** → generates `packs/{book}/{chapter}/cards.yaml`\n"
+        f"6. **`06_test.md`** → generates `packs/{book}/{chapter}/test.yaml`\n\n"
+        f"### For Autonomous Coding Agents (Claude Code, Antigravity, Cursor, Codex):\n"
+        f"Feed **`master_prompt.md`** directly to the agent. It reads `books/{book}/raw_chapters/{chapter}.txt`,\n"
+        f"creates `packs/{book}/{chapter}/`, and sequentially authors and validates all 6 mode files.\n\n"
+        f"### Verification:\n"
+        f"```bash\n"
+        f"python main.py validate --book {book} --chapter {chapter} --strict\n"
+        f"```\n"
+    )
+    (base / "README.md").write_text(readme, encoding="utf-8")
+    return base
+
+
+def emit(book: str, chapter: str, mode: str = "master", out: str | None = None):
+    mode = mode.lower()
+    if mode not in VALID_MODES:
+        raise ValueError(f"unknown mode {mode!r}, choose from {VALID_MODES}")
+
+    if mode == "all":
+        dest = emit_prompt_bundle(book, chapter, dest_dir=out)
+        print(f"Generated all prompt files in {dest}")
+        return
+
+    prompt = build_prompt(book, chapter, mode=mode)
     if out:
-        Path(out).write_text(prompt, encoding="utf-8")
-        print(f"wrote {out} ({len(prompt)} chars)")
+        p = Path(out)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(prompt, encoding="utf-8")
+        print(f"wrote {out} ({len(prompt)} chars, mode={mode})")
     else:
         print(prompt)

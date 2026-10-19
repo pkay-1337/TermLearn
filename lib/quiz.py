@@ -146,14 +146,14 @@ def run(book: str, chapter: str, sample=None, seed=None, concept=None):
     import yaml
     from rich.console import Console
     from rich.table import Table
-    from lib.pack import require_chapter
+    from lib.pack import load_chapter_mode
     from lib.srs import init_db, log_answer
     from lib.progress import record_quiz
     console = Console()
     try:
-        data = yaml.safe_load(require_chapter(book, chapter).read_text(encoding="utf-8"))
+        data = load_chapter_mode(book, chapter, "quiz")
     except FileNotFoundError:
-        console.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, paste YAML to packs/{book}/{chapter}.yaml, then validate.[/yellow]")
+        console.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, then validate.[/yellow]")
         return
     checks = filter_checks(collect_quiz_questions(data), concept)
     rng = random.Random(seed) if seed else None

@@ -34,11 +34,24 @@ def extract(
 def gen_prompt(
     book: str = typer.Option(..., "--book"),
     chapter: str = typer.Option(..., "--chapter", help="Chapter id, e.g. ch01"),
-    out: str = typer.Option("", "--out", help="Optional output file"),
+    mode: str = typer.Option("master", "--mode", help="Prompt mode: meta, study, quiz, labs, cards, test, master, all, or legacy"),
+    out: str = typer.Option("", "--out", help="Optional output file or directory"),
 ):
-    """Emit AI generation prompt for a chapter. (FR-GEN-001..003)"""
+    """Emit AI generation prompt(s) for a chapter. (FR-GEN-001..003)"""
     from lib import ai_prompt
-    ai_prompt.emit(book, chapter, out or None)
+    ai_prompt.emit(book, chapter, mode=mode, out=out or None)
+
+
+@app.command()
+def split(
+    book: str = typer.Option(..., "--book", help="Book slug"),
+    chapter: str = typer.Option(..., "--chapter", help="Chapter id, e.g. ch01"),
+    backup: bool = typer.Option(True, "--backup/--no-backup", help="Keep original monolithic file as .yaml.bak"),
+):
+    """Split a monolithic chapter YAML into a modular directory pack."""
+    from lib import pack
+    pack.split_chapter_to_modular(book, chapter, backup=backup)
+
 
 
 @app.command()

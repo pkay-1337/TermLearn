@@ -62,16 +62,19 @@ def run(book: str, chapter: str):
     """Ordering-only session over the chapter's `order` checks."""
     import yaml
     from rich.console import Console
-    from lib.pack import require_chapter
+    from lib.pack import load_chapter_mode
     from lib.srs import init_db, log_answer
     console = Console()
     try:
-        data = yaml.safe_load(require_chapter(book, chapter).read_text(encoding="utf-8"))
+        data = load_chapter_mode(book, chapter, "parsons")
     except FileNotFoundError:
-        console.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, paste YAML to packs/{book}/{chapter}.yaml, then validate.[/yellow]")
+        console.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, then validate.[/yellow]")
         return
-    items = [(b.get("id", "?"), i, ck) for b in data.get("blocks", [])
-             for i, ck in enumerate(b.get("checks", [])) if ck.get("kind") == "order"]
+    items = []
+    if "parsons" in data and isinstance(data["parsons"], list):
+        items.extend([("parsons", i, ck) for i, ck in enumerate(data["parsons"]) if isinstance(ck, dict)])
+    items.extend([(b.get("id", "?"), i, ck) for b in data.get("blocks", [])
+                  for i, ck in enumerate(b.get("checks", [])) if ck.get("kind") == "order"])
     if not items:
         console.print("[yellow]No order (Parsons) checks in this pack.[/yellow]")
         return

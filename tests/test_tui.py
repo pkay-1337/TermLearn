@@ -713,8 +713,14 @@ async def test_multi_lab_workspace_tui(tmp_path, monkeypatch):
         badge = app.screen.query_one("#lab-status-badge")
         assert "PASSING" in str(badge.render())
 
-
-
-
-
-
+async def test_revise_screen_renders_content(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.screens import ReviseScreen
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        screen = ReviseScreen("extreme-c", "ch10")
+        app.push_screen(screen)
+        await _wait_screen(app, pilot, ReviseScreen)
+        await pilot.pause()
+        cards = screen.query(".study-block-card")
+        assert len(cards) >= 1

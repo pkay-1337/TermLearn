@@ -1042,13 +1042,7 @@ class ReviseScreen(VimScrollMixin, _Base):
         self.data = load_chapter(self.book, self.chapter)
         with ScrollableContainer(classes="study-container"):
             yield Label(self._title_text(), id="revise-screen-title", classes="study-header-bar")
-
-    def on_resize(self) -> None:
-        try:
-            self.query_one("#revise-screen-title", Label).update(self._title_text())
-        except Exception:
-            pass
-            for b in data.get("blocks", []):
+            for b in self.data.get("blocks", []):
                 with Vertical(classes="study-block-card"):
                     yield Label(f"━━ {b.get('title', b.get('id'))}", classes="details-header")
                     yield Markdown(str(b.get("explain_md", "")))
@@ -1062,6 +1056,12 @@ class ReviseScreen(VimScrollMixin, _Base):
                     if b.get("common_bugs"):
                         yield Static(f"[bold yellow]Common Pitfalls:[/] " + "; ".join(b["common_bugs"]),
                                      classes="feedback-msg")
+
+    def on_resize(self) -> None:
+        try:
+            self.query_one("#revise-screen-title", Label).update(self._title_text())
+        except Exception:
+            pass
 
     def action_back(self) -> None:
         self.app.pop_screen()

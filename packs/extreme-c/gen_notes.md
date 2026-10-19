@@ -33,12 +33,12 @@
 
 ## Pack Statistics
 
-- 12 blocks (model / syntax / design / algorithm), 67 block checks
-- 10 atomic flashcards
-- 40-question dedicated chapter quiz (intro/core/advanced, mixed, no duplicates with block checks)
-- 3 multi-file labs with blank starter implementation files (engine.c, car.c, player.c)
-- 5 final mastery checks; gate needs all 12 blocks at min_quiz 80
-- Strict validation: PASS (`python3 main.py validate --book extreme-c --chapter ch10 --strict`)
+- 11 blocks (model / syntax / design / algorithm), 66 scaffolded block checks
+- 20 atomic SM-2 spaced repetition flashcards
+- 40-question dedicated chapter quiz (intro/core/advanced, mixed, zero duplicates with block checks)
+- 3 multi-file labs with scaffolded blank starter files (engine.c, car.c, player.c) and unit test assertions
+- 5 final mastery checks; gate needs all 11 blocks at min_quiz 80
+- Strict validation: PASS (`python main.py validate --book extreme-c --chapter ch10 --strict`)
 
 ---
 

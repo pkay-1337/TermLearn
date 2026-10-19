@@ -1,0 +1,80 @@
+cards:
+  - front: "What is the physical runtime memory footprint of a typedef struct definition before any instance is instantiated?"
+    back: "0 bytes; the struct definition is purely a compile-time type blueprint used by the compiler to compute offsets."
+    concept: "class-struct-blueprint"
+
+  - front: "What are the two distinct phases of object creation in class-based C?"
+    back: "Allocation (requesting raw bytes via malloc) followed by Construction (initializing attributes and resources via ctor)."
+    concept: "object-creation-phases"
+
+  - front: "What are the two distinct phases of object teardown in class-based C?"
+    back: "Destruction (releasing owned child resources via dtor) followed by Deallocation (freeing the container struct buffer via free)."
+    concept: "object-teardown-phases"
+
+  - front: "Why must car_dtor be executed before free(car) is called?"
+    back: "To avoid heap-use-after-free and memory leaks; freeing the container first prevents safe access to internal child pointers."
+    concept: "destruction-ordering"
+
+  - front: "What is the defining lifetime invariant of the composition relationship?"
+    back: "The contained object's lifetime is strictly bounded by the container's lifetime; it cannot exist before or survive after the container."
+    concept: "composition-lifetime-invariant"
+
+  - front: "In composition, which entity is exclusively responsible for the child object's allocation and deallocation?"
+    back: "The container object; the container's constructor creates the child, and its destructor frees the child."
+    concept: "composition-ownership"
+
+  - front: "Why does the C compiler allow declaring 'struct engine_t* engine;' inside car_t before engine_t is defined?"
+    back: "All data pointers have a fixed, known byte width (e.g. 8 bytes on 64-bit systems) regardless of pointee struct layout."
+    concept: "incomplete-type-pointer-width"
+
+  - front: "Why does embedding an incomplete type by value (e.g. 'struct engine_t engine;') fail to compile?"
+    back: "The compiler cannot determine the total byte footprint or alignment of the outer struct without knowing the child's complete field layout."
+    concept: "incomplete-type-by-value-error"
+
+  - front: "Why must a container object never return a raw pointer to a privately composed component?"
+    back: "Leaking internal pointers breaks encapsulation, allowing external callers to mutate private state or invoke free() on the child."
+    concept: "prevent-pointer-leakage"
+
+  - front: "What software pattern describes a container method (car_start) forwarding an operation to a child method (engine_turn_on)?"
+    back: "Delegation (or Forwarding); the container exposes a high-level API while delegating the work to its internal component."
+    concept: "delegation-pattern"
+
+  - front: "What is the defining lifetime characteristic of the aggregation relationship?"
+    back: "Independent lifetimes; the contained object can be created before the container and survive after the container is destroyed."
+    concept: "aggregation-independent-lifetime"
+
+  - front: "Why must player_dtor NEVER invoke free(player->gun) in an aggregation relationship?"
+    back: "The player holds a non-owning reference; freeing an aggregated object causes a double-free or invalidates external owners."
+    concept: "aggregation-no-free"
+
+  - front: "When must an aggregation dependency be passed as an argument to the constructor?"
+    back: "In mandatory aggregation, where the container cannot satisfy its class invariants or operate without the dependency."
+    concept: "mandatory-aggregation-timing"
+
+  - front: "Why MUST optional aggregation pointers be explicitly initialized to NULL in the constructor?"
+    back: "malloc leaves memory uninitialized with garbage bits; without explicit NULL assignment, garbage behaves as a wild pointer."
+    concept: "optional-aggregation-null-init"
+
+  - front: "How is an aggregation association cleanly dissolved in C without deallocating the target object?"
+    back: "By setting the container's pointer attribute to NULL (e.g. player->gun = NULL)."
+    concept: "aggregation-dissociation-mechanism"
+
+  - front: "Why must behavior methods that delegate to aggregated objects enforce defensive NULL checks?"
+    back: "Because aggregated components are optional and may be absent (NULL) at runtime, risking segmentation faults if dereferenced."
+    concept: "defensive-null-preconditions"
+
+  - front: "If an aggregation relationship between two objects is temporary at runtime, why is it permanent between their types?"
+    back: "Because the container's struct layout is fixed at compile time, permanently dedicating pointer storage for the dependency."
+    concept: "type-permanence-vs-instance-temporality"
+
+  - front: "In a multi-level cascading destruction hierarchy, in what order must objects be deallocated?"
+    back: "Bottom-up (innermost leaf children first, moving outwards to outer containers) to ensure child pointers remain valid during teardown."
+    concept: "bottom-up-destruction-order"
+
+  - front: "What is the difference between calloc and malloc regarding pointer member initialization?"
+    back: "calloc zeroes all allocated bytes (initializing pointers to NULL), whereas malloc leaves memory filled with undefined garbage bits."
+    concept: "calloc-vs-malloc-zeroing"
+
+  - front: "What design pattern replaces optional NULL pointers with a dummy object implementing do-nothing behaviors?"
+    back: "The Null Object Pattern; it eliminates repetitive defensive NULL checks by providing a safe, no-op default instance."
+    concept: "null-object-pattern"

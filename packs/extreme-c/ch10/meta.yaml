@@ -1,0 +1,14 @@
+meta:
+  book: extreme-c
+  chapter_id: ch10
+  title: "Chapter 07 — Composition and Aggregation"
+  source_ref: "Text/composition_and_aggregation.xhtml"
+  level: core
+  prereqs:
+    - ch09
+objectives:
+  - "Distinguish compile-time struct blueprints from runtime heap object allocations and memory lifecycles in C."
+  - "Implement strict object composition via opaque struct pointers with cascading lifecycle allocation and deallocation."
+  - "Implement object aggregation with non-owning references, defensive NULL guards, and explicit association/dissociation."
+  - "Analyze ownership boundaries to prevent pointer leakage in composition and premature freeing in aggregation."
+  - "Contrast instance-level runtime temporal relationships with permanent compile-time type-level dependencies."

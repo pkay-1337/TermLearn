@@ -1,0 +1,354 @@
+labs:
+  - id: lab1
+    title: "Encapsulating the Engine Component"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Build a modular, encapsulated **Engine component** in C.
+
+      ### Requirements
+      1. Define the internal `struct engine_t` in `engine.c` so its layout is hidden from callers.
+      2. Implement `engine_new(void)` allocating heap memory and initializing state to `ENGINE_OFF` and temperature to 15.0 C (ambient).
+      3. Implement `engine_turn_on(engine_t*)` and `engine_turn_off(engine_t*)` with defensive guards against redundant state toggles.
+      4. Implement `engine_get_temperature(const engine_t*)` returning the current temperature.
+      5. Implement `engine_free(engine_t*)` freeing heap memory.
+    files:
+      - path: engine.h
+        content: |
+          #ifndef ENGINE_H
+          #define ENGINE_H
+
+          typedef enum {
+            ENGINE_OFF,
+            ENGINE_ON
+          } engine_state_t;
+
+          typedef struct engine_t engine_t;
+
+          engine_t* engine_new(void);
+          void engine_free(engine_t* engine);
+          void engine_turn_on(engine_t* engine);
+          void engine_turn_off(engine_t* engine);
+          double engine_get_temperature(const engine_t* engine);
+
+          #endif
+      - path: engine.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "engine.h"
+
+          int main(void) {
+            engine_t* engine = engine_new();
+            printf("Engine created. Temp: %.1f C\n", engine_get_temperature(engine));
+            engine_turn_on(engine);
+            printf("Engine turned on. Temp: %.1f C\n", engine_get_temperature(engine));
+            engine_turn_off(engine);
+            printf("Engine turned off. Temp: %.1f C\n", engine_get_temperature(engine));
+            engine_free(engine);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include "engine.h"
+
+          int main(void) {
+            engine_t* eng = engine_new();
+            assert(eng != NULL);
+            assert(engine_get_temperature(eng) == 15.0);
+
+            engine_turn_on(eng);
+            assert(engine_get_temperature(eng) == 75.0);
+
+            /* Redundant turn on is safe no-op */
+            engine_turn_on(eng);
+            assert(engine_get_temperature(eng) == 75.0);
+
+            engine_turn_off(eng);
+            assert(engine_get_temperature(eng) == 15.0);
+
+            /* Redundant turn off is safe no-op */
+            engine_turn_off(eng);
+            assert(engine_get_temperature(eng) == 15.0);
+
+            engine_free(eng);
+            printf("ENGINE TESTS PASSED\n");
+            return 0;
+          }
+    commands:
+      run: gcc -Wall -Wextra -std=c99 engine.c main.c -o app && ./app
+      test: gcc -Wall -Wextra -std=c99 engine.c test_runner.c -o test_runner && ./test_runner
+    test_cases:
+      - name: Engine program execution trace
+        stdin: ''
+        expect: |
+          Engine created. Temp: 15.0 C
+          Engine turned on. Temp: 75.0 C
+          Engine turned off. Temp: 15.0 C
+        expect_exit: 0
+    hints:
+      - Check engine state before toggling temperature.
+      - Always check if pointer is non-null before accessing fields.
+
+  - id: lab2
+    title: "Composition & Delegation: Car Composed of an Engine"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Model an owned **Composition** relationship in C where a `car_t` completely encapsulates an owned `engine_t`.
+
+      ### Requirements
+      1. In `car.c`, allocate the internal `engine_t` during `car_new()`.
+      2. In `car_free()`, strictly destruct the owned child `engine` before freeing `car`.
+      3. Delegate behavior: `car_start()` and `car_stop()` forward to `engine_turn_on()` and `engine_turn_off()`.
+      4. `car_get_engine_temperature()` queries the internal engine temperature.
+    files:
+      - path: engine.h
+        content: |
+          #ifndef ENGINE_H
+          #define ENGINE_H
+
+          typedef enum { ENGINE_OFF, ENGINE_ON } engine_state_t;
+          typedef struct engine_t engine_t;
+
+          engine_t* engine_new(void);
+          void engine_free(engine_t* engine);
+          void engine_turn_on(engine_t* engine);
+          void engine_turn_off(engine_t* engine);
+          double engine_get_temperature(const engine_t* engine);
+
+          #endif
+      - path: engine.c
+        content: |
+          #include <stdlib.h>
+          #include "engine.h"
+
+          struct engine_t {
+            engine_state_t state;
+            double temperature;
+          };
+
+          engine_t* engine_new(void) {
+            engine_t* eng = (engine_t*)malloc(sizeof(engine_t));
+            if (!eng) return NULL;
+            eng->state = ENGINE_OFF;
+            eng->temperature = 15.0;
+            return eng;
+          }
+
+          void engine_free(engine_t* engine) { free(engine); }
+          void engine_turn_on(engine_t* engine) { if (engine) { engine->state = ENGINE_ON; engine->temperature = 75.0; } }
+          void engine_turn_off(engine_t* engine) { if (engine) { engine->state = ENGINE_OFF; engine->temperature = 15.0; } }
+          double engine_get_temperature(const engine_t* engine) { return engine ? engine->temperature : 0.0; }
+      - path: car.h
+        content: |
+          #ifndef CAR_H
+          #define CAR_H
+
+          typedef struct car_t car_t;
+
+          car_t* car_new(void);
+          void car_free(car_t* car);
+          void car_start(car_t* car);
+          void car_stop(car_t* car);
+          double car_get_engine_temperature(const car_t* car);
+
+          #endif
+      - path: car.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "car.h"
+
+          int main(void) {
+            car_t* car = car_new();
+            printf("Car created. Engine temp: %.1f C\n", car_get_engine_temperature(car));
+            car_start(car);
+            printf("Car started. Engine temp: %.1f C\n", car_get_engine_temperature(car));
+            car_stop(car);
+            printf("Car stopped. Engine temp: %.1f C\n", car_get_engine_temperature(car));
+            car_free(car);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include "car.h"
+
+          int main(void) {
+            car_t* car = car_new();
+            assert(car != NULL);
+            assert(car_get_engine_temperature(car) == 15.0);
+
+            car_start(car);
+            assert(car_get_engine_temperature(car) == 75.0);
+
+            car_stop(car);
+            assert(car_get_engine_temperature(car) == 15.0);
+
+            car_free(car);
+            printf("CAR COMPOSITION TESTS PASSED\n");
+            return 0;
+          }
+    commands:
+      run: gcc -Wall -Wextra -std=c99 engine.c car.c main.c -o app && ./app
+      test: gcc -Wall -Wextra -std=c99 engine.c car.c test_runner.c -o test_runner && ./test_runner
+    test_cases:
+      - name: Car composition program trace
+        stdin: ''
+        expect: |
+          Car created. Engine temp: 15.0 C
+          Car started. Engine temp: 75.0 C
+          Car stopped. Engine temp: 15.0 C
+        expect_exit: 0
+    hints:
+      - In car_new, allocate the car and then call engine_new to construct the owned engine child.
+      - In car_free, call engine_free on the child engine before freeing the car pointer itself.
+
+  - id: lab3
+    title: "Dynamic Aggregation: Player and Borrowed Gun"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Model an **Aggregation** relationship in C where a `player_t` optionally borrows a `gun_t` without owning its lifetime.
+
+      ### Requirements
+      1. In `player_new()`, initialize the `gun` pointer to `NULL`.
+      2. In `player_free()`, NEVER free the borrowed gun (the caller or armory owns it!).
+      3. Implement `player_pickup_gun()` and `player_drop_gun()` to attach and detach the reference.
+      4. In `player_shoot()`, verify the pointer is non-null before delegating to `gun_shoot()`.
+    files:
+      - path: gun.h
+        content: |
+          #ifndef GUN_H
+          #define GUN_H
+
+          typedef struct gun_t gun_t;
+
+          gun_t* gun_new(int bullets);
+          void gun_free(gun_t* gun);
+          int gun_shoot(gun_t* gun);
+          int gun_get_bullets(const gun_t* gun);
+
+          #endif
+      - path: gun.c
+        content: |
+          #include <stdlib.h>
+          #include "gun.h"
+
+          struct gun_t {
+            int bullets;
+          };
+
+          gun_t* gun_new(int bullets) {
+            gun_t* g = (gun_t*)malloc(sizeof(gun_t));
+            if (!g) return NULL;
+            g->bullets = bullets > 0 ? bullets : 0;
+            return g;
+          }
+
+          void gun_free(gun_t* gun) { free(gun); }
+
+          int gun_shoot(gun_t* gun) {
+            if (!gun || gun->bullets <= 0) return 0;
+            gun->bullets--;
+            return 1;
+          }
+
+          int gun_get_bullets(const gun_t* gun) {
+            return gun ? gun->bullets : 0;
+          }
+      - path: player.h
+        content: |
+          #ifndef PLAYER_H
+          #define PLAYER_H
+
+          #include "gun.h"
+
+          typedef struct player_t player_t;
+
+          player_t* player_new(const char* name);
+          void player_free(player_t* player);
+          void player_pickup_gun(player_t* player, gun_t* gun);
+          gun_t* player_drop_gun(player_t* player);
+          int player_shoot(player_t* player);
+          int player_has_gun(const player_t* player);
+
+          #endif
+      - path: player.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "player.h"
+          #include "gun.h"
+
+          int main(void) {
+            gun_t* gun = gun_new(3);
+            player_t* player = player_new("Alice");
+
+            printf("Player has gun: %s\n", player_has_gun(player) ? "YES" : "NO");
+            player_pickup_gun(player, gun);
+            printf("Player picked up gun. Bullets: %d\n", gun_get_bullets(gun));
+
+            player_shoot(player);
+            printf("Player shot. Bullets remaining: %d\n", gun_get_bullets(gun));
+
+            player_drop_gun(player);
+            printf("Player dropped gun. Has gun: %s\n", player_has_gun(player) ? "YES" : "NO");
+
+            player_free(player);
+            gun_free(gun);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include "player.h"
+          #include "gun.h"
+
+          int main(void) {
+            gun_t* gun = gun_new(2);
+            assert(gun != NULL);
+
+            player_t* player = player_new("Alice");
+            assert(player != NULL);
+            assert(player_has_gun(player) == 0);
+            assert(player_shoot(player) == 0);
+
+            player_pickup_gun(player, gun);
+            assert(player_has_gun(player) == 1);
+            assert(player_shoot(player) == 1);
+            assert(gun_get_bullets(gun) == 1);
+
+            gun_t* dropped = player_drop_gun(player);
+            assert(dropped == gun);
+            assert(player_has_gun(player) == 0);
+            assert(player_shoot(player) == 0);
+
+            player_free(player);
+            assert(gun_get_bullets(gun) == 1);
+            gun_free(gun);
+
+            printf("PLAYER AGGREGATION TESTS PASSED\n");
+            return 0;
+          }
+    commands:
+      run: gcc -Wall -Wextra -std=c99 gun.c player.c main.c -o app && ./app
+      test: gcc -Wall -Wextra -std=c99 gun.c player.c test_runner.c -o test_runner && ./test_runner
+    test_cases:
+      - name: Player aggregation program trace
+        stdin: ''
+        expect: |
+          Player has gun: NO
+          Player picked up gun. Bullets: 3
+          Player shot. Bullets remaining: 2
+          Player dropped gun. Has gun: NO
+        expect_exit: 0
+    hints:
+      - In player_new, set gun to NULL.
+      - In player_free, do NOT free the gun; only free the player.
+      - In player_shoot, verify gun is not NULL before firing.

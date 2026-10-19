@@ -1,0 +1,139 @@
+test:
+  gates:
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11]
+      min_quiz: 80
+  final_checks:
+    - kind: mcq
+      level: advanced
+      q: "In an enterprise C codebase, which architectural design correctly differentiates composition from aggregation?"
+      choices:
+        - "Composition uses static function pointers; aggregation uses dynamic function pointers"
+        - "Composition uses void* handles; aggregation requires explicitly typed pointers"
+        - "Composition encapsulates exclusive lifecycle ownership of the child; aggregation manages a non-owning reference to an independently existing object"
+        - "Composition requires memory allocated in kernel space; aggregation requires user-space stack memory"
+      answer: 2
+      why: |
+        The essential difference between the two to-have relationships is ownership: in composition, the container
+        creates and destroys the child object as part of its own lifecycle. In aggregation, the container holds
+        a reference to an object whose creation and destruction are managed externally.
+        Options A, B, and D cite fictitious technical requirements.
+      concept: "composition-vs-aggregation-mastery"
+
+    - kind: predict
+      level: advanced
+      q: "Trace the execution of this combined architecture. What integer is printed to standard output?"
+      code: |
+        #include <stdio.h>
+        #include <stdlib.h>
+
+        typedef struct { int hp; } engine_t;
+        typedef struct { engine_t* engine; } car_t;
+        typedef struct { car_t* assigned_car; } driver_t;
+
+        int main(void) {
+          // Composition: Car owns Engine
+          car_t car;
+          engine_t eng = { .hp = 300 };
+          car.engine = &eng;
+
+          // Aggregation: Driver references Car
+          driver_t driver = { .assigned_car = &car };
+          driver.assigned_car->engine->hp += 50;
+
+          printf("%d\n", eng.hp);
+          return 0;
+        }
+      choices:
+        - "300"
+        - "350"
+        - "50"
+        - "0"
+      answer: 1
+      why: |
+        driver.assigned_car points to car, whose engine pointer points to eng. Mutating hp through the
+        aggregated pointer adds 50 to 300, resulting in 350. Printing eng.hp outputs 350.
+        Option A captures pre-mutation state. Option C is the increment alone. Option D assumes zeroing.
+      concept: "hybrid-relationship-trace"
+
+    - kind: spot-bug
+      level: advanced
+      q: "Analyze the code and AddressSanitizer report. What error occurred during program termination?"
+      code: |
+        typedef struct { int id; } device_t;
+        typedef struct { device_t* dev; } controller_t;
+
+        void controller_free(controller_t* c) {
+          free(c->dev); // Aggregated member mistakenly freed here!
+          free(c);
+        }
+
+        int main(void) {
+          device_t* d = (device_t*)malloc(sizeof(device_t));
+          controller_t* c = (controller_t*)malloc(sizeof(controller_t));
+          c->dev = d;
+          controller_free(c);
+          free(d); // Real owner attempts to free here!
+          return 0;
+        }
+      diagnostic_log: |
+        ==24102==ERROR: AddressSanitizer: attempting double-free on 0x602000000010:
+            #0 0x4011e0 in free
+            #1 0x401350 in main test.c:16
+      target_line: 16
+      choices:
+        - "Line 16: Attempting to free address 0x602000000010 after controller_free already freed it in line 6"
+        - "Line 12: malloc cannot allocate controller_t without explicit typecasting"
+        - "Line 11: device_t id attribute was never initialized"
+      answer: 0
+      why: |
+        In line 6, controller_free mistakenly executed free(c->dev), treating an aggregation relationship
+        as composition. When main() later called free(d) on line 16, AddressSanitizer detected a fatal double-free.
+        Options B and C do not explain the double-free report.
+      concept: "aggregation-double-free-diagnosis"
+
+    - kind: why-fails
+      level: advanced
+      q: "Why does the C compiler reject passing or returning an incomplete type by value?"
+      code: |
+        struct engine_t; // Incomplete type forward declaration
+
+        // Attempting to pass and return by value:
+        struct engine_t process_engine(struct engine_t eng);
+      choices:
+        - "Incomplete types cannot be stored in header files"
+        - "Function arguments in C must always be passed as void*"
+        - "Incomplete types are restricted to static file scope"
+        - "The compiler cannot allocate stack frame space without knowing the byte size of struct engine_t"
+      answer: 3
+      why: |
+        Passing or returning by value requires the compiler to push copies of the struct onto the call stack
+        or reserve stack frame storage. Without the complete struct definition, its byte size is unknown.
+        Pointers, however, always have a known fixed width (8 bytes on 64-bit systems) and are permitted.
+        Options A, B, and C are false syntax claims.
+      concept: "pass-by-value-incomplete-type-error"
+
+    - kind: choose-better
+      level: advanced
+      q: "Which API design best preserves information hiding and maintainability in an object composition model?"
+      choices:
+        - |
+          // Exposing internal struct definition in public header
+          struct car_t {
+            engine_t* engine;
+            double fuel;
+          };
+        - |
+          // Opaque pointer in public header; complete struct in source file
+          // car.h:
+          struct car_t;
+          struct car_t* car_new(void);
+          void car_ctor(struct car_t*);
+          void car_dtor(struct car_t*);
+          void car_start(struct car_t*);
+          double car_get_engine_temperature(struct car_t*);
+      answer: 1
+      why: |
+        Option B hides struct car_t's field definitions inside the implementation file (.c), preventing
+        external clients from accessing or depending on internal layout, while exposing clean behavior wrappers.
+        Option A exposes private fields, inviting direct manipulation and breaking encapsulation.
+      concept: "opaque-struct-encapsulation-choice"

@@ -1,0 +1,902 @@
+quiz:
+  - kind: mcq
+    level: intro
+    q: "In C, what is the primary structural mechanism used to represent an object-oriented class blueprint?"
+    choices:
+      - "A dynamic hash table created by the runtime loader"
+      - "A typedef struct declaration defining the layout and types of instance attributes"
+      - "A global void* array storing function pointers"
+      - "A kernel memory segment mapped into user space"
+    answer: 1
+    why: |
+      In C, classes are modeled using typedef struct declarations that define attribute layouts at compile
+      time. Instances are then created by allocating memory matching that struct blueprint.
+      Option A confuses C with dynamic languages like Python or JavaScript. Option C confuses structs with
+      vtables. Option D confuses language types with kernel memory mapping.
+    concept: "class-struct-blueprint"
+
+  - kind: mcq
+    level: core
+    q: "Why does an owning container class wrap child operations in public behavior functions rather than exposing the child component pointer?"
+    choices:
+      - "To preserve information hiding and prevent external callers from bypassing container invariants or directly mutating child state"
+      - "Because C function pointers cannot be dereferenced by external callers without compilation failure"
+      - "To allow the C compiler to inline all child function calls automatically at link time"
+      - "Because struct pointers in C can only be referenced from within the translation unit that allocated them"
+    answer: 0
+    why: |
+      Delegating operations through container behavior functions maintains encapsulation. Exposing the child
+      pointer leaks internal references, allowing external code to mutate child state or free the resource prematurely.
+      Option B is false since function pointers are first-class C values. Option C confuses delegation with link-time inlining.
+      Option D is false because heap pointers can be dereferenced across any translation unit that includes the complete definition.
+    concept: "delegation-purpose"
+
+  - kind: predict
+    level: core
+    q: "Trace the execution of this composition example. What value is printed to standard output?"
+    code: |
+      #include <stdio.h>
+      typedef struct { int rpm; } motor_t;
+      typedef struct { motor_t* motor; } tool_t;
+
+      void tool_init(tool_t* t, motor_t* m) { t->motor = m; t->motor->rpm = 1200; }
+      void tool_boost(tool_t* t) { t->motor->rpm += 800; }
+
+      int main(void) {
+        motor_t m = { .rpm = 0 };
+        tool_t t;
+        tool_init(&t, &m);
+        tool_boost(&t);
+        printf("%d\n", m.rpm);
+        return 0;
+      }
+    choices:
+      - "1200"
+      - "0"
+      - "2000"
+      - "800"
+    answer: 2
+    why: |
+      tool_init sets t->motor to &m and initializes m.rpm to 1200. tool_boost dereferences t->motor
+      and increments rpm by 800 (1200 + 800 = 2000). Printing m.rpm directly prints 2000.
+      Option A captures pre-boost state. Option B assumes pass-by-value isolation. Option D is the increment alone.
+    concept: "pointer-mutation-tracing"
+
+  - kind: spot-bug
+    level: advanced
+    q: "Analyze the code and AddressSanitizer report. Which statement causes the invalid memory access?"
+    code: |
+      typedef struct { int* buf; } box_t;
+      box_t* box_create(void) {
+        box_t* b = (box_t*)malloc(sizeof(box_t));
+        b->buf = (int*)malloc(sizeof(int) * 4);
+        return b;
+      }
+      void box_free(box_t* b) {
+        free(b);
+        free(b->buf);
+      }
+    diagnostic_log: |
+      ==12901==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010
+      READ of size 8 at 0x602000000010 thread T0
+          #0 0x4011d0 in box_free test.c:9
+    target_line: 9
+    choices:
+      - "Line 9: Reading b->buf to free it after container b was already freed in line 8"
+      - "Line 4: malloc allocation for buf was missing sizeof multiplier"
+      - "Line 1: Struct definition cannot contain pointer members"
+      - "Line 8: free(b) requires casting to void**"
+    answer: 0
+    why: |
+      In line 8, free(b) returns b's memory to the heap allocator. In line 9, evaluating b->buf dereferences
+      the freed pointer b, triggering an AddressSanitizer heap-use-after-free error. Destruction must always
+      proceed bottom-up (freeing child b->buf before container b).
+      Options B, C, and D are false statements.
+    concept: "use-after-free-dtor-bug"
+
+  - kind: why-fails
+    level: intro
+    q: "Why does the following code crash with a segmentation fault when executed?"
+    code: |
+      typedef struct { int ammo; } weapon_t;
+      typedef struct { weapon_t* weapon; } soldier_t;
+
+      void soldier_fire(soldier_t* s) {
+        s->weapon->ammo--;
+      }
+
+      int main(void) {
+        soldier_t s = { .weapon = NULL };
+        soldier_fire(&s);
+        return 0;
+      }
+    choices:
+      - "weapon_t attributes cannot be decremented with the -- operator"
+      - "soldier_t was allocated on the stack rather than on the heap"
+      - "The main function must return -1 when handling weapon errors"
+      - "s.weapon is NULL; soldier_fire dereferences address 0x0 without a defensive check"
+    answer: 3
+    why: |
+      s.weapon is explicitly initialized to NULL. soldier_fire attempts `s->weapon->ammo--`, which
+      dereferences address 0x0 + offsetof(ammo), triggering an immediate segmentation fault.
+      Options A, B, and C are incorrect syntax or design claims.
+    concept: "null-deref-precondition-failure"
+
+  - kind: trace
+    level: core
+    q: "Trace heap state transitions during weapon hand-off. What is player_a->weapon at Step 3?"
+    code: |
+      player_t* pa = player_new(); player_ctor(pa);
+      player_t* pb = player_new(); player_ctor(pb);
+      weapon_t* w = weapon_new();  weapon_ctor(w);
+      player_pickup(pa, w); // Step 1
+      player_drop(pa);      // Step 2
+      player_pickup(pb, w); // Step 3
+    trace:
+      headers: ["Step", "Action", "Weapon Address", "player_a->weapon", "player_b->weapon"]
+      rows:
+        - step: 1
+          line: 4
+          cells: ["1", "pa picks up w", "0x9000", "0x9000", "NULL"]
+        - step: 2
+          line: 5
+          cells: ["2", "pa drops w", "0x9000", "NULL", "NULL"]
+        - step: 3
+          line: 6
+          cells: ["3", "pb picks up w", "0x9000", "???", "0x9000"]
+    target: {row: 2, col: 3}
+    choices:
+      - "0x9000"
+      - "NULL"
+      - "Dangling pointer"
+      - "0x0001"
+    answer: 1
+    why: |
+      In Step 2, player_drop(pa) cleared pa->weapon to NULL. In Step 3, pb picked up w, which sets
+      pb->weapon = 0x9000, leaving pa->weapon untouched at NULL.
+      Option A assumes pa retained a ghost reference. Option C assumes w was deallocated.
+    concept: "aggregation-handoff-trace"
+
+  - kind: choose-better
+    level: advanced
+    q: "Which implementation of a composite object's destructor properly guarantees zero memory leaks and zero use-after-free bugs?"
+    choices:
+      - |
+        void device_dtor(device_t* dev) {
+          if (!dev) return;
+          if (dev->subsystem) {
+            subsystem_dtor(dev->subsystem);
+            free(dev->subsystem);
+            dev->subsystem = NULL;
+          }
+        }
+      - |
+        void device_dtor(device_t* dev) {
+          if (!dev) return;
+          free(dev);
+          subsystem_dtor(dev->subsystem);
+          free(dev->subsystem);
+        }
+    answer: 0
+    why: |
+      Option A follows the strict inside-out destruction order: it checks and tears down the child subsystem,
+      frees its heap memory, and clears the pointer before the parent device is deallocated.
+      Option B frees dev first, making subsequent reads of dev->subsystem an illegal use-after-free read.
+    concept: "composite-dtor-choice"
+
+  - kind: eipe
+    level: core
+    q: "In one sentence, what is the defining behavioral distinction between composition and aggregation?"
+    choices:
+      - "Composition requires memory alignment, while aggregation permits unaligned struct packing"
+      - "Composition uses function pointers, while aggregation relies on static symbol resolution"
+      - "In composition, the child's lifetime is bounded by the container; in aggregation, both objects have independent lifetimes"
+      - "Composition is restricted to primitive types, while aggregation applies only to user-defined structs"
+    answer: 2
+    why: |
+      The fundamental conceptual distinction between the two to-have relationships is lifetime coupling:
+      composition binds child lifetime to parent lifetime; aggregation decouples them completely.
+      Options A, B, and D describe fabricated technical constraints.
+    concept: "composition-vs-aggregation-distinction"
+
+  - kind: fillblank
+    level: intro
+    q: "Complete the initialization statement to ensure an optional aggregation pointer starts in a safe empty state:"
+    code: |
+      void inventory_ctor(inventory_t* inv) {
+        inv->equipped_item = _____;
+      }
+    answer_text: "NULL"
+    why: |
+      Explicitly setting optional aggregation pointers to NULL in the constructor prevents them from
+      retaining uninitialized garbage values from malloc.
+    concept: "optional-aggregation-null-init"
+
+  - kind: order
+    level: advanced
+    q: "Order the lines to implement safe cascading initialization of a composite Window containing a Canvas:"
+    lines:
+      - "win->canvas = canvas_new();"
+      - "if (!win->canvas) { free(win); return NULL; }"
+      - "window_t* win = (window_t*)malloc(sizeof(window_t));"
+      - "canvas_ctor(win->canvas);"
+      - "free(win->canvas);"
+    answer_order: [2, 0, 1, 3]
+    distractor_why:
+      "free(win->canvas);": "Prematurely deallocating the canvas destroys the component during construction."
+    why: |
+      Construction cascade: (1) allocate container window, (2) allocate child canvas, (3) verify child
+      allocation with rollback on failure, (4) construct child canvas.
+    concept: "cascading-constructor-order"
+
+  - kind: mcq
+    level: core
+    q: "What design risk is introduced when a class getter method returns a raw pointer to a privately composed object?"
+    choices:
+      - "The C compiler automatically promotes the child object to global scope"
+      - "The return value requires volatile memory synchronization on multicore CPUs"
+      - "The struct definition must be marked with the packed attribute"
+      - "External callers can bypass container invariants or invoke free() on the private child"
+    answer: 3
+    why: |
+      Returning an internal pointer leaks private state. External code can mutate internal attributes
+      without the container's knowledge, or even free the memory, leaving the container with a dangling pointer.
+      Options A, B, and C are fictitious compiler behaviors.
+    concept: "pointer-leakage-consequences"
+
+  - kind: predict
+    level: intro
+    q: "Trace the execution of this aggregation snippet. What is the value of gun.bullets after player_drop executes?"
+    code: |
+      typedef struct { int bullets; } gun_t;
+      typedef struct { gun_t* g; } player_t;
+
+      void player_pickup(player_t* p, gun_t* g) { p->g = g; }
+      void player_drop(player_t* p) { p->g = NULL; }
+
+      int main(void) {
+        gun_t gun = { .bullets = 10 };
+        player_t p = { .g = NULL };
+        player_pickup(&p, &gun);
+        gun.bullets -= 3;
+        player_drop(&p);
+        return gun.bullets;
+      }
+    choices:
+      - "7"
+      - "10"
+      - "0"
+      - "Undefined"
+    answer: 0
+    why: |
+      gun started with 10 bullets. 3 were consumed, leaving 7. player_drop only clears p.g to NULL and
+      does not touch the gun struct. The program returns 7.
+      Option B misses the bullet decrement. Option C assumes dropping zeroes attributes.
+    concept: "aggregation-drop-preservation-predict"
+
+  - kind: why-fails
+    level: advanced
+    q: "Why does the following cascading constructor leak memory when the secondary buffer allocation fails?"
+    code: |
+      typedef struct {
+        char* header;
+        char* payload;
+      } packet_t;
+
+      packet_t* packet_create(void) {
+        packet_t* p = (packet_t*)malloc(sizeof(packet_t));
+        p->header = (char*)malloc(64);
+        p->payload = (char*)malloc(1024);
+        if (!p->payload) {
+          free(p);
+          return NULL; // Look closely!
+        }
+        return p;
+      }
+    choices:
+      - "p->payload is freed before p is checked"
+      - "packet_t is an incomplete type and cannot be allocated on the heap"
+      - "p->header was allocated, but the failure branch frees only p, leaking p->header"
+      - "malloc cannot allocate buffers larger than 256 bytes in C99"
+    answer: 2
+    why: |
+      If p->payload allocation fails, the error handler calls `free(p)` and returns NULL, but fails to call
+      `free(p->header)`. The 64-byte header buffer remains orphaned on the heap—a classic memory leak.
+      Options A, B, and D are incorrect explanations.
+    concept: "partial-allocation-leak"
+
+  - kind: spot-bug
+    level: core
+    q: "Identify the critical flaw in this aggregation weapon-dropping function:"
+    code: |
+      void player_drop_weapon(player_t* player) {
+        if (!player || !player->weapon) return;
+        free(player->weapon);
+        player->weapon = NULL;
+      }
+    diagnostic_log: |
+      ==14201==ERROR: AddressSanitizer: attempting double-free on 0x602000000030:
+          #0 0x401290 in free
+          #1 0x401410 in weapon_destroy main.c:35
+          #2 0x401500 in main main.c:52
+    target_line: 3
+    choices:
+      - "Line 2: player pointer cannot be validated with logical NOT"
+      - "Line 3: player_drop_weapon frees player->weapon, violating aggregation and causing double-free"
+      - "Line 4: Assigning NULL after free is prohibited by the POSIX standard"
+    answer: 1
+    why: |
+      In aggregation, the player does NOT own the weapon; an external entity (the game engine or main)
+      owns it. Calling free() inside player_drop_weapon causes a double-free crash when the true owner
+      subsequently deallocates the weapon.
+      Options A and C are false statements.
+    concept: "aggregation-drop-free-bug"
+
+  - kind: mcq
+    level: intro
+    q: "When an object composition relationship exists between Car and Engine, where is the Engine instance typically created?"
+    choices:
+      - "In a global static constructor executed before main()"
+      - "Inside the main() function before car_new is invoked"
+      - "By the operating system kernel when the binary starts"
+      - "Inside the Car constructor (car_ctor) function"
+    answer: 3
+    why: |
+      In composition, the container exclusively owns the child. Therefore, the container's constructor
+      (car_ctor) is responsible for creating and initializing the contained Engine object.
+      Option A is C++ static initialization. Option B describes aggregation. Option C is false.
+    concept: "composition-creation-locus"
+
+  - kind: choose-better
+    level: core
+    q: "Which function signature best conveys an aggregation relationship where an existing target is associated with a container?"
+    choices:
+      - |
+        // Caller provides existing target to container
+        void player_equip_armor(player_t* player, armor_t* armor);
+      - |
+        // Container constructs target internally
+        void player_equip_armor(player_t* player, int armor_defense_rating);
+    answer: 0
+    why: |
+      Option A takes an already-instantiated armor_t* pointer, clearly signaling that the armor object
+      exists independently and is being associated via aggregation. Option B constructs the component
+      internally from raw primitives, signaling composition.
+    concept: "api-signature-relationship-hint"
+
+  - kind: trace
+    level: advanced
+    q: "Trace struct memory alignment. On a 64-bit architecture with 8-byte pointer alignment, what is the offset of member 'battery'?"
+    code: |
+      typedef struct {
+        int id;                // 4 bytes (offset 0..3)
+        // 4 bytes padding     // offset 4..7
+        struct battery_t* bat; // 8 bytes (offset 8..15)
+        int status;            // 4 bytes (offset 16..19)
+        // 4 bytes padding     // offset 20..23
+      } sensor_t;
+    trace:
+      headers: ["Member", "Type", "Size", "Start Offset", "End Offset"]
+      rows:
+        - step: 1
+          line: 2
+          cells: ["id", "int", "4 bytes", "0", "3"]
+        - step: 2
+          line: 3
+          cells: ["padding", "alignment", "4 bytes", "4", "7"]
+        - step: 3
+          line: 4
+          cells: ["bat", "struct battery_t*", "8 bytes", "???", "15"]
+    target: {row: 2, col: 3}
+    choices:
+      - "8"
+      - "4"
+      - "12"
+      - "16"
+    answer: 0
+    why: |
+      On 64-bit architectures, pointers must be aligned on 8-byte boundaries (offsets divisible by 8).
+      After id (4 bytes), the compiler inserts 4 bytes of padding (offsets 4..7), placing pointer member
+      'bat' at byte offset 8.
+      Option B ignores alignment requirements. Options C and D miscalculate alignment boundaries.
+    concept: "struct-padding-alignment-trace"
+
+  - kind: eipe
+    level: intro
+    q: "In one sentence, what is the role of an incomplete type declaration (forward declaration) in C headers?"
+    choices:
+      - "It tells the linker to look for precompiled assembly routines in static archives"
+      - "It allocates a placeholder buffer on the stack for future variable expansions"
+      - "It instructs the preprocessor to replace all occurrences of the symbol with void*"
+      - "It informs the compiler that a type exists so pointers to it can be used before its full definition is known"
+    answer: 3
+    why: |
+      A forward declaration (e.g. `struct engine_t;`) establishes the existence of a struct tag so the
+      compiler allows declaring pointers to it without needing the complete field definitions.
+      Options A, B, and C describe incorrect linker, stack, or preprocessor behaviors.
+    concept: "forward-decl-role"
+
+  - kind: fillblank
+    level: core
+    q: "Fill in the missing C operator that evaluates the total byte size of an aggregate struct type:"
+    code: |
+      size_t bytes = _____(player_t);
+    answer_text: "sizeof"
+    why: |
+      The sizeof operator evaluates the compile-time byte width of any type, including struct alignment padding.
+    concept: "sizeof-operator-core"
+
+  - kind: predict
+    level: advanced
+    q: "Trace execution line by line. What is printed by this program testing aggregation persistence?"
+    code: |
+      #include <stdio.h>
+      #include <stdlib.h>
+
+      typedef struct { int val; } item_t;
+      typedef struct { item_t* item; } holder_t;
+
+      int main(void) {
+        item_t* it = (item_t*)malloc(sizeof(item_t));
+        it->val = 42;
+        holder_t* h = (holder_t*)malloc(sizeof(holder_t));
+        h->item = it;
+        free(h); // Holder freed, but NOT item!
+        printf("%d\n", it->val);
+        free(it);
+        return 0;
+      }
+    choices:
+      - "0"
+      - "Garbage value"
+      - "42"
+      - "Segmentation fault"
+    answer: 2
+    why: |
+      h and it are separate heap allocations. Freeing h releases only the holder struct. The item_t memory
+      at it is completely untouched. Printing it->val safely prints 42.
+      Options A, B, and D assume freeing h somehow corrupted or deallocated it.
+    concept: "aggregation-persistence-predict"
+
+  - kind: mcq
+    level: core
+    q: "What is the correct execution sequence to manufacture, associate, fire, and tear down an aggregated player-weapon system in C?"
+    choices:
+      - "Associate weapon with player -> Fire weapon -> Destroy weapon before player"
+      - "Associate weapon with player -> Fire weapon -> Destroy player -> Destroy weapon independently"
+      - "Destroy weapon -> Associate with player -> Fire weapon -> Destroy player"
+      - "Destroy player -> Fire weapon -> Associate weapon -> Destroy weapon"
+    answer: 1
+    why: |
+      In aggregation, the weapon is independent of the player. The correct lifecycle is: (1) associate weapon with player,
+      (2) perform shooting action, (3) destroy player first (weapon survives player teardown), (4) destroy weapon independently.
+      Option A destroys the weapon while player may still reference it. Option C and D violate causal execution order.
+    concept: "aggregation-lifecycle-order"
+
+  - kind: mcq
+    level: intro
+    q: "Which relationship describes an automobile possessing an engine that cannot exist outside that automobile?"
+    choices:
+      - "Composition"
+      - "Inheritance"
+      - "Polymorphism"
+      - "Generalization"
+    answer: 0
+    why: |
+      When a contained component cannot exist outside its container and its lifetime is bound to the
+      container, the relationship is composition.
+      Option B is an 'is-a' relationship. Options C and D are polymorphism and generalization.
+    concept: "composition-definition-intro"
+
+  - kind: why-fails
+    level: core
+    q: "Why does the following function cause undefined behavior when called with an invalid pointer?"
+    code: |
+      double car_get_temp(const car_t* car) {
+        return car->engine->temperature;
+      }
+    choices:
+      - "Const functions cannot return floating-point numbers in C99"
+      - "If car is NULL or car->engine is NULL, chained dereferencing crashes with a segmentation fault"
+      - "Double attributes cannot be read across struct boundaries"
+    answer: 1
+    why: |
+      Chained dereferences (`car->engine->temperature`) lack defensive guards. If either `car` or `car->engine`
+      is NULL, the CPU attempts to dereference 0x0, crashing with a segmentation fault.
+      Options A and C are false syntax claims.
+    concept: "chained-deref-hazard"
+
+  - kind: spot-bug
+    level: advanced
+    q: "Analyze the code and AddressSanitizer report. What caused the heap buffer overflow?"
+    code: |
+      typedef struct {
+        char name[8];
+      } tag_t;
+
+      tag_t* tag_create(const char* str) {
+        tag_t* t = (tag_t*)malloc(sizeof(tag_t));
+        strcpy(t->name, str); // str has 16 characters!
+        return t;
+      }
+    diagnostic_log: |
+      ==18104==ERROR: AddressSanitizer: global-buffer-overflow on address 0x000000402060
+      WRITE of size 16 at 0x000000402060 thread T0
+          #0 0x401180 in strcpy
+          #1 0x401220 in tag_create test.c:7
+    target_line: 7
+    choices:
+      - "Line 6: malloc failed to check for out-of-memory condition"
+      - "Line 4: Struct tag_t cannot be allocated on heap"
+      - "Line 7: strcpy writes past the 8-byte boundary of t->name, corrupting heap metadata"
+    answer: 2
+    why: |
+      t->name is an 8-byte array. Copying a 16-byte string with unbounded strcpy overflows the struct
+      buffer and corrupts adjacent heap memory.
+      Options A and B do not explain buffer overflow.
+    concept: "heap-buffer-overflow-bug"
+
+  - kind: trace
+    level: core
+    q: "Trace the execution of gun_refill. What is the value of gun->bullets after gun_refill executes?"
+    code: |
+      typedef struct { int bullets; } gun_t;
+      void gun_refill(gun_t* gun) {
+        gun->bullets = 7;
+      }
+      int main(void) {
+        gun_t g = { .bullets = 0 };
+        gun_refill(&g);
+        return 0;
+      }
+    trace:
+      headers: ["Step", "Function", "Memory Address", "bullets Field"]
+      rows:
+        - step: 1
+          line: 7
+          cells: ["1", "Initialization", "&g", "0"]
+        - step: 2
+          line: 8
+          cells: ["2", "gun_refill(&g)", "&g", "???"]
+    target: {row: 1, col: 3}
+    choices:
+      - "0"
+      - "3"
+      - "5"
+      - "7"
+    answer: 3
+    why: |
+      gun_refill explicitly writes 7 to gun->bullets. When the function returns, g.bullets holds 7.
+      Option A is the pre-call state. Options B and C are arbitrary numbers.
+    concept: "gun-refill-trace"
+
+  - kind: choose-better
+    level: intro
+    q: "Which pattern correctly models an optional relationship in C where a person may or may not own a car?"
+    choices:
+      - |
+        // Optional aggregation: pointer can be NULL
+        typedef struct {
+          car_t* car;
+        } person_t;
+      - |
+        // Embedded value: car must always exist inside person
+        typedef struct {
+          car_t car;
+        } person_t;
+    answer: 0
+    why: |
+      Option A uses a pointer `car_t* car;`, allowing the attribute to be NULL when the person has no car.
+      Option B embeds the car struct by value, meaning every person instance permanently contains a physical
+      car instance, making an 'empty' car impossible.
+    concept: "optional-aggregation-modeling"
+
+  - kind: eipe
+    level: advanced
+    q: "In one sentence, why does composition promote higher software maintainability than inheritance?"
+    choices:
+      - "Composition enables multiple CPU threads to execute the same method simultaneously without locks"
+      - "Composition couples classes loosely through black-box public APIs rather than exposing internal implementation details"
+      - "Composition guarantees that compiler optimizations will eliminate all pointer indirection overhead"
+      - "Composition allows structs to be allocated directly in processor registers"
+    answer: 1
+    why: |
+      Composition treats the internal object as a black box accessed strictly through its public interface,
+      avoiding the fragile base class problem and tight coupling inherent in deep inheritance hierarchies.
+      Options A, C, and D are low-level hardware or concurrency misconceptions.
+    concept: "composition-over-inheritance-rationale"
+
+  - kind: mcq
+    level: core
+    q: "In a mandatory aggregation relationship, when should the aggregated object pointer be assigned?"
+    choices:
+      - "In a signal handler registered during program startup"
+      - "When the program terminates inside atexit()"
+      - "Inside the container's constructor via an initialization parameter"
+      - "Only when an external setter method is invoked by the user"
+    answer: 2
+    why: |
+      Mandatory aggregation means the container cannot exist without the dependency. Passing the dependency
+      into the constructor guarantees that the container is fully valid immediately upon construction.
+      Options A and B are irrelevant. Option D describes optional aggregation.
+    concept: "mandatory-aggregation-timing"
+
+  - kind: predict
+    level: intro
+    q: "Trace the output of this code snippet evaluating pointer equality between a container and its child:"
+    code: |
+      typedef struct { int a; } child_t;
+      typedef struct { child_t* c; } parent_t;
+
+      int main(void) {
+        parent_t* p = (parent_t*)malloc(sizeof(parent_t));
+        p->c = (child_t*)malloc(sizeof(child_t));
+        int same = ((void*)p == (void*)p->c);
+        printf("%d\n", same);
+        return 0;
+      }
+    choices:
+      - "1"
+      - "Compiler error"
+      - "Undefined"
+      - "0"
+    answer: 3
+    why: |
+      p and p->c are two separate, non-overlapping heap allocations produced by two distinct malloc calls.
+      Their addresses are guaranteed to be different, so `(void*)p == (void*)p->c` evaluates to 0 (false).
+      Option A assumes parent and child share the same address.
+    concept: "distinct-heap-addresses-predict"
+
+  - kind: mcq
+    level: advanced
+    q: "What is the correct sequence of operations to safely allocate, initialize, and verify an optional aggregation container?"
+    choices:
+      - "Allocate container memory -> Verify allocation non-null -> Initialize owned attributes -> Nullify optional aggregation pointer"
+      - "Nullify aggregation pointer -> Allocate container memory -> Initialize attributes -> Verify non-null"
+      - "Initialize attributes -> Allocate container memory -> Nullify aggregation pointer -> Verify non-null"
+      - "Verify non-null -> Allocate container memory -> Nullify aggregation pointer -> Initialize attributes"
+    answer: 0
+    why: |
+      Safe construction order: (1) allocate container memory, (2) verify allocation non-null,
+      (3) initialize owned attributes, (4) nullify optional aggregation pointer.
+      Options B, C, and D attempt to mutate or check pointers before memory has been allocated.
+    concept: "aggregation-safe-construction-order"
+
+  - kind: why-fails
+    level: core
+    q: "Why does the C compiler reject forward-declaring an enum type like 'enum state_t;' in standard C99?"
+    choices:
+      - "C99 does not support forward declarations of enums because the underlying integer storage type is not fixed until values are defined"
+      - "Enums must always be declared inside header files named with uppercase letters"
+      - "Enums cannot be passed as function arguments in ISO C"
+    answer: 0
+    why: |
+      In C99, the compiler determines the integer type of an enum based on the range of its enumerator values.
+      Without knowing the values, the compiler cannot determine the enum's size. C23 and C++ permit forward
+      enums with fixed underlying types, but C99 does not.
+      Options B and C are completely fictitious rules.
+    concept: "c99-enum-forward-decl-limit"
+
+  - kind: fillblank
+    level: intro
+    q: "Complete the deallocation line that returns memory allocated by car_new back to the heap pool:"
+    code: |
+      car_dtor(car);
+      _____(car);
+    answer_text: "free"
+    why: |
+      In C, the standard library function free() releases dynamically allocated heap memory back to the allocator.
+    concept: "free-function-syntax"
+
+  - kind: trace
+    level: advanced
+    q: "Trace the execution of gun firing until empty. How many times does the while loop execute for a gun constructed with 3 bullets?"
+    code: |
+      gun_t* gun = gun_new();
+      gun_ctor(gun, 3);
+      int count = 0;
+      while (gun_has_bullets(gun)) {
+        gun_trigger(gun);
+        count++;
+      }
+    trace:
+      headers: ["Iteration", "gun_has_bullets() Before", "gun->bullets After", "count Value"]
+      rows:
+        - step: 1
+          line: 5
+          cells: ["1", "True (3 > 0)", "2", "1"]
+        - step: 2
+          line: 5
+          cells: ["2", "True (2 > 0)", "1", "2"]
+        - step: 3
+          line: 5
+          cells: ["3", "True (1 > 0)", "0", "???"]
+    target: {row: 2, col: 3}
+    choices:
+      - "2"
+      - "3"
+      - "4"
+      - "0"
+    answer: 1
+    why: |
+      In iteration 3, bullets decrement from 1 to 0 and count increments to 3. In the subsequent check,
+      `gun_has_bullets(gun)` evaluates to `0 > 0` (false), terminating the loop. Total count is 3.
+      Option A stops prematurely. Option C counts the terminating check.
+    concept: "loop-termination-trace"
+
+  - kind: spot-bug
+    level: core
+    q: "Analyze the code and AddressSanitizer report. What caused the heap memory corruption?"
+    code: |
+      typedef struct {
+        char* str;
+      } text_t;
+
+      void text_init(text_t* t, const char* s) {
+        t->str = (char*)malloc(strlen(s)); // BUG!
+        strcpy(t->str, s);
+      }
+    diagnostic_log: |
+      ==20110==ERROR: AddressSanitizer: heap-buffer-overflow on address 0x602000000015
+      WRITE of size 1 at 0x602000000015 thread T0
+          #0 0x401180 in strcpy
+          #1 0x401220 in text_init test.c:7
+    target_line: 6
+    choices:
+      - "Line 2: Struct cannot contain char* member"
+      - "Line 7: strcpy should be replaced with strcat"
+      - "Line 5: strlen(s) cannot be passed to malloc"
+      - "Line 6: malloc allocates strlen(s) bytes, omitting + 1 for the null terminator"
+    answer: 3
+    why: |
+      strlen() calculates the number of characters excluding the null byte (`\0`). Writing a string with
+      strcpy copies strlen(s) + 1 bytes, writing the null byte 1 byte past the allocated heap block.
+      The allocation must be `strlen(s) + 1`. Options A, B, and C are incorrect.
+    concept: "strlen-plus-one-off-by-one"
+
+  - kind: mcq
+    level: intro
+    q: "In an aggregation relationship, what does setting a container's member pointer to NULL achieve during dissociation?"
+    choices:
+      - "It causes the C runtime to immediately reclaim the target object"
+      - "It notifies the compiler to remove the struct field from the binary symbol table"
+      - "It severs the association link without destroying or freeing the target object"
+      - "It zeroes out the target object's internal memory attributes"
+    answer: 2
+    why: |
+      Setting the pointer to NULL indicates that the container is no longer associated with the target,
+      while leaving the target's heap memory intact for its true owner.
+      Options A, B, and D misrepresent NULL assignment semantics.
+    concept: "null-dissociation-meaning"
+
+  - kind: choose-better
+    level: advanced
+    q: "Which design best prevents memory fragmentation and pointer bloat when a container needs multiple identical child components?"
+    choices:
+      - |
+        // Fixed static pointers with lots of NULL slots
+        typedef struct {
+          wheel_t* wheel1;
+          wheel_t* wheel2;
+          wheel_t* wheel3;
+          wheel_t* wheel4;
+        } car_t;
+      - |
+        // Dynamic contiguous array allocation
+        typedef struct {
+          wheel_t** wheels;
+          size_t wheel_count;
+        } car_t;
+    answer: 1
+    why: |
+      Option B stores components in an array with an explicit count, allowing dynamic scaling, iteration
+      via simple loops, and easy refactoring without changing the struct layout when component counts vary.
+      Option A hardcodes fixed members, requiring repetitive boilerplate code for every operation.
+    concept: "collection-composition-design"
+
+  - kind: predict
+    level: core
+    q: "Trace the execution of this program. What is the printed value of status?"
+    code: |
+      #include <stdio.h>
+      typedef struct { int code; } status_t;
+      typedef struct { status_t* st; } service_t;
+
+      int service_run(service_t* s) {
+        if (!s || !s->st) return -1;
+        return s->st->code;
+      }
+
+      int main(void) {
+        service_t s = { .st = NULL };
+        int result = service_run(&s);
+        printf("%d\n", result);
+        return 0;
+      }
+    choices:
+      - "-1"
+      - "0"
+      - "1"
+      - "Segmentation fault"
+    answer: 0
+    why: |
+      Because s.st is NULL, the guard `if (!s || !s->st)` triggers and service_run returns -1 cleanly.
+      Printing result prints -1. Option D assumes an unguarded crash. Options B and C are incorrect return values.
+    concept: "defensive-guard-predict"
+
+  - kind: why-fails
+    level: intro
+    q: "Why must a class constructor function in C avoid allocating memory for the instance itself if it takes type_t* as an argument?"
+    code: |
+      void car_ctor_wrong(car_t* car) {
+        car = (car_t*)malloc(sizeof(car_t)); // What is wrong here?
+        car->speed = 0;
+      }
+    choices:
+      - "malloc cannot be called inside functions with void return types"
+      - "C passes arguments by value; reassigning the local pointer 'car' does not alter the caller's pointer"
+      - "Struct pointers cannot be assigned dynamically inside functions"
+    answer: 1
+    why: |
+      In C, all function arguments are passed by value. Reassigning local parameter 'car' merely overwrites
+      the copy on the stack, leaking the allocated memory and leaving the caller's pointer unchanged.
+      To allocate inside a function, one must return the pointer or pass a pointer-to-pointer (`car_t**`).
+      Options A and C are false syntax claims.
+    concept: "pass-by-value-pointer-leak"
+
+  - kind: eipe
+    level: advanced
+    q: "In one sentence, why is the relationship between two classes considered permanent even when relationships between their instances are temporary?"
+    choices:
+      - "Because dynamic linkers resolve all class symbols during program compilation"
+      - "Because virtual method tables must be populated before main() begins execution"
+      - "Because the operating system page table maps all structs to read-only memory"
+      - "Because the container's struct definition must permanently declare the pointer member at compile time"
+    answer: 3
+    why: |
+      At compile time, the struct definition must declare a pointer to the associated class type, permanently
+      fixing the type dependency and struct byte layout regardless of runtime association state.
+      Options A, B, and C refer to unrelated runtime systems.
+    concept: "type-permanence-rationale"
+
+  - kind: mcq
+    level: core
+    q: "What design principle dictates that internal struct attributes must only be accessed through behavior functions?"
+    choices:
+      - "Encapsulation / Information Hiding"
+      - "Dynamic Linkage"
+      - "Paging Segmentation"
+      - "Compile-time Reflection"
+    answer: 0
+    why: |
+      Encapsulation and Information Hiding mandate that an object's internal representation is kept private
+      and manipulated strictly through a well-defined public behavioral interface.
+      Options B, C, and D are unrelated concepts.
+    concept: "encapsulation-core"
+
+  - kind: predict
+    level: advanced
+    q: "Trace the temperature output after starting and stopping the car:"
+    code: |
+      typedef enum { OFF, ON } state_t;
+      typedef struct { state_t state; double temp; } engine_t;
+      void engine_turn_on(engine_t* e) { e->state = ON; e->temp = 75.0; }
+      void engine_turn_off(engine_t* e) { e->state = OFF; e->temp = 15.0; }
+
+      int main(void) {
+        engine_t eng = { .state = OFF, .temp = 15.0 };
+        engine_turn_on(&eng);
+        engine_turn_off(&eng);
+        printf("%.1f\n", eng.temp);
+        return 0;
+      }
+    choices:
+      - "75.0"
+      - "0.0"
+      - "15.0"
+      - "90.0"
+    answer: 2
+    why: |
+      engine_turn_on sets temp to 75.0. engine_turn_off immediately resets temp back to 15.0.
+      Printing eng.temp outputs 15.0. Option A captures pre-stop state.
+    concept: "engine-state-machine-predict"

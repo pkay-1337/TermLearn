@@ -24,6 +24,12 @@
 #      'mcq', 'fillblank', 'order' with 'faded: true', 'eipe', 'choose-better', 'trace', 'spot-bug').
 #      Every check MUST have an elaborated 'why:' explaining the principle and diagnosing distractors.
 # 5. OUTPUT FORMAT: Single YAML document with top-level 'blocks: [...]'.
+#
+# [POST-GENERATION VERIFICATION FOR study.yaml]
+# - Runnable code: every blocks[].example.code compiles under packs/extreme-c/book.yaml: toolchain.
+# - If run_expected is declared, it matches actual output for a correct solution.
+# - Model blocks have viz; design blocks have eipe/choose-better; syntax/algorithm blocks have order.
+# - Each check carries rules 1.1–1.10 (positively-worded, randomized answers, embedded code, elaborated why).
 # =============================================================================
 
 
@@ -653,6 +659,55 @@ learning science, cognitive psychology, and computing education research (CER):
     `version_cmd`, `smoke`; C book? No runner file emitted.
 12. Line lengths sane (prose ≤120, code ≤80)?
 13. Dedicated top-level `quiz:` stanza authored with 30–50 standalone questions across levels (intro/core/advanced) in no specific order, including code boxes where relevant, distinct from block checks?
+
+## 8. Post-Generation Testing & Verification Protocol (MUST execute after writing YAMLs)
+
+After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or monolithic), the AI agent MUST rigorously verify and test the generated files against this inspection checklist:
+
+### 1. Block Checks & Questions (1.1–1.10)
+- **1.1 Positively-worded stem**: `q:` is clearly and positively stated without confusing negative phrasing.
+- **1.2 Choice count**: 2–4 options per check (3 preferred).
+- **1.3 Answer bounds**: `answer:` is a valid 0-based index (0..len(choices)-1).
+- **1.4 Answer randomization**: Correct answers are uniformly distributed across 0, 1, 2, and 3 (never all 0).
+- **1.5 100% self-contained**: Code is embedded directly via `code: |`; ZERO external references to book examples/listings/figures (e.g. NEVER write "in Example 7.2" or "in Listing 3").
+- **1.6 Elaborated why**: Provides the core principle + explicit misconception diagnosis for every distractor.
+- **1.7 Exact vocabularies**: `kind:` is exactly in (`mcq`, `predict`, `why-fails`, `fillblank`, `order`, `trace`, `spot-bug`, `eipe`, `choose-better`).
+- **1.8 Scrambled Parsons (`order`)**: Lines scrambled in `lines:`, paired distractors excluded from `answer_order:`, non-sequential order.
+- **1.9 Program completion (`fillblank`)**: Single load-bearing token, program visible in `code:`, answer not reserved `?` or `help`.
+- **1.10 Line formatting**: Code width ≤80 columns, prose ≤120 columns.
+
+### 2. Quiz Stanza (if `quiz:` present / `quiz.yaml`)
+- **Count**: 30–50 dedicated questions.
+- **Levels**: `intro`, `core`, and `advanced` all present and balanced.
+- **No duplicates**: No question stem (`q:`) identical to any block-check `q:`.
+- **Mixed**: Shuffled / interleaved — not grouped monolithically by level or concept.
+- **Concept coverage**: Distinct concepts span the chapter's core themes (e.g. for OOP: composition, aggregation, ownership, diagnostics).
+- **Checklist conformance**: Each individual item satisfies items 1.1–1.10 above.
+
+### 3. Labs (if `labs:` present / `labs.yaml`)
+- **Contract**: Each lab provides `id`, `title`, `instruction_md`, non-empty safe `files`, `commands.run` and `commands.test`, `test_cases[].expect`, and progressive hints.
+- **Blank starters**: Implementation file(s) content: `""` or `/* TODO: stub */`; headers, drivers, and test-runners complete and compilable.
+- **Fail-first**: Running `commands.test` on the untouched starter files MUST FAIL (missing symbols, undefined references, or assertion compile error).
+- **Safe commands**: No denylisted patterns (`rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs); strictly no network.
+- **Hints ordered**: Progressive hints ordered general → specific → concrete operation.
+- **Code width**: All starter and harness code lines ≤80 columns.
+
+### 4. Runnable Code (All Packs / `study.yaml`)
+- **Compilation**: Every `blocks[].example.code` compiles cleanly under `book.yaml: toolchain:`.
+- **Expected Output**: If `run_expected` is declared, it matches actual stdout byte-for-byte for a correct execution.
+- **Pedagogical Archetypes**: Model blocks have `viz`; design blocks have `eipe` or `choose-better`; syntax/algorithm blocks have `order`.
+
+### 5. Cannot Be Fully Automated (Need a Solution Trace)
+- **Reference Solution Verification**: `commands.run` output byte-matches `test_cases[].expect` for a reference solution.
+- **Fail → Pass Lifecycle**: The fail-then-pass lifecycle is verified with a real reference implementation tested against `commands.test`.
+
+### 6. Automated Validation Command
+Execute the strict validator:
+```bash
+python main.py validate --book <slug> --chapter <id> --strict
+```
+Ensure exit code 0 with zero errors before concluding.
+
 
 
 ---

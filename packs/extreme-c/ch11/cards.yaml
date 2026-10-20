@@ -1,0 +1,80 @@
+cards:
+  - front: "What is the inheritance relationship also called?"
+    back: "The extension relationship, because it only adds extra attributes and behaviors to an existing class."
+    concept: "inheritance-alias"
+
+  - front: "What is the difference between an is-a and a has-a relationship?"
+    back: "Is-a (inheritance) means the child is a kind of the parent; has-a (composition/aggregation) means the container holds another object."
+    concept: "is-a-vs-has-a"
+
+  - front: "Why is inheritance described as a composition relationship in its nature?"
+    back: "Because the child embeds a parent object inside its own attribute structure, reusing the parent's storage."
+    concept: "inheritance-as-composition"
+
+  - front: "What must be true of the parent field for upcasting to work?"
+    back: "It must be the first field of the child structure, so the parent begins at offset 0 and shares the child's address."
+    concept: "first-field-rule"
+
+  - front: "What is upcasting?"
+    back: "Casting a pointer to a child's attribute structure to a pointer to the parent's attribute structure."
+    concept: "upcasting-definition"
+
+  - front: "Why can't you nest a forward-declared struct by value?"
+    back: "The forward declaration creates an incomplete type whose size is unknown, so the compiler cannot compute the outer struct's layout."
+    concept: "incomplete-nested-value"
+
+  - front: "What is a private header file used for in the embedded inheritance approach?"
+    back: "It holds the parent's complete attribute structure and is included only by the classes that need the real layout."
+    concept: "private-header-role"
+
+  - front: "Why does the child constructor call the parent constructor through an upcast?"
+    back: "To initialize the embedded parent fields at offset 0 using the parent's own constructor logic."
+    concept: "parent-ctor-upcast"
+
+  - front: "In what order must a child destroy its inherited and own resources?"
+    back: "Child resources first, then the parent, mirroring the reverse of construction."
+    concept: "destruction-order"
+
+  - front: "What does the pointer-based inheritance approach store instead of an embedded parent?"
+    back: "A pointer to an incomplete parent type, pointing at a separately allocated parent object."
+    concept: "pointer-parent-storage"
+
+  - front: "Why can't a student_t pointer be upcast to a person_t pointer in the pointer approach?"
+    back: "Because the child and the parent are separate objects at different, unrelated addresses."
+    concept: "pointer-breaks-upcast"
+
+  - front: "Why must the pointer approach repeat the parent's behavior functions as wrappers?"
+    back: "Because the child pointer cannot be passed to the parent's functions, so each call must be forwarded to the parent object."
+    concept: "wrapper-forwarding"
+
+  - front: "Which inheritance approach can express multiple inheritance in C?"
+    back: "The pointer approach, because a child can hold several parent pointers to independently allocated parents."
+    concept: "multiple-inheritance"
+
+  - front: "Which inheritance approach couples the child to the parent's private layout?"
+    back: "The embedded-value approach, because the child must include the parent's private header and depend on its exact layout."
+    concept: "embedded-coupling"
+
+  - front: "What is polymorphism?"
+    back: "A technique that keeps the same code and public interface while producing different behaviors for different objects."
+    concept: "polymorphism-definition"
+
+  - front: "What field in the attribute structure enables polymorphic dispatch in C?"
+    back: "A function pointer field, such as sound_func, that stores the address of the object's behavior."
+    concept: "function-pointer-field"
+
+  - front: "What does the shared animal_sound function actually do?"
+    back: "It relays: it calls the function whose address is stored in the object's sound_func field."
+    concept: "relay-dispatch"
+
+  - front: "Where does overriding a polymorphic behavior happen?"
+    back: "In the child constructor, by reassigning the inherited function-pointer field to the child's function."
+    concept: "override-location"
+
+  - front: "What is a virtual function?"
+    back: "A behavior function that can be overridden by child classes and is dispatched through per-object pointers."
+    concept: "virtual-function"
+
+  - front: "Why do abstract types need polymorphism?"
+    back: "So that a base-class pointer can invoke the correct overridden implementation at runtime."
+    concept: "abstract-dispatch"

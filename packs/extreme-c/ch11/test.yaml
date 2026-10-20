@@ -1,0 +1,146 @@
+test:
+  gates:
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12]
+      min_quiz: 80
+  final_checks:
+    - kind: mcq
+      level: advanced
+      q: "In an enterprise C codebase, which implementation correctly models single inheritance with direct behavior reuse?"
+      choices:
+        - "Child embeds the parent structure as its first field and includes the parent's private header"
+        - "Child stores a pointer to the parent and repeats the parent's behavior functions"
+        - "Child copies every parent field and declares no parent pointer"
+        - "Child stores the parent in a union with its own fields"
+      answer: 0
+      why: |
+        The embedded-value approach puts the parent at offset 0, so the child can upcast and call the parent's
+        behavior functions directly. Option B is the pointer approach, which cannot upcast. Option C destroys
+        the structural identity inheritance needs. Option D is not a valid inheritance model.
+      concept: "single-inheritance-mastery"
+
+    - kind: predict
+      level: advanced
+      q: "Trace the execution. What is printed by this polymorphic program?"
+      code: |
+        #include <stdio.h>
+        #include <stdlib.h>
+        #include <string.h>
+
+        typedef void (*sound_func_t)(void*);
+
+        typedef struct {
+          char* name;
+          sound_func_t sound_func;
+        } animal_t;
+
+        void __animal_sound(void* p) {
+          animal_t* a = (animal_t*)p;
+          printf("%s: Beeeep\n", a->name);
+        }
+
+        void __cat_sound(void* p) {
+          animal_t* a = (animal_t*)p;
+          printf("%s: Meow\n", a->name);
+        }
+
+        void animal_ctor(animal_t* a) {
+          a->name = (char*)malloc(10);
+          strcpy(a->name, "Animal");
+          a->sound_func = __animal_sound;
+        }
+
+        void animal_sound(animal_t* a) { a->sound_func(a); }
+
+        int main(void) {
+          animal_t a;
+          animal_ctor(&a);
+          strcpy(a.name, "Cat");
+          a.sound_func = __cat_sound;
+          animal_sound(&a);
+          free(a.name);
+          return 0;
+        }
+      choices:
+        - "Animal: Beeeep"
+        - "Cat: Meow"
+        - "Cat: Beeeep"
+        - "Animal: Meow"
+      answer: 1
+      why: |
+        animal_ctor installs __animal_sound, but the program then renames the object to Cat and reassigns
+        sound_func to __cat_sound. animal_sound relays through the pointer, so __cat_sound runs and prints
+        Cat: Meow. Option A ignores the override. Option C keeps the default behavior. Option D mixes the base
+        name with the cat sound.
+      concept: "override-trace-mastery"
+
+    - kind: spot-bug
+      level: advanced
+      q: "Analyze the code and AddressSanitizer report. What error occurred?"
+      code: |
+        typedef struct { char first_name[32]; } person_t;
+        typedef struct { person_t person; char number[16]; } student_t;
+
+        int main(void) {
+          student_t* s = (student_t*)malloc(sizeof(student_t));
+          free(s);
+          printf("%s\n", ((person_t*)s)->first_name);
+          return 0;
+        }
+      diagnostic_log: |
+        ==7721==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010
+        READ of size 1 at 0x602000000010 thread T0
+            #0 0x4011b0 in main test.c:7
+      target_line: 7
+      choices:
+        - "Line 7: reading the parent field through a pointer after the student was freed in line 6"
+        - "Line 4: malloc allocated too few bytes for student_t"
+        - "Line 5: free() must be replaced with student_dtor()"
+        - "Line 7: printf cannot read a char array"
+      answer: 0
+      why: |
+        Line 6 frees the student object. Line 7 dereferences the upcast pointer to read first_name, a
+        heap-use-after-free read. Options B, C, and D do not explain the sanitizer report.
+      concept: "upcast-use-after-free-mastery"
+
+    - kind: why-fails
+      level: advanced
+      q: "Why does the compiler reject a by-value member of a forward-declared struct?"
+      code: |
+        struct person_t;
+
+        typedef struct {
+          struct person_t person;
+          char student_number[16];
+        } student_t;
+      choices:
+        - "The field has incomplete type, so the compiler cannot determine the size of student_t"
+        - "Structs cannot contain other structs in C"
+        - "The forward declaration must be repeated inside the typedef"
+        - "By-value members are only allowed for primitive types"
+      answer: 0
+      why: |
+        A by-value member needs a known size and alignment to fix the outer struct's layout. The incomplete
+        type provides neither, so the compiler rejects the field. Options B, C, and D are false.
+      concept: "incomplete-type-mastery"
+
+    - kind: choose-better
+      level: advanced
+      q: "Which design best supports a child that must inherit from two independent parent classes?"
+      choices:
+        - |
+          // Several parent pointers: multiple inheritance
+          typedef struct {
+            struct person_t* person;
+            struct course_t* course;
+          } student_t;
+        - |
+          // One embedded parent: single inheritance only
+          typedef struct {
+            person_t person;
+            course_t course;
+          } student_t;
+      answer: 0
+      why: |
+        Option A stores a pointer to each parent, so the child can inherit from both. Option B can only upcast
+        the first embedded parent at offset 0, so it cannot express multiple inheritance.
+      concept: "multiple-inheritance-mastery"

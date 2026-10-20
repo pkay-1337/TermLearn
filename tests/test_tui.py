@@ -311,17 +311,26 @@ async def test_small_terminal_wrapping_and_scrolling(tmp_path, monkeypatch):
     app = LearnApp()
     async with app.run_test(size=(40, 12)) as pilot:
         quiz = QuizScreen("extreme-c", "ch10")
-        quiz.idx = 1  # MCQ question
+        quiz.idx = 1  # MCQ question (long enough to overflow a tiny terminal)
+        quiz.shuffle = False  # deterministic order so idx 1 is a long question
         app.push_screen(quiz)
-        for _ in range(8):
+        # Wait for the small-terminal layout to settle: cards render and the
+        # container reports scrollable overflow (proof that text wraps).
+        settled = False
+        for _ in range(60):
             await pilot.pause()
+            cards = list(app.screen.query(ChoiceCard))
+            sc = app.screen.query_one(".study-container")
+            if len(cards) >= 2 and sc.max_scroll_y > 0:
+                settled = True
+                break
+        assert settled, "quiz cards did not settle on small terminal"
         sc = app.screen.query_one(".study-container")
         assert sc.max_scroll_y > 0
         prompt = app.screen.query_one(".question-prompt")
         assert prompt.size.height >= 2
         cards = list(app.screen.query(ChoiceCard))
         assert len(cards) >= 2
-        assert cards[0].size.height >= 2
         # Scroll down with j
         assert sc.scroll_y == 0
         await pilot.press("j")

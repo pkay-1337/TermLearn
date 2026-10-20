@@ -222,13 +222,17 @@ def test_ai_prompt_bundle_generation(tmp_path):
     assert "TARGET OUTPUT FILE: packs/extreme-c/ch10/quiz.yaml" in quiz_prompt
     assert "30 to 50 dedicated" in quiz_prompt
     assert "books/extreme-c/raw_chapters/ch10.txt" in quiz_prompt
-    assert "[SOURCE ASSET LOCATIONS — WHERE TO FIND CHAPTER DATA]" in quiz_prompt
-    
+    # Mode files contain only their specific directives — no GENERATE.md/ASK_USER/SRS duplication.
+    assert "[SOURCE ASSET LOCATIONS — WHERE TO FIND CHAPTER DATA]" not in quiz_prompt
+    assert "FR-PACK-001" not in quiz_prompt
+    assert "def chunk" not in quiz_prompt
+
     study_prompt = ai_prompt.build_prompt(book, chapter, mode="study")
     assert "TARGET OUTPUT FILE: packs/extreme-c/ch10/study.yaml" in study_prompt
     assert "single-concept blocks" in study_prompt
     assert "books/extreme-c/raw_chapters/ch10.txt" in study_prompt
-    
+    assert "FR-PACK-001" not in study_prompt
+
     # Test bundle emission
     out_dir = tmp_path / "prompts_bundle"
     res = ai_prompt.emit_prompt_bundle(book, chapter, dest_dir=out_dir)
@@ -245,6 +249,13 @@ def test_ai_prompt_bundle_generation(tmp_path):
     readme_text = (out_dir / "README.md").read_text(encoding="utf-8")
     assert "books/extreme-c/raw_chapters/ch10.txt" in readme_text
     master_text = (out_dir / "master_prompt.md").read_text(encoding="utf-8")
+    # Master prompt holds all common normative content (non-redundant across mode files).
     assert "books/extreme-c/raw_chapters/ch10.txt" in master_text
+    assert "[SOURCE ASSET LOCATIONS — WHERE TO FIND CHAPTER DATA]" in master_text
+    assert "FR-PACK-001" in master_text
+    # Chapter text is bundled as a single copy, not embedded in each prompt file.
+    assert (out_dir / "chapter.txt").is_file()
+    assert "## part 1/" not in master_text
+    assert "## part 1/" not in (out_dir / "03_quiz.md").read_text(encoding="utf-8")
 
 

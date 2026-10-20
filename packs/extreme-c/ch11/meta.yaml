@@ -1,0 +1,15 @@
+meta:
+  book: extreme-c
+  chapter_id: ch11
+  title: "Chapter 08 — Inheritance and Polymorphism"
+  source_ref: "Text/inheritance_and_polymorphism.xhtml"
+  level: core
+  prereqs:
+    - ch10
+objectives:
+  - "Distinguish the to-be (is-a) inheritance relationship from the to-have (has-a) composition and aggregation relationships."
+  - "Implement inheritance in C by nesting the parent attribute structure as the first field and upcasting child pointers to parent pointers."
+  - "Explain why a nested parent structure requires a complete type definition and how private header files expose a parent's internals to a child class."
+  - "Implement inheritance in C through a parent pointer and forwarding wrapper functions to preserve information hiding and enable multiple inheritance."
+  - "Compare the two inheritance implementations across coupling, pointer interchangeability, single versus multiple inheritance, and destruction order."
+  - "Implement polymorphism in C by storing a per-instance function pointer in the attribute structure and overriding it in child constructors."

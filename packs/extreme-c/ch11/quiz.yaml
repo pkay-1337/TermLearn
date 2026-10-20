@@ -1,0 +1,741 @@
+quiz:
+  - kind: mcq
+    level: intro
+    q: "Which statement describes an inheritance relationship?"
+    choices:
+      - "A car has an engine"
+      - "A player borrows a gun"
+      - "A student is a person"
+      - "A window contains a canvas"
+    answer: 2
+    why: |
+      Inheritance is a to-be or is-a relationship: a student is a person. The other three options are
+      to-have relationships. A car has an engine and a window contains a canvas are composition; a player
+      borrows a gun is aggregation.
+    concept: "inheritance-is-a"
+
+  - kind: predict
+    level: core
+    q: "Trace the upcast. Which statement is true about the two pointers?"
+    code: |
+      student_t s;
+      student_t* sp = &s;
+      person_t* pp = (person_t*)&s;
+    choices:
+      - "sp == pp"
+      - "pp is 32 bytes higher than sp"
+      - "pp is 16 bytes lower than sp"
+      - "The pointers are unrelated"
+    answer: 0
+    why: |
+      The parent field is the first member of student_t, so it begins at offset 0. The cast therefore yields
+      the same address as &s, and sp == pp. Options B and C assume the parent sits elsewhere. Option D ignores
+      the cast.
+    concept: "upcast-equality"
+
+  - kind: why-fails
+    level: advanced
+    q: "Why does this attempt to nest a parent structure by value fail to compile?"
+    code: |
+      struct person_t;
+
+      typedef struct {
+        struct person_t person;
+        char student_number[16];
+      } student_t;
+    choices:
+      - "The struct has too many members"
+      - "The field has incomplete type because only a forward declaration is visible"
+      - "The struct must be declared static"
+      - "Nested structs are illegal in C"
+    answer: 1
+    why: |
+      A by-value member needs a known size to fix the outer struct's layout. The forward declaration leaves
+      the size unknown, so the compiler rejects the field. Option A is false. Option C is false. Option D is
+      false because nested structs are legal when the inner type is complete.
+    concept: "incomplete-nested-error"
+
+  - kind: fillblank
+    level: intro
+    q: "Fill in the cast target type that turns a student pointer into a person pointer:"
+    code: |
+      person_t* p_ptr = (_____)&s;
+    answer_text: "person_t*"
+    why: |
+      The cast names the target pointer type. Writing (person_t*)&s tells the compiler to treat the address
+      of s as the address of a person_t, valid because person_t is the first field of student_t.
+    concept: "upcast-cast-syntax"
+
+  - kind: order
+    level: core
+    q: "Arrange the scrambled lines into the correct order for initializing an embedded-parent student:"
+    lines:
+      - "strcpy(s->student_number, number);"
+      - "person_ctor((person_t*)s, fn, ln, by);"
+      - "s->student_number = (char*)malloc(16);"
+      - "s->passed_credits = credits;"
+      - "free(s->student_number);"
+    answer_order: [1, 2, 0, 3]
+    distractor_why:
+      "free(s->student_number);": "Freeing the child string during construction destroys it before it is used."
+    why: |
+      Initialization order: (1) construct the embedded parent via upcast, (2) allocate the child string,
+      (3) copy into it, (4) set the child scalar. The parent must be constructed before the child relies on it.
+    concept: "approach1-ctor-order"
+
+  - kind: trace
+    level: core
+    q: "Trace the function-pointer dispatch below. Which function does the call at Step 3 resolve to?"
+    code: |
+      animal_t* a = animal_new();
+      animal_ctor(a);
+      animal_sound(a);
+    trace:
+      headers: ["Step", "Line", "Operation", "a->sound_func"]
+      rows:
+        - step: 1
+          line: 1
+          cells: ["1", "1", "animal_new()", "uninitialized"]
+        - step: 2
+          line: 2
+          cells: ["2", "2", "animal_ctor(a)", "__animal_sound"]
+        - step: 3
+          line: 3
+          cells: ["3", "3", "animal_sound(a)", "???"]
+    target: {row: 2, col: 3}
+    choices:
+      - "garbage"
+      - "NULL"
+      - "__cat_sound"
+      - "__animal_sound"
+    answer: 3
+    why: |
+      animal_ctor assigned __animal_sound to the field, and animal_sound relays through it. The pointer still
+      names __animal_sound at Step 3. Options A, B, and C describe states that do not occur.
+    concept: "dispatch-trace"
+
+  - kind: spot-bug
+    level: advanced
+    q: "Analyze the code and the reported output. Which defect is present in this cat constructor?"
+    code: |
+      void cat_ctor(cat_t* cat) {
+        animal_ctor((animal_t*)cat);
+        strcpy(cat->animal.name, "Cat");
+        /* override assignment missing! */
+      }
+    diagnostic_log: |
+      $ ./app
+      Cat: Beeeep
+      Expected:
+      Cat: Meow
+    target_line: 4
+    choices:
+      - "The override assignment is missing, so the default behavior remains"
+      - "animal_ctor must not be called"
+      - "strcpy is illegal on a function-pointer field"
+      - "The constructor must return cat_t*"
+    answer: 0
+    why: |
+      Without reassigning sound_func, the parent constructor's default __animal_sound stays installed, so the
+      cat prints Beeeep instead of Meow. Options B, C, and D are false.
+    concept: "missing-override"
+
+  - kind: eipe
+    level: intro
+    q: "In one sentence, why is person_t placed as the first field of student_t?"
+    choices:
+      - "It saves memory by sharing the parent across all children"
+      - "It makes the student_t structure smaller than person_t"
+      - "It allows upcasting so the child can reuse the parent's behavior functions"
+      - "It prevents the child from adding new attributes"
+    answer: 2
+    why: |
+      The first-field placement makes the child and parent share an address, enabling the upcast that lets
+      Person's behavior functions operate on a student. Option A is false; each child has its own copy.
+      Option B is false; the child is larger. Option D is false.
+    concept: "first-field-purpose"
+
+  - kind: choose-better
+    level: advanced
+    q: "Which implementation hides the parent's internals most effectively while still reusing its behavior?"
+    choices:
+      - |
+        // Child embeds parent by value; child includes the parent's private header
+        typedef struct { person_t person; } student_t;
+      - |
+        // Child holds a parent pointer; child includes only the public header
+        typedef struct { struct person_t* person; } student_t;
+    answer: 1
+    why: |
+      Option B keeps the parent's layout private and couples the child only to the public interface. Option A
+      forces the child to see and depend on the parent's private definition.
+    concept: "encapsulation-choice"
+
+  - kind: mcq
+    level: core
+    q: "What value is held in the sound_func member of an animal_t instance?"
+    choices:
+      - "The animal's name string"
+      - "The heap address of the animal"
+      - "The number of animals allocated"
+      - "The address of the function implementing this object's sound"
+    answer: 3
+    why: |
+      sound_func is a function pointer: it holds the address of a function, not data. Each instance's pointer
+      selects which sound implementation runs. Options A, B, and C describe data, not a function address.
+    concept: "function-pointer-field"
+
+  - kind: predict
+    level: intro
+    q: "Predict the output of this program that greets two animals through one function."
+    code: |
+      animal_t cat = { .name = "Cat" };
+      animal_t duck = { .name = "Duck" };
+      greet(&cat);
+      greet(&duck);
+    choices:
+      - "Hello, Cat\nHello, Duck"
+      - "Hello, Animal\nHello, Animal"
+      - "Cat\nDuck"
+      - "No output"
+    answer: 0
+    why: |
+      greet prints the name of whichever object it receives. The first call prints Hello, Cat and the second
+      prints Hello, Duck. Option B assumes a fixed base name. Option C omits the greeting text.
+    concept: "shared-interface-output"
+
+  - kind: why-fails
+    level: core
+    q: "Why does a plain animal_sound function fail to be polymorphic by itself?"
+    code: |
+      void animal_sound(animal_t* ptr) {
+        printf("Animal: Beeeep\n");
+      }
+    choices:
+      - "Because the function lacks a return value"
+      - "Because the function is too short"
+      - "Because the body is fixed and never inspects the object to choose a behavior"
+      - "Because the function must be declared static"
+    answer: 2
+    why: |
+      The function always prints the same string; it never reads the object to select a behavior. Polymorphism
+      requires dispatch through per-object state. Options A, B, and D are irrelevant.
+    concept: "plain-function-not-polymorphic"
+
+  - kind: mcq
+    level: advanced
+    q: "Which of the two C inheritance techniques can express multiple inheritance?"
+    choices:
+      - "The embedded-value approach"
+      - "Both approaches equally"
+      - "Neither approach"
+      - "The parent-pointer approach"
+    answer: 3
+    why: |
+      With pointers, a child can store any number of parent pointers, each to an independently allocated
+      parent object. The embedded-value approach can only place one parent at offset 0, limiting it to single
+      inheritance. Options A, B, and C are false.
+    concept: "multiple-inheritance"
+
+  - kind: fillblank
+    level: core
+    q: "Fill in the field name used to relay a call to the stored sound function:"
+    code: |
+      void animal_sound(animal_t* animal) {
+        animal->_____(animal);
+      }
+    answer_text: "sound_func"
+    why: |
+      The field name sound_func holds the target function's address. Calling animal->sound_func(animal)
+      dispatches to the implementation stored for that object.
+    concept: "relay-syntax"
+
+  - kind: trace
+    level: advanced
+    q: "Trace the vtable dispatch below. Which function does the call at Step 3 resolve to?"
+    code: |
+      animal_t a = { &animal_vtable, "Animal" };
+      a.vptr->sound(&a);
+    trace:
+      headers: ["Step", "Line", "Operation", "Resolved Function"]
+      rows:
+        - step: 1
+          line: 1
+          cells: ["1", "1", "a.vptr = &animal_vtable", "animal_vtable"]
+        - step: 2
+          line: 1
+          cells: ["2", "1", "a.vptr->sound", "__animal_sound"]
+        - step: 3
+          line: 2
+          cells: ["3", "2", "a.vptr->sound(&a)", "???"]
+    target: {row: 2, col: 3}
+    choices:
+      - "main"
+      - "NULL"
+      - "__animal_sound"
+      - "garbage"
+    answer: 2
+    why: |
+      The vtable's sound slot holds __animal_sound, so the indirect call dispatches there and prints
+      Animal: Beeeep. Options A, B, and D do not match the vtable contents.
+    concept: "vtable-dispatch"
+
+  - kind: eipe
+    level: core
+    q: "In one sentence, what does calling animal_sound with different object pointers achieve?"
+    choices:
+      - "To allocate more memory for each call"
+      - "To force the compiler to inline the function"
+      - "To share a name attribute among all objects"
+      - "To reuse one behavior interface while each object supplies its own implementation"
+    answer: 3
+    why: |
+      Polymorphism lets a single call site invoke different implementations depending on the object's runtime
+      identity, so calling code stays unchanged as subtypes are added. Options A, B, and C are false.
+    concept: "polymorphism-purpose"
+
+  - kind: choose-better
+    level: intro
+    q: "Which structure correctly models the statement 'a student is a person' with inheritance?"
+    choices:
+      - |
+        // Embedded parent: student_t contains a person_t
+        typedef struct { person_t person; } student_t;
+      - |
+        // Copied fields: no embedded parent object
+        typedef struct { char first_name[32]; } student_t;
+    answer: 0
+    why: |
+      Option A embeds the parent object, which is what makes a student_t* upcastable to a person_t*. Option B
+      copies a field, destroying the structural identity inheritance relies on.
+    concept: "is-a-modeling"
+
+  - kind: spot-bug
+    level: core
+    q: "Analyze the code and the AddressSanitizer report. Which line causes the invalid access?"
+    code: |
+      student_t* s = student_new();
+      student_ctor(s, "John", "Doe", 1987, "TA5667", 134);
+      free(s);
+      printf("%u\n", ((person_t*)s)->birth_year);
+    diagnostic_log: |
+      ==1122==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000010
+      READ of size 4 at 0x602000000010 thread T0
+          #0 0x4011a0 in main test.c:4
+    target_line: 4
+    choices:
+      - "Line 1: student_new allocated too few bytes"
+      - "Line 4: reading the parent field through a pointer after the student was freed"
+      - "Line 2: student_ctor used the wrong argument order"
+      - "Line 3: free() must be replaced with student_dtor()"
+    answer: 1
+    why: |
+      Line 3 frees the student object, returning its memory to the allocator. Line 4 dereferences the upcast
+      pointer to read birth_year, a heap-use-after-free read. Options A, C, and D do not explain the report.
+    concept: "upcast-use-after-free"
+
+  - kind: mcq
+    level: intro
+    q: "How is a virtual function best defined?"
+    choices:
+      - "A function that is compiled away by the preprocessor"
+      - "A function that can only be called from main()"
+      - "An overridable behavior dispatched through per-object pointers"
+      - "A function that returns void and takes no arguments"
+    answer: 2
+    why: |
+      A virtual function is an overridable behavior whose concrete implementation is selected at runtime via
+      pointers stored in the object. Options A, B, and D are false.
+    concept: "virtual-function-definition"
+
+  - kind: predict
+    level: advanced
+    q: "Predict the number of distinct heap objects created for one student by the pointer-based approach."
+    code: |
+      student_t* s = student_new();
+      student_ctor(s, "John", "Doe", 1987, "TA5667", 134);
+    choices:
+      - "One"
+      - "Two"
+      - "Zero"
+      - "Three"
+    answer: 3
+    why: |
+      The student container, the separately allocated parent object, and the heap buffer for student_number
+      are three distinct allocations. Option A describes the embedded-value approach, where the parent lives
+      inside the child. Option B misses the string buffer.
+    concept: "approach2-allocation-count"
+
+  - kind: order
+    level: advanced
+    q: "Order the lines to implement the duck constructor with a correct override:"
+    lines:
+      - "animal_ctor((animal_t*)duck);"
+      - "duck->animal.sound_func = __duck_sound;"
+      - "strcpy(duck->animal.name, \"Duck\");"
+      - "duck_t* duck = duck_new();"
+      - "free(duck->animal.name);"
+    answer_order: [3, 0, 2, 1]
+    distractor_why:
+      "free(duck->animal.name);": "Freeing the name during construction destroys it before it can be printed."
+    why: |
+      Construction order: (1) allocate the duck, (2) run the parent constructor to install the default pointer
+      and name buffer, (3) rename the object, (4) install the override. The override must come after the parent
+      constructor sets the default.
+    concept: "override-ctor-order"
+
+  - kind: why-fails
+    level: intro
+    q: "Why can a student_t pointer no longer be cast to a person_t pointer in the pointer-based approach?"
+    choices:
+      - "Because the child and parent live at different, unrelated addresses"
+      - "Because C forbids casts between struct pointers"
+      - "Because pointers cannot be stored inside structs"
+      - "Because the parent type is declared const"
+    answer: 0
+    why: |
+      The child holds a pointer to a separately allocated parent object, so the two addresses are unrelated and
+      a cast would not produce a valid person_t*. Option B is false; C allows casts between struct pointers.
+      Options C and D are false.
+    concept: "pointer-breaks-upcast"
+
+  - kind: trace
+    level: core
+    q: "Trace the destruction of a student that embeds a parent. What is the parent's state after Step 2?"
+    code: |
+      void student_dtor(student_t* s) {
+        free(s->student_number);   /* line 2 */
+        person_dtor((person_t*)s); /* line 3 */
+      }
+    trace:
+      headers: ["Step", "Line", "Operation", "Embedded Parent"]
+      rows:
+        - step: 1
+          line: 2
+          cells: ["1", "2", "free(s->student_number)", "still valid"]
+        - step: 2
+          line: 3
+          cells: ["2", "3", "person_dtor((person_t*)s)", "???"]
+    target: {row: 1, col: 3}
+    choices:
+      - "Still valid and untouched"
+      - "Torn down and its resources released"
+      - "Automatically reallocated"
+      - "Copied to the stack"
+    answer: 1
+    why: |
+      Step 2 calls the parent destructor on the upcast pointer, releasing the parent's owned resources after
+      the child's own resources were freed. Option A describes Step 1. Options C and D are false.
+    concept: "approach1-dtor-trace"
+
+  - kind: mcq
+    level: core
+    q: "Why must the Student class repeat Person's behavior functions as wrappers in the pointer approach?"
+    choices:
+      - "Because the compiler requires every class to define all functions it uses"
+      - "Because wrappers make the code run faster than direct calls"
+      - "Because the student pointer cannot be passed to Person's functions, so the child must forward each call"
+      - "Because Person's functions are declared static"
+    answer: 2
+    why: |
+      Without upcasting, a student_t* cannot be handed to person_get_first_name. The child exposes its own
+      functions that call the parent's behavior on s->person. Options A, B, and D are false.
+    concept: "wrapper-forwarding"
+
+  - kind: eipe
+    level: advanced
+    q: "In one sentence, why is polymorphism essential for abstract types?"
+    choices:
+      - "Because a base pointer must be able to invoke the correct overridden implementation at runtime"
+      - "Because abstract types cannot be allocated on the heap"
+      - "Because polymorphism reduces the size of every object"
+      - "Because abstract types are only allowed in header files"
+    answer: 0
+    why: |
+      Abstract types define an interface without a concrete behavior. Polymorphism supplies the runtime dispatch
+      that selects the child's override when the code holds only a base pointer. Options B, C, and D are false.
+    concept: "abstract-dispatch"
+
+  - kind: fillblank
+    level: intro
+    q: "Complete the pointer-based child structure so the parent can be stored as an incomplete type:"
+    code: |
+      typedef struct {
+        char* student_number;
+        struct person_t* _____;
+        unsigned int passed_credits;
+      } student_t;
+    answer_text: "person"
+    why: |
+      The child stores a pointer to the parent, named person. A pointer to an incomplete type is legal, so the
+      child does not need the parent's complete definition.
+    concept: "pointer-child-field"
+
+  - kind: spot-bug
+    level: advanced
+    q: "Analyze the code and diagnostic. Which line violates the destruction order?"
+    code: |
+      void student_dtor_bad(student_t* s) {
+        person_dtor((person_t*)s);   /* line 2 */
+        free(s->student_number);     /* line 3 */
+      }
+    diagnostic_log: |
+      ==3310==ERROR: AddressSanitizer: heap-use-after-free on address 0x6020000000a0
+      READ of size 8 at 0x6020000000a0 thread T0
+          #0 0x4011c0 in student_dtor_bad test.c:3
+    target_line: 3
+    choices:
+      - "Line 2: person_dtor cannot be called on a student pointer"
+      - "Line 3: free() cannot be called after any destructor"
+      - "Line 2: the cast to person_t* is illegal"
+      - "Line 3: the child resource is released after the parent, violating child-first destruction"
+    answer: 3
+    why: |
+      Destruction must be child-first, then parent. Calling person_dtor first inverts the order and leaves the
+      child's own resource to be freed after the parent teardown, which the sanitizer flags. Options A, B, and
+      C are false.
+    concept: "approach1-dtor-order"
+
+  - kind: choose-better
+    level: core
+    q: "Which design is preferable when the parent implementation changes often?"
+    choices:
+      - |
+        // Child embeds parent by value and includes the private header
+        typedef struct { person_t person; } student_t;
+      - |
+        // Child holds a parent pointer and includes only the public header
+        typedef struct { struct person_t* person; } student_t;
+    answer: 1
+    why: |
+      The pointer approach compiles the child against only the public interface, so changing the parent's
+      internal layout does not force the child to recompile. The embedded approach makes the child depend on
+      the parent's exact layout.
+    concept: "volatile-parent-choice"
+
+  - kind: predict
+    level: core
+    q: "Predict what this cat program prints."
+    code: |
+      cat_t* c = cat_new();
+      cat_ctor(c);
+      animal_sound((animal_t*)c);
+    choices:
+      - "Cat: Meow"
+      - "Animal: Beeeep"
+      - "Cat: Beeeep"
+      - "Animal: Meow"
+    answer: 0
+    why: |
+      cat_ctor overrides sound_func with __cat_sound, and animal_sound relays through it, so the output is
+      Cat: Meow. Option B ignores the override. Option C keeps the default behavior. Option D mixes the base
+      name with the cat sound.
+    concept: "override-output"
+
+  - kind: why-fails
+    level: advanced
+    q: "Why is the override assignment required to come after the parent constructor call?"
+    code: |
+      void cat_ctor(cat_t* cat) {
+        cat->animal.sound_func = __cat_sound;
+        animal_ctor((animal_t*)cat);
+      }
+    choices:
+      - "Because the compiler rejects function-pointer assignments"
+      - "Because strcpy must come first"
+      - "Because animal_ctor would overwrite the override with the default __animal_sound"
+      - "Because the parent constructor frees the cat object"
+    answer: 2
+    why: |
+      animal_ctor sets sound_func = __animal_sound. If it runs after the override, it clobbers the override and
+      the cat loses its behavior. The override must be installed last. Options A, B, and D are false.
+    concept: "override-ordering"
+
+  - kind: mcq
+    level: intro
+    q: "What is inheritance also called?"
+    choices:
+      - "Aggregation"
+      - "Association"
+      - "Composition"
+      - "Extension"
+    answer: 3
+    why: |
+      Inheritance is also called the extension relationship because it only adds extra attributes and
+      behaviors to an existing class. Aggregation and composition are to-have relationships; association is a
+      general link.
+    concept: "inheritance-alias"
+
+  - kind: trace
+    level: core
+    q: "Trace the memory layout. What value does &s.person hold relative to &s?"
+    code: |
+      student_t s;
+    trace:
+      headers: ["Step", "Expression", "Address", "Meaning"]
+      rows:
+        - step: 1
+          line: 1
+          cells: ["1", "&s", "0x7ffd10", "Start of the student_t object"]
+        - step: 2
+          line: 1
+          cells: ["2", "&s.person", "???", "Start of the embedded parent"]
+    target: {row: 1, col: 2}
+    choices:
+      - "0x7ffd00 (one byte before)"
+      - "0x7ffd18 (after the parent block)"
+      - "Unrelated heap address"
+      - "0x7ffd10 (identical address)"
+    answer: 3
+    why: |
+      The parent is the first field of student_t, so it begins at the same address as the child object. &s and
+      &s.person are numerically equal; this is what makes upcasting valid. Options A, B, and C ignore the
+      first-field rule.
+    concept: "first-field-address"
+
+  - kind: order
+    level: core
+    q: "Order the lines to implement the pointer-based student constructor:"
+    lines:
+      - "person_ctor(s->person, fn, ln, by);"
+      - "s->student_number = (char*)malloc(16);"
+      - "s->person = person_new();"
+      - "free(s->person);"
+    answer_order: [2, 0, 1]
+    distractor_why:
+      "free(s->person);": "Freeing the parent during construction destroys it before the child can use it."
+    why: |
+      Construction order: (1) allocate the parent object, (2) construct the parent, (3) allocate the child's
+      own string. The parent must exist and be constructed before the child forwards calls to it.
+    concept: "approach2-ctor-order"
+
+  - kind: eipe
+    level: core
+    q: "In one sentence, what is the role of a private header file in the embedded inheritance approach?"
+    choices:
+      - "It exposes the parent's complete layout only to the classes that need it"
+      - "It stores the compiled object code of the parent class"
+      - "It replaces the need for a public header file"
+      - "It makes the program compile faster"
+    answer: 0
+    why: |
+      The private header carries the parent's real field definitions and is included only by the parent
+      implementation and the child that embeds it. Everyone else sees only the public header with its forward
+      declaration. Options B, C, and D misdescribe the mechanism.
+    concept: "private-header-role"
+
+  - kind: spot-bug
+    level: core
+    q: "Analyze the code and the compiler error. What is the root cause of the failure?"
+    code: |
+      struct person_t;
+
+      typedef struct {
+        struct person_t person;   /* line 4 */
+        char student_number[16];
+      } student_t;
+    diagnostic_log: |
+      error: field 'person' has incomplete type 'struct person_t'
+              struct person_t person;
+                                  ^
+    target_line: 4
+    choices:
+      - "Line 2: the forward declaration must be inside a header file"
+      - "Line 5: char arrays cannot follow a struct field"
+      - "Line 4: the field has incomplete type, so the compiler cannot size student_t"
+      - "Line 1: typedef is missing from the struct definition"
+    answer: 2
+    why: |
+      The compiler knows the tag person_t but not its size. A by-value member needs a known size to fix the
+      outer struct's layout, so the compiler rejects line 4. Options A, B, and D do not match the diagnostic.
+    concept: "incomplete-field-diagnosis"
+
+  - kind: mcq
+    level: advanced
+    q: "Why does C++ track virtual functions and place pointers into objects?"
+    choices:
+      - "To make the objects larger and slower"
+      - "To let a base-class pointer invoke the correct overridden implementation at runtime"
+      - "To prevent any function from being overridden"
+      - "To remove the need for constructors"
+    answer: 1
+    why: |
+      The per-object pointers are the dispatch mechanism: they let one base interface reach the right child
+      implementation. Options A, C, and D are false.
+    concept: "virtual-dispatch-purpose"
+
+  - kind: fillblank
+    level: core
+    q: "Fill in the struct tag in the private header so the child can embed the parent by value:"
+    code: |
+      typedef struct _____ {
+        char first_name[32];
+        char last_name[32];
+        unsigned int birth_year;
+      } person_t;
+    answer_text: "person_t"
+    why: |
+      Tagging the struct with its own name makes the type complete and lets the public header's forward
+      declaration refer to the same tag. Without the tag the anonymous typedef and struct person_t would be
+      two different types.
+    concept: "private-header-struct-tag"
+
+  - kind: choose-better
+    level: advanced
+    q: "Which design best supports a child that must inherit from two independent parent classes?"
+    choices:
+      - |
+        // Several parent pointers: multiple inheritance
+        typedef struct {
+          struct person_t* person;
+          struct course_t* course;
+        } student_t;
+      - |
+        // One embedded parent: single inheritance only
+        typedef struct {
+          person_t person;
+          course_t course;
+        } student_t;
+    answer: 0
+    why: |
+      Option A stores a pointer to each parent, so the child can inherit from both. Option B can only upcast the
+      first embedded parent (the one at offset 0), so it cannot express multiple inheritance.
+    concept: "multiple-inheritance-design"
+
+  - kind: predict
+    level: intro
+    q: "Predict the output of the non-polymorphic calls."
+    code: |
+      animal_sound(animal);
+      cat_sound(cat);
+      duck_sound(duck);
+    choices:
+      - "Animal: Beeeep / Animal: Beeeep / Animal: Beeeep"
+      - "Animal: Beeeep / Cat: Meow / Duck: Quacks"
+      - "Cat: Meow / Duck: Quacks"
+      - "Nothing is printed"
+    answer: 1
+    why: |
+      Each object is passed to its own specific function, so each prints its own sound in call order: Animal,
+      then Cat, then Duck. Option A assumes a single shared function. Option C omits the first call.
+    concept: "non-polymorphic-output"
+
+  - kind: why-fails
+    level: core
+    q: "Why is the embedded-value approach unable to provide multiple inheritance?"
+    code: |
+      typedef struct {
+        person_t person;    /* must be first for upcasting */
+        course_t course;    /* second embedded parent */
+      } student_t;
+    choices:
+      - "Because C forbids more than one struct member"
+      - "Because structs cannot contain other structs"
+      - "Because only the first field is at offset 0, so only one parent can be upcast safely"
+      - "Because the compiler rejects typedef names inside structs"
+    answer: 2
+    why: |
+      Upcasting relies on the parent being at offset 0. A second embedded parent sits at a nonzero offset, so a
+      student_t* cannot be cast to it. Thus the embedded approach supports only a single parent. Options A, B,
+      and D are false.
+    concept: "single-inheritance-limitation"

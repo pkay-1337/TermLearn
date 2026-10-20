@@ -1,0 +1,514 @@
+labs:
+  - id: lab1
+    title: "Embedded Inheritance: Student Is-a Person"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement the **first approach** to inheritance in C: a `student_t` embeds a `person_t`
+      by value as its **first field**, so a student pointer can be upcast to a person pointer.
+
+      ### Requirements
+      1. Define `struct student_t` in `student.c` with a `person_t person;` member as the
+         first field, plus `char* student_number;` and `unsigned int passed_credits;`.
+      2. Implement `student_new()` to allocate a `student_t`.
+      3. Implement `student_ctor(...)`: call `person_ctor((person_t*)student, ...)` to
+         initialize the embedded parent, allocate `student_number` (16 bytes), copy the
+         number, and set `passed_credits`.
+      4. Implement `student_dtor(...)`: free `student_number` first, then call
+         `person_dtor((person_t*)student)`.
+      5. Implement `student_get_student_number()` and `student_get_passed_credits()`.
+      6. Include `person.h` and `person_p.h`; never expose the parent's layout in a header.
+    files:
+      - path: person.h
+        content: |
+          #ifndef PERSON_H
+          #define PERSON_H
+
+          struct person_t;
+          struct person_t* person_new(void);
+          void person_ctor(struct person_t*, const char*, const char*, unsigned int);
+          void person_dtor(struct person_t*);
+          void person_get_first_name(struct person_t*, char*);
+          void person_get_last_name(struct person_t*, char*);
+          unsigned int person_get_birth_year(struct person_t*);
+
+          #endif
+      - path: person_p.h
+        content: |
+          #ifndef PERSON_P_H
+          #define PERSON_P_H
+
+          typedef struct person_t {
+            char first_name[32];
+            char last_name[32];
+            unsigned int birth_year;
+          } person_t;
+
+          #endif
+      - path: person.c
+        content: |
+          #include <stdlib.h>
+          #include <string.h>
+          #include "person_p.h"
+
+          struct person_t* person_new(void) {
+            return (person_t*)malloc(sizeof(person_t));
+          }
+
+          void person_ctor(struct person_t* p, const char* fn,
+                           const char* ln, unsigned int by) {
+            if (!p) return;
+            strcpy(p->first_name, fn);
+            strcpy(p->last_name, ln);
+            p->birth_year = by;
+          }
+
+          void person_dtor(struct person_t* p) { (void)p; }
+
+          void person_get_first_name(struct person_t* p, char* buffer) {
+            if (p && buffer) strcpy(buffer, p->first_name);
+          }
+
+          void person_get_last_name(struct person_t* p, char* buffer) {
+            if (p && buffer) strcpy(buffer, p->last_name);
+          }
+
+          unsigned int person_get_birth_year(struct person_t* p) {
+            return p ? p->birth_year : 0;
+          }
+      - path: student.h
+        content: |
+          #ifndef STUDENT_H
+          #define STUDENT_H
+
+          struct student_t;
+          struct student_t* student_new(void);
+          void student_ctor(struct student_t*, const char*, const char*, unsigned int,
+                            const char*, unsigned int);
+          void student_dtor(struct student_t*);
+          void student_get_student_number(struct student_t*, char*);
+          unsigned int student_get_passed_credits(struct student_t*);
+
+          #endif
+      - path: student.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include "person.h"
+          #include "student.h"
+
+          int main(void) {
+            struct student_t* student = student_new();
+            student_ctor(student, "John", "Doe", 1987, "TA5667", 134);
+
+            char buffer[32];
+            struct person_t* person_ptr = (struct person_t*)student;
+            person_get_first_name(person_ptr, buffer);
+            printf("First name: %s\n", buffer);
+            person_get_last_name(person_ptr, buffer);
+            printf("Last name: %s\n", buffer);
+            printf("Birth year: %u\n", person_get_birth_year(person_ptr));
+
+            student_get_student_number(student, buffer);
+            printf("Student number: %s\n", buffer);
+            printf("Passed credits: %u\n", student_get_passed_credits(student));
+
+            student_dtor(student);
+            free(student);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <assert.h>
+          #include <string.h>
+          #include "person.h"
+          #include "student.h"
+
+          int main(void) {
+            struct student_t* student = student_new();
+            assert(student != NULL);
+            student_ctor(student, "John", "Doe", 1987, "TA5667", 134);
+
+            char buffer[32];
+            struct person_t* person_ptr = (struct person_t*)student;
+            person_get_first_name(person_ptr, buffer);
+            assert(strcmp(buffer, "John") == 0);
+            person_get_last_name(person_ptr, buffer);
+            assert(strcmp(buffer, "Doe") == 0);
+            assert(person_get_birth_year(person_ptr) == 1987);
+
+            student_get_student_number(student, buffer);
+            assert(strcmp(buffer, "TA5667") == 0);
+            assert(student_get_passed_credits(student) == 134);
+
+            student_dtor(student);
+            free(student);
+            printf("STUDENT INHERITANCE TESTS PASSED\n");
+            return 0;
+          }
+    commands:
+      run: gcc -Wall -Wextra -std=c99 person.c student.c main.c -o app && ./app
+      test: gcc -Wall -Wextra -std=c99 person.c student.c test_runner.c -o test_runner && ./test_runner
+    test_cases:
+      - name: Embedded inheritance program trace
+        stdin: ''
+        expect: |
+          First name: John
+          Last name: Doe
+          Birth year: 1987
+          Student number: TA5667
+          Passed credits: 134
+        expect_exit: 0
+    hints:
+      - Include both person.h and person_p.h, then make person the first member of student_t.
+      - Upcast the student pointer to person_t* when calling the parent constructor and destructor.
+      - Free the child's own string before calling person_dtor on the upcast pointer.
+
+  - id: lab2
+    title: "Pointer Inheritance: Student Has-a Person"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement the **second approach** to inheritance in C: a `student_t` holds a pointer to
+      a separately allocated `person_t`, and forwards every inherited behavior through a
+      wrapper function.
+
+      ### Requirements
+      1. Define `struct student_t` in `student.c` with `char* student_number;`,
+         `unsigned int passed_credits;`, and `struct person_t* person;`.
+      2. Implement `student_new()` to allocate a `student_t`.
+      3. Implement `student_ctor(...)`: allocate the parent with `person_new()`, construct it
+         with `person_ctor(student->person, ...)`, allocate `student_number`, and set credits.
+      4. Implement `student_dtor(...)`: free `student_number`, call
+         `person_dtor(student->person)`, then `free(student->person)`.
+      5. Implement wrapper functions `student_get_first_name`, `student_get_last_name`,
+         `student_get_birth_year`, `student_get_student_number`, and
+         `student_get_passed_credits` that forward to the parent where appropriate.
+      6. Include only `person.h`; the parent's layout stays hidden inside `person.c`.
+    files:
+      - path: person.h
+        content: |
+          #ifndef PERSON_H
+          #define PERSON_H
+
+          struct person_t;
+          struct person_t* person_new(void);
+          void person_ctor(struct person_t*, const char*, const char*, unsigned int);
+          void person_dtor(struct person_t*);
+          void person_get_first_name(struct person_t*, char*);
+          void person_get_last_name(struct person_t*, char*);
+          unsigned int person_get_birth_year(struct person_t*);
+
+          #endif
+      - path: person.c
+        content: |
+          #include <stdlib.h>
+          #include <string.h>
+          #include "person.h"
+
+          typedef struct person_t {
+            char first_name[32];
+            char last_name[32];
+            unsigned int birth_year;
+          } person_t;
+
+          struct person_t* person_new(void) {
+            return (person_t*)malloc(sizeof(person_t));
+          }
+
+          void person_ctor(struct person_t* p, const char* fn,
+                           const char* ln, unsigned int by) {
+            if (!p) return;
+            strcpy(p->first_name, fn);
+            strcpy(p->last_name, ln);
+            p->birth_year = by;
+          }
+
+          void person_dtor(struct person_t* p) { (void)p; }
+
+          void person_get_first_name(struct person_t* p, char* buffer) {
+            if (p && buffer) strcpy(buffer, p->first_name);
+          }
+
+          void person_get_last_name(struct person_t* p, char* buffer) {
+            if (p && buffer) strcpy(buffer, p->last_name);
+          }
+
+          unsigned int person_get_birth_year(struct person_t* p) {
+            return p ? p->birth_year : 0;
+          }
+      - path: student.h
+        content: |
+          #ifndef STUDENT_H
+          #define STUDENT_H
+
+          struct student_t;
+          struct student_t* student_new(void);
+          void student_ctor(struct student_t*, const char*, const char*, unsigned int,
+                            const char*, unsigned int);
+          void student_dtor(struct student_t*);
+          void student_get_first_name(struct student_t*, char*);
+          void student_get_last_name(struct student_t*, char*);
+          unsigned int student_get_birth_year(struct student_t*);
+          void student_get_student_number(struct student_t*, char*);
+          unsigned int student_get_passed_credits(struct student_t*);
+
+          #endif
+      - path: student.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include "student.h"
+
+          int main(void) {
+            struct student_t* student = student_new();
+            student_ctor(student, "John", "Doe", 1987, "TA5667", 134);
+
+            char buffer[32];
+            student_get_first_name(student, buffer);
+            printf("First name: %s\n", buffer);
+            student_get_last_name(student, buffer);
+            printf("Last name: %s\n", buffer);
+            printf("Birth year: %u\n", student_get_birth_year(student));
+
+            student_get_student_number(student, buffer);
+            printf("Student number: %s\n", buffer);
+            printf("Passed credits: %u\n", student_get_passed_credits(student));
+
+            student_dtor(student);
+            free(student);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <assert.h>
+          #include <string.h>
+          #include "student.h"
+
+          int main(void) {
+            struct student_t* student = student_new();
+            assert(student != NULL);
+            student_ctor(student, "John", "Doe", 1987, "TA5667", 134);
+
+            char buffer[32];
+            student_get_first_name(student, buffer);
+            assert(strcmp(buffer, "John") == 0);
+            student_get_last_name(student, buffer);
+            assert(strcmp(buffer, "Doe") == 0);
+            assert(student_get_birth_year(student) == 1987);
+
+            student_get_student_number(student, buffer);
+            assert(strcmp(buffer, "TA5667") == 0);
+            assert(student_get_passed_credits(student) == 134);
+
+            student_dtor(student);
+            free(student);
+            printf("STUDENT POINTER INHERITANCE TESTS PASSED\n");
+            return 0;
+          }
+    commands:
+      run: gcc -Wall -Wextra -std=c99 person.c student.c main.c -o app && ./app
+      test: gcc -Wall -Wextra -std=c99 person.c student.c test_runner.c -o test_runner && ./test_runner
+    test_cases:
+      - name: Pointer inheritance program trace
+        stdin: ''
+        expect: |
+          First name: John
+          Last name: Doe
+          Birth year: 1987
+          Student number: TA5667
+          Passed credits: 134
+        expect_exit: 0
+    hints:
+      - Allocate the parent with person_new() and keep it in the student's person pointer.
+      - Forward each inherited getter to the parent through student->person.
+      - Free the child string, then the parent object, in the destructor.
+
+  - id: lab3
+    title: "Polymorphism: One Interface, Many Sounds"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement **polymorphism in C** with a per-instance function pointer. The `Animal` class
+      is complete; you implement the `Cat` and `Duck` overrides.
+
+      ### Requirements
+      1. In `cat.c`, define `struct cat_t` with an embedded `animal_t animal;` as the first
+         field, define `__cat_sound(void*)` that prints `"%s: Meow"`, and implement
+         `cat_new`, `cat_ctor`, and `cat_dtor`.
+      2. `cat_ctor` must call `animal_ctor((animal_t*)cat)`, rename the animal to `"Cat"`, and
+         set `cat->animal.sound_func = __cat_sound`.
+      3. In `duck.c`, do the same for `Duck`, printing `"%s: Quacks"` and installing
+         `__duck_sound`.
+      4. Include `animal.h` and `animal_p.h`; do not modify the provided files.
+    files:
+      - path: animal.h
+        content: |
+          #ifndef ANIMAL_H
+          #define ANIMAL_H
+
+          struct animal_t;
+          struct animal_t* animal_new(void);
+          void animal_ctor(struct animal_t*);
+          void animal_dtor(struct animal_t*);
+          void animal_get_name(struct animal_t*, char*);
+          void animal_sound(struct animal_t*);
+
+          #endif
+      - path: animal_p.h
+        content: |
+          #ifndef ANIMAL_P_H
+          #define ANIMAL_P_H
+
+          typedef void (*sound_func_t)(void*);
+
+          typedef struct animal_t {
+            char* name;
+            sound_func_t sound_func;
+          } animal_t;
+
+          #endif
+      - path: animal.c
+        content: |
+          #include <stdlib.h>
+          #include <string.h>
+          #include <stdio.h>
+          #include "animal_p.h"
+
+          void __animal_sound(void* this_ptr) {
+            animal_t* animal = (animal_t*)this_ptr;
+            printf("%s: Beeeep\n", animal->name);
+          }
+
+          struct animal_t* animal_new(void) {
+            return (animal_t*)malloc(sizeof(animal_t));
+          }
+
+          void animal_ctor(struct animal_t* animal) {
+            if (!animal) return;
+            animal->name = (char*)malloc(10 * sizeof(char));
+            strcpy(animal->name, "Animal");
+            animal->sound_func = __animal_sound;
+          }
+
+          void animal_dtor(struct animal_t* animal) {
+            if (animal) free(animal->name);
+          }
+
+          void animal_get_name(struct animal_t* animal, char* buffer) {
+            if (animal && buffer) strcpy(buffer, animal->name);
+          }
+
+          void animal_sound(struct animal_t* animal) {
+            if (animal) animal->sound_func(animal);
+          }
+      - path: cat.h
+        content: |
+          #ifndef CAT_H
+          #define CAT_H
+
+          struct cat_t;
+          struct cat_t* cat_new(void);
+          void cat_ctor(struct cat_t*);
+          void cat_dtor(struct cat_t*);
+
+          #endif
+      - path: cat.c
+        content: ''
+      - path: duck.h
+        content: |
+          #ifndef DUCK_H
+          #define DUCK_H
+
+          struct duck_t;
+          struct duck_t* duck_new(void);
+          void duck_ctor(struct duck_t*);
+          void duck_dtor(struct duck_t*);
+
+          #endif
+      - path: duck.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include "animal.h"
+          #include "cat.h"
+          #include "duck.h"
+
+          int main(void) {
+            struct animal_t* animal = animal_new();
+            struct cat_t* cat = cat_new();
+            struct duck_t* duck = duck_new();
+
+            animal_ctor(animal);
+            cat_ctor(cat);
+            duck_ctor(duck);
+
+            animal_sound(animal);
+            animal_sound((struct animal_t*)cat);
+            animal_sound((struct animal_t*)duck);
+
+            animal_dtor(animal);
+            cat_dtor(cat);
+            duck_dtor(duck);
+            free(duck);
+            free(cat);
+            free(animal);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <assert.h>
+          #include "animal.h"
+          #include "cat.h"
+          #include "duck.h"
+
+          int main(void) {
+            struct animal_t* animal = animal_new();
+            struct cat_t* cat = cat_new();
+            struct duck_t* duck = duck_new();
+            assert(animal && cat && duck);
+
+            animal_ctor(animal);
+            cat_ctor(cat);
+            duck_ctor(duck);
+
+            assert((void*)animal != (void*)cat);
+            assert((void*)cat != (void*)duck);
+
+            animal_sound(animal);
+            animal_sound((struct animal_t*)cat);
+            animal_sound((struct animal_t*)duck);
+
+            animal_dtor(animal);
+            cat_dtor(cat);
+            duck_dtor(duck);
+            free(duck);
+            free(cat);
+            free(animal);
+            printf("POLYMORPHISM TESTS PASSED\n");
+            return 0;
+          }
+    commands:
+      run: gcc -Wall -Wextra -std=c99 animal.c cat.c duck.c main.c -o app && ./app
+      test: gcc -Wall -Wextra -std=c99 animal.c cat.c duck.c test_runner.c -o test_runner && ./test_runner
+    test_cases:
+      - name: Polymorphic sound dispatch trace
+        stdin: ''
+        expect: |
+          Animal: Beeeep
+          Cat: Meow
+          Duck: Quacks
+        expect_exit: 0
+    hints:
+      - Define cat_t with animal_t animal as its first field so upcasting works.
+      - Call animal_ctor first, rename the object, then install your override function pointer.
+      - Mirror the same pattern in duck.c, printing Quacks.

@@ -41,20 +41,30 @@ def normative_excerpts() -> str:
     return schema + "\n\n" + proto
 
 
-def _get_mode_header(book: str, chapter: str, mode: str) -> str:
+def _src_info(book: str, chapter: str) -> str:
     dir_path = f"packs/{book}/{chapter}"
     source_file = f"books/{book}/raw_chapters/{chapter}.txt"
     book_meta = f"books/{book}/meta.json"
     book_config = f"packs/{book}/book.yaml"
-    
-    src_info = (
+    return (
         f"# [SOURCE ASSET LOCATIONS — WHERE TO FIND CHAPTER DATA]\n"
         f"# 1. Extracted Chapter Text: {source_file}\n"
-        f"#    (The full extracted text is also appended at the bottom of this prompt)\n"
+        f"#    (This is the single source of truth; the full chapter text is NOT embedded\n"
+        f"#     in this prompt — read it from the raw file above, or from chapter.txt in\n"
+        f"#     the prompt bundle directory.)\n"
         f"# 2. Book Table of Contents & Metadata: {book_meta}\n"
         f"# 3. Book Toolchain & Course Pack Config: {book_config}\n"
         f"#\n"
     )
+
+
+def _get_mode_header(book: str, chapter: str, mode: str) -> str:
+    """Mode-specific header only (target file + directives + verification tail).
+    No GENERATE.md, no ASK_USER.md, no SRS excerpts, no chapter text — those
+    live in master_prompt.md."""
+    dir_path = f"packs/{book}/{chapter}"
+    source_file = f"books/{book}/raw_chapters/{chapter}.txt"
+    book_config = f"packs/{book}/book.yaml"
 
     if mode == "meta":
         return (
@@ -62,9 +72,8 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AI AGENT / CHAT: CHAPTER METADATA & OBJECTIVES\n"
             f"# TARGET OUTPUT FILE: {dir_path}/meta.yaml\n"
             f"#\n"
-            f"{src_info}"
             f"# [DIRECTIVES FOR meta.yaml]\n"
-            f"# 1. Read the full chapter text from `{source_file}` (or see below).\n"
+            f"# 1. Read the full chapter text from `{source_file}` (see master_prompt.md).\n"
             f"# 2. Enumerate all core idea units in the chapter (concepts, mechanics, procedures).\n"
             f"# 3. Identify prerequisites from previous chapters (or [] if none).\n"
             f"# 4. Formulate 1 to 6 falsifiable, measurable learning objectives.\n"
@@ -79,7 +88,6 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"#    objectives:\n"
             f"#      - \"Observable skill/mastery 1\"\n"
             f"#      - \"Observable skill/mastery 2\"\n"
-            f"# =============================================================================\n\n"
         )
     elif mode == "study":
         return (
@@ -87,9 +95,8 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AI AGENT / CHAT: CONCEPT BLOCKS & STUDY CONTENT\n"
             f"# TARGET OUTPUT FILE: {dir_path}/study.yaml\n"
             f"#\n"
-            f"{src_info}"
             f"# [DIRECTIVES FOR study.yaml]\n"
-            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 1. Read the chapter from `{source_file}` (see master_prompt.md).\n"
             f"# 2. Dedicate your full cognitive might to deep, pedagogical explanations.\n"
             f"# 3. Break the chapter into 6–15 single-concept blocks ('blocks: [...]').\n"
             f"# 4. For each block:\n"
@@ -110,7 +117,6 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# - If run_expected is declared, it matches actual output for a correct solution.\n"
             f"# - Model blocks have viz; design blocks have eipe/choose-better; syntax/algorithm blocks have order.\n"
             f"# - Each check carries rules 1.1–1.10 (positively-worded, randomized answers, embedded code, elaborated why).\n"
-            f"# =============================================================================\n\n"
         )
     elif mode == "quiz":
         return (
@@ -118,9 +124,8 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AI AGENT / CHAT: CHAPTER QUIZ QUESTIONS\n"
             f"# TARGET OUTPUT FILE: {dir_path}/quiz.yaml\n"
             f"#\n"
-            f"{src_info}"
             f"# [DIRECTIVES FOR quiz.yaml]\n"
-            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 1. Read the chapter from `{source_file}` (see master_prompt.md).\n"
             f"# 2. Author 30 to 50 dedicated, standalone diagnostic questions testing cumulative synthesis.\n"
             f"# 3. Distribute questions across three difficulty levels: 'level: intro | core | advanced'.\n"
             f"# 4. Mix question kinds: 'mcq', 'predict', 'why-fails', 'fillblank', 'order', 'trace', 'spot-bug'.\n"
@@ -139,7 +144,6 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# - Concept coverage: distinct concepts span core chapter topics (e.g. composition, aggregation, ownership, diagnostics).\n"
             f"# - Each item carries 1.1–1.10 (positively worded, 2-4 choices, answer in bounds, randomized answer index,\n"
             f"#   self-contained with embedded code, elaborated why, exact kinds, scrambled order, load-bearing fillblank, width <=80/120 cols).\n"
-            f"# =============================================================================\n\n"
         )
     elif mode == "labs":
         return (
@@ -147,9 +151,8 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AI AGENT / CHAT: PRACTICAL LAB WORKSPACES\n"
             f"# TARGET OUTPUT FILE: {dir_path}/labs.yaml\n"
             f"#\n"
-            f"{src_info}"
             f"# [DIRECTIVES FOR labs.yaml]\n"
-            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 1. Read the chapter from `{source_file}` (see master_prompt.md).\n"
             f"# 2. Author 1 to 4 practical, multi-file coding challenges.\n"
             f"# 3. STUDENT ACTION REQUIRED — NEVER EMIT PRE-SOLVED SOLUTIONS:\n"
             f"#    - Student implementation files MUST BE SCAFFOLDED OR BLANK (empty string, stubs, '/* TODO */').\n"
@@ -170,7 +173,6 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# - Cannot be fully automated (need a solution trace):\n"
             f"#   * commands.run output byte-matches test_cases[].expect for a reference solution.\n"
             f"#   * Fail->pass lifecycle verified with a real reference implementation.\n"
-            f"# =============================================================================\n\n"
         )
     elif mode == "cards":
         return (
@@ -178,15 +180,13 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AI AGENT / CHAT: SPACED REPETITION FLASHCARDS (SM-2)\n"
             f"# TARGET OUTPUT FILE: {dir_path}/cards.yaml\n"
             f"#\n"
-            f"{src_info}"
             f"# [DIRECTIVES FOR cards.yaml]\n"
-            f"# 1. Read the chapter from `{source_file}`.\n"
+            f"# 1. Read the chapter from `{source_file}` (see master_prompt.md).\n"
             f"# 2. Author 15 to 25 atomic flashcards for durable concepts, rules, syntax, and memory models.\n"
             f"# 3. Each card must be answerable in <10s: front = concise prompt; back = answer + 1-line 'why'.\n"
             f"# 4. Include 'why/when' conceptual cards ('When must X be used?') alongside 'what' cards.\n"
             f"# 5. Assign a descriptive 'concept:' tag to each card for telemetry tracking.\n"
             f"# 6. OUTPUT FORMAT: Single YAML document with top-level 'cards: [...]'.\n"
-            f"# =============================================================================\n\n"
         )
     elif mode == "test":
         return (
@@ -194,7 +194,6 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AI AGENT / CHAT: CHAPTER MASTERY TEST GATES\n"
             f"# TARGET OUTPUT FILE: {dir_path}/test.yaml\n"
             f"#\n"
-            f"{src_info}"
             f"# [DIRECTIVES FOR test.yaml]\n"
             f"# 1. Define mastery gate criteria referencing prerequisite concept blocks and minimum quiz accuracy.\n"
             f"# 2. OUTPUT FORMAT:\n"
@@ -203,7 +202,6 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"#        - needs: [b1, b2, b3]\n"
             f"#          min_quiz: 80\n"
             f"#      final_checks: []\n"
-            f"# =============================================================================\n\n"
         )
     elif mode == "master":
         return (
@@ -211,7 +209,7 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AUTONOMOUS AI AGENTS & CODING ASSISTANTS:\n"
             f"# TARGET DIRECTORY: {dir_path}/\n"
             f"#\n"
-            f"{src_info}"
+            f"{_src_info(book, chapter)}"
             f"# [MANDATORY DIRECTIVES FOR MODULAR CHAPTER GENERATION]\n"
             f"# DO NOT write a single monolithic chNN.yaml file!\n"
             f"# Instead, create directory '{dir_path}/' and author focused, modular YAML files:\n"
@@ -248,7 +246,6 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"#    - Fail->pass lifecycle verified with a real reference implementation.\n"
             f"# 6. Automated Validation Command:\n"
             f"#    python main.py validate --book {book} --chapter {chapter} --strict\n"
-            f"# =============================================================================\n\n"
         )
     else:  # legacy monolithic
         return (
@@ -256,7 +253,7 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# INSTRUCTIONS FOR AI AGENTS: MONOLITHIC PACK\n"
             f"# TARGET OUTPUT FILE: packs/{book}/{chapter}.yaml\n"
             f"#\n"
-            f"{src_info}"
+            f"{_src_info(book, chapter)}"
             f"# [POST-GENERATION TESTING PROTOCOL (MUST TEST AFTER CREATING YAML)]\n"
             f"# 1. Block checks & questions: each item carries 1.1–1.10.\n"
             f"# 2. Quiz stanza: Count 30–50; intro+core+advanced; no duplicates; mixed; concept coverage.\n"
@@ -264,32 +261,48 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# 4. Runnable code: compiles under toolchain; run_expected matches stdout; model has viz, design has eipe, syntax has order.\n"
             f"# 5. Cannot be fully automated: commands.run matches test_cases[].expect; fail->pass verified with reference solution.\n"
             f"# 6. Run: python main.py validate --book {book} --chapter {chapter} --strict\n"
-            f"# =============================================================================\n\n"
         )
 
 
-def build_prompt(book: str, chapter: str, mode: str = "master") -> str:
+def _common_block(book: str, chapter: str) -> str:
+    """Shared normative content: GENERATE.md + ASK_USER.md + SRS excerpts +
+    chapter-content pointer. Lives only in master_prompt.md."""
     gen = (ROOT / "prompts" / "GENERATE.md").read_text(encoding="utf-8")
     ask = (ROOT / "prompts" / "ASK_USER.md").read_text(encoding="utf-8")
-    raw = ROOT / "books" / book / "raw_chapters" / f"{chapter}.txt"
+    source_rel = f"books/{book}/raw_chapters/{chapter}.txt"
+    raw = ROOT / source_rel
     if not raw.exists():
         raise FileNotFoundError(f"no extracted text: {raw} — run extract first")
-    text = raw.read_text(encoding="utf-8")
-    parts = chunk(text)
+    return (
+        f"{gen}\n---\n{ask}\n---\n"
+        f"{normative_excerpts()}\n---\n"
+        f"# =============================================================================\n"
+        f"# CHAPTER CONTENT: {chapter} OF {book}\n"
+        f"# The full chapter text is NOT embedded in this prompt.\n"
+        f"# Read it from: {source_rel}\n"
+        f"# (A verbatim copy ships in the prompt bundle as chapter.txt)\n"
+        f"# MODE TARGET: {chapter.upper() if False else 'MASTER'}\n"
+        f"# =============================================================================\n"
+    )
 
-    header = _get_mode_header(book, chapter, mode)
+
+def _mode_pointer(book: str, chapter: str) -> str:
+    """Pointer from a mode-specific file to master_prompt.md for common rules."""
     source_rel = f"books/{book}/raw_chapters/{chapter}.txt"
-    out = [header,
-           gen, "\n---\n", ask, "\n---\n",
-           normative_excerpts(), "\n---\n",
-           f"# =============================================================================",
-           f"# CHAPTER CONTENT: {chapter} OF {book} ({len(parts)} part(s))",
-           f"# SOURCE FILE ON DISK: {source_rel}",
-           f"# MODE TARGET: {mode.upper()}",
-           f"# =============================================================================\n"]
-    for n, p in enumerate(parts, 1):
-        out.append(f"\n## part {n}/{len(parts)}\n\n{p}\n")
-    return "\n".join(out)
+    return (
+        f"#\n"
+        f"# COMMON RULES: see master_prompt.md for GENERATE.md, ASK_USER.md,\n"
+        f"# the SRS §4.8 / §4.9 excerpts, and the chapter source assets.\n"
+        f"# Chapter text: {source_rel}\n"
+        f"# (A verbatim copy ships in this prompt bundle as chapter.txt)\n"
+    )
+
+
+def build_prompt(book: str, chapter: str, mode: str = "master") -> str:
+    header = _get_mode_header(book, chapter, mode)
+    if mode == "master":
+        return header + _common_block(book, chapter)
+    return header + _mode_pointer(book, chapter) + f"# MODE TARGET: {mode.upper()}\n# =============================================================================\n"
 
 
 def emit_prompt_bundle(book: str, chapter: str, dest_dir: Path | str | None = None) -> Path:
@@ -302,6 +315,11 @@ def emit_prompt_bundle(book: str, chapter: str, dest_dir: Path | str | None = No
     else:
         base = ROOT / "prompts" / book / f"{chapter}-prompts"
     base.mkdir(parents=True, exist_ok=True)
+
+    # Copy the raw chapter text into the bundle as the single source of truth.
+    raw = ROOT / "books" / book / "raw_chapters" / f"{chapter}.txt"
+    if raw.exists():
+        (base / "chapter.txt").write_text(raw.read_text(encoding="utf-8"), encoding="utf-8")
 
     mode_files = [
         ("01_meta.md", "meta"),
@@ -321,6 +339,7 @@ def emit_prompt_bundle(book: str, chapter: str, dest_dir: Path | str | None = No
         f"# AI Generation Prompts for {book} / {chapter}\n\n"
         f"### Source Asset Locations (Where to Find Chapter Data):\n"
         f"- **Raw Extracted Chapter Text**: `books/{book}/raw_chapters/{chapter}.txt`\n"
+        f"- **Verbatim copy in this bundle**: `chapter.txt`\n"
         f"- **Book Metadata & TOC**: `books/{book}/meta.json`\n"
         f"- **Book Toolchain & Config**: `packs/{book}/book.yaml`\n"
         f"- **Target Chapter Output Directory**: `packs/{book}/{chapter}/`\n\n"
@@ -358,6 +377,10 @@ def emit(book: str, chapter: str, mode: str = "master", out: str | None = None):
         p = Path(out)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(prompt, encoding="utf-8")
+        # place a verbatim chapter copy next to the emitted prompt
+        raw = ROOT / "books" / book / "raw_chapters" / f"{chapter}.txt"
+        if raw.exists():
+            (p.parent / "chapter.txt").write_text(raw.read_text(encoding="utf-8"), encoding="utf-8")
         print(f"wrote {out} ({len(prompt)} chars, mode={mode})")
     else:
         print(prompt)

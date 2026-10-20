@@ -1,0 +1,1903 @@
+blocks:
+  - id: b1
+    type: model
+    title: "Differentiate Push-Based Sockets from Pull-Based IPC Media"
+    explain_md: |
+      Inter-process communication (IPC) in Unix-like systems divides into two fundamental paradigms:
+      pull-based media and push-based channels. In pull-based IPC (such as shared memory segments or memory-mapped
+      files), processes share access to a passive storage medium. Writers mutate the medium, and readers must actively
+      poll or synchronize access to retrieve new data, making the design susceptible to race conditions and cache
+      coherency bottlenecks unless synchronized with explicit mutexes or semaphores.
+
+      In push-based IPC, communication flows through an active kernel channel. Sockets are full-duplex, push-based
+      channels. When a sending process executes `write()` on a socket descriptor, the kernel copies the payload into
+      a kernel-space socket buffer. The kernel then immediately alerts the receiving process by waking any threads
+      blocked on `read()` or waiting on polling monitors (`select`, `poll`, `epoll`).
+
+      A socket descriptor is a specialized file descriptor representing a transient communication endpoint rather
+      than a persistent storage file. Because a socket represents a stream or queue of data flowing through the kernel
+      without a fixed physical storage footprint, it has no file offset. Consequently, file positioning operations
+      such as `lseek(sd, offset, whence)` are meaningless and fail with `-1` and `errno = ESPIPE` ("Illegal seek").
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <unistd.h>
+        #include <sys/socket.h>
+        #include <errno.h>
+        #include <string.h>
+
+        int main(void) {
+          int sv[2];
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+            perror("socketpair");
+            return 1;
+          }
+          write(sv[0], "DATA", 4);
+          off_t offset = lseek(sv[0], 0, SEEK_SET);
+          if (offset == -1) {
+            printf("lseek failed: %s\n", strerror(errno));
+          }
+          close(sv[0]);
+          close(sv[1]);
+          return 0;
+        }
+      run_expected: "lseek failed: Illegal seek\n"
+      subgoals:
+        - label: "Allocate bidirectional socket channel pair"
+          lines: [8, 9, 10, 11, 12]
+        - label: "Push data into kernel buffer"
+          lines: [13]
+        - label: "Demonstrate seek failure on channel descriptor"
+          lines: [14, 15, 16, 17]
+    viz:
+      kind: ascii-memory
+      steps:
+        - "PULL-BASED IPC: Process A writes to Shared Memory -> Process B must poll/lock shared RAM medium"
+        - "PUSH-BASED SOCKET: Process A write() -> Kernel Socket Buffer (inbound queue) -> Process B wakes on read()"
+        - "NOTIONAL MACHINE: Socket Descriptor 3 -> Kernel struct socket -> [RX Queue | TX Queue] (No file offset)"
+        - "SEEK ATTEMPT: lseek(sd, 0, SEEK_SET) -> Kernel detects socket type -> Returns -1, sets errno = ESPIPE"
+    checks:
+      - kind: predict
+        q: "Trace the execution of this socketpair code. What text is printed to standard output?"
+        code: |
+          #include <stdio.h>
+          #include <unistd.h>
+          #include <sys/socket.h>
+
+          int main(void) {
+            int sv[2];
+            socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+            write(sv[1], "HELLO", 5);
+            char buf[8] = {0};
+            read(sv[0], buf, sizeof(buf) - 1);
+            printf("%s\n", buf);
+            close(sv[0]); close(sv[1]);
+            return 0;
+          }
+        choices:
+          - "HELLOHELLO"
+          - "0"
+          - "HELLO"
+          - "Empty output (read blocks indefinitely)"
+        answer: 2
+        why: |
+          Writing to socket descriptor sv[1] pushes the bytes into the kernel's intermediate buffer.
+          Reading from the paired descriptor sv[0] pulls those 5 bytes out into buf, printing HELLO.
+          Option A assumes loopback reflection. Option B outputs a status code. Option D assumes deadlocking.
+        concept: "socketpair-data-flow"
+
+      - kind: mcq
+        q: "Why does the operating system return an ESPIPE error when a program calls lseek() on a socket descriptor?"
+        choices:
+          - "The socket buffer size exceeds the maximum allowable block offset"
+          - "Socket operations require elevated CAP_SYS_ADMIN privileges"
+          - "Sockets use UDP framing which prohibits random access"
+          - "Sockets represent continuous stream channels without an addressable storage file offset"
+        answer: 3
+        why: |
+          A socket descriptor represents a communication channel rather than an indexed file on a block device.
+          Because data in a channel is consumed as it is read, there is no underlying persistent file offset to seek.
+          Options A, B, and C state incorrect or irrelevant limitations.
+        concept: "socket-no-seek-principle"
+
+      - kind: why-fails
+        q: "Why does the following code trigger an assertion failure or print an error when executed?"
+        code: |
+          #include <stdio.h>
+          #include <unistd.h>
+          #include <sys/socket.h>
+          #include <errno.h>
+
+          int main(void) {
+            int sv[2];
+            socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+            write(sv[0], "PING", 4);
+            if (lseek(sv[0], 0, SEEK_CUR) >= 0) {
+              printf("Seek succeeded!\n");
+            } else {
+              printf("Seek failed with error code %d\n", errno);
+            }
+            return 0;
+          }
+        choices:
+          - "socketpair() can only be created between processes with different PIDs"
+          - "lseek() fails with ESPIPE because socket descriptors do not maintain a seekable file position"
+          - "sv[0] was opened in read-only mode by socketpair"
+          - "The kernel buffer was full after writing 4 bytes"
+        answer: 1
+        why: |
+          POSIX mandates that lseek() on any socket descriptor fails with ESPIPE (Illegal seek). Sockets are
+          unidirectional or bidirectional data conduits, not disk files with addressable byte indices.
+          Options A, C, and D are false claims about socketpair and descriptor properties.
+        concept: "lseek-on-socket-failure"
+
+      - kind: spot-bug
+        q: "Analyze the code and error output. Which line causes the program to fail to read data from the peer?"
+        code: |
+          #include <stdio.h>
+          #include <unistd.h>
+          #include <sys/socket.h>
+
+          int main(void) {
+            int sv[2];
+            socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+            write(sv[0], "DATA", 4);
+            char buf[8] = {0};
+            // Line 10: Attempting to read from the writing endpoint!
+            read(sv[0], buf, sizeof(buf));
+            printf("%s\n", buf);
+            return 0;
+          }
+        diagnostic_log: |
+          Process hung: blocked on read() at line 10
+        target_line: 10
+        choices:
+          - "Line 10: Reading from sv[0] blocks because data written to sv[0] is queued for the counterpart sv[1]"
+          - "Line 7: socketpair requires SOCK_DGRAM rather than SOCK_STREAM"
+          - "Line 8: write() requires 5 bytes to include the null terminator"
+        answer: 0
+        why: |
+          In a socket pair, data written to descriptor sv[0] is directed to sv[1]'s receive queue, and data written
+          to sv[1] is directed to sv[0]'s receive queue. Reading from the same descriptor that performed the write
+          will block indefinitely awaiting incoming data from the peer.
+          Options B and C do not cause the thread to hang on read().
+        concept: "socketpair-endpoint-direction"
+
+      - kind: choose-better
+        q: "Which communication pattern is better suited for low-latency, event-driven messaging between two cooperative processes on the same machine?"
+        choices:
+          - |
+            // Polling a shared memory region inside a busy-wait loop
+            while (!shm->data_ready) {
+              usleep(100);
+            }
+            process_data(shm->buffer);
+          - |
+            // Reading from a push-based Unix domain socket channel
+            char buf[128];
+            int n = read(socket_fd, buf, sizeof(buf));
+            if (n > 0) process_data(buf, n);
+        answer: 1
+        why: |
+          Push-based sockets allow the operating system kernel to put the receiving process to sleep until
+          data is placed into the socket buffer, waking it instantaneously with zero wasted CPU cycles.
+          Option A wastes CPU cycles in sleep-polling loops and suffers from latency granularity delays.
+        concept: "push-vs-pull-choice"
+
+      - kind: trace
+        q: "Trace the status of the kernel socket buffer across execution steps. What is the byte count in sv[1]'s RX buffer after Step 3?"
+        code: |
+          int sv[2];
+          socketpair(AF_UNIX, SOCK_STREAM, 0, sv); // Step 1
+          write(sv[0], "ALPHA", 5);                 // Step 2
+          write(sv[0], "BETA", 4);                  // Step 3
+        trace:
+          headers: ["Step", "Line", "Operation", "Target RX Buffer", "Bytes Queued"]
+          rows:
+            - step: 1
+              line: 2
+              cells: ["1", "2", "socketpair()", "sv[1] RX", "0"]
+            - step: 2
+              line: 3
+              cells: ["2", "3", "write(sv[0], 'ALPHA', 5)", "sv[1] RX", "5"]
+            - step: 3
+              line: 4
+              cells: ["3", "4", "write(sv[0], 'BETA', 4)", "sv[1] RX", "???"]
+        target: {row: 2, col: 4}
+        choices: ["4", "5", "9", "0"]
+        answer: 2
+        why: |
+          Sequential writes to sv[0] append bytes directly to sv[1]'s inbound kernel queue.
+          After writing 5 bytes ("ALPHA") and 4 bytes ("BETA"), the total bytes queued in the stream buffer is 5 + 4 = 9.
+          Option A only counts the second write. Option B only counts the first write. Option D assumes overwriting.
+        concept: "kernel-buffer-accumulation"
+
+  - id: b2
+    type: model
+    title: "Distinguish Stream Byte Sequences from Datagram Message Boundaries"
+    explain_md: |
+      POSIX sockets provide two primary channel semantics: stream channels (`SOCK_STREAM`) and datagram
+      channels (`SOCK_DGRAM`). Understanding the difference in data delivery semantics is vital for network
+      programming.
+
+      A stream socket provides a continuous, ordered, two-way byte stream without message boundaries. The kernel
+      treats data written to a stream socket as an unstructured sequence of bytes. A sender may make two consecutive
+      calls: `write(sd, "REQ1", 4)` and `write(sd, "REQ2", 4)`. The receiver calling `read(sd, buf, sizeof(buf))`
+      may receive all 8 bytes in a single read (`"REQ1REQ2"`), or receive 2 bytes (`"RE"`), or any arbitrary chunk
+      depending on kernel buffer availability, TCP segment slicing, and timing. Therefore, stream protocols
+      MUST implement application-level framing (such as fixed-length headers, length prefixes, or delimiters like `$`)
+      to reassemble discrete messages.
+
+      In contrast, a datagram socket transmits self-contained, discrete messages where message boundaries are
+      strictly preserved by the kernel. Each `sendto()` generates an atomic datagram. When the receiver calls
+      `recvfrom()`, it receives exactly one datagram in its entirety. If the receiver's buffer is smaller than the
+      incoming datagram, the excess bytes are discarded (or an error flag is set). Datagrams are connectionless,
+      meaning each packet must carry destination addressing information.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+
+        int main(void) {
+          const char* stream = "101#ADD#2#3$102#SUB#5#1$";
+          char buf[32];
+          const char* start = stream;
+          const char* delim;
+          while ((delim = strchr(start, '$')) != NULL) {
+            size_t len = delim - start;
+            strncpy(buf, start, len);
+            buf[len] = '\0';
+            printf("Frame: %s\n", buf);
+            start = delim + 1;
+          }
+          return 0;
+        }
+      run_expected: "Frame: 101#ADD#2#3\nFrame: 102#SUB#5#1\n"
+      subgoals:
+        - label: "Simulate coalesced stream buffer input"
+          lines: [5]
+        - label: "Scan for message delimiter"
+          lines: [9]
+        - label: "Extract delimited message frame"
+          lines: [10, 11, 12, 13]
+    viz:
+      kind: ascii-memory
+      steps:
+        - "STREAM (SOCK_STREAM): Write('AAA') + Write('BBB') -> Kernel Stream: [A|A|A|B|B|B] (No boundaries!)"
+        - "STREAM READ: Read(2)->'AA', Read(3)->'AB', Read(1)->'B' (Boundary detection requires delimiter '$')"
+        - "DATAGRAM (SOCK_DGRAM): Send('AAA') -> Packet 1 [AAA] | Send('BBB') -> Packet 2 [BBB]"
+        - "DATAGRAM READ: Recv()->'AAA' (Packet 1 exactly), Next Recv()->'BBB' (Packet 2 exactly)"
+    checks:
+      - kind: predict
+        q: "Trace how the loop extracts frames from the continuous byte string. What is the first printed line?"
+        code: |
+          #include <stdio.h>
+          #include <string.h>
+
+          int main(void) {
+            const char* data = "CMD1$CMD2$";
+            const char* p = strchr(data, '$');
+            if (p) {
+              char out[16] = {0};
+              strncpy(out, data, p - data);
+              printf("Parsed: %s\n", out);
+            }
+            return 0;
+          }
+        choices:
+          - "Parsed: CMD1"
+          - "Parsed: CMD1$CMD2$"
+          - "Parsed: CMD2"
+          - "Parsed: $"
+        answer: 0
+        why: |
+          strchr finds the first occurrence of '$' at index 4. strncpy copies 4 bytes ('C', 'M', 'D', '1'),
+          producing "Parsed: CMD1".
+          Option B assumes the delimiter is ignored. Option C grabs the second frame. Option D is the delimiter itself.
+        concept: "stream-delimiter-parsing"
+
+      - kind: mcq
+        q: "Why must applications running over SOCK_STREAM implement an explicit message delimiting or framing mechanism?"
+        choices:
+          - "Stream sockets do not encrypt packet payloads by default"
+          - "Stream sockets transmit continuous byte streams without preserving application-level message boundaries"
+          - "Stream sockets restrict individual read operations to exactly 1 byte"
+          - "The kernel drops all stream packets that do not include a cyclic redundancy check"
+        answer: 1
+        why: |
+          In SOCK_STREAM (TCP or UDS stream), data is sent and received as an undifferentiated stream of bytes.
+          A single write may be split across multiple reads, or multiple writes may be combined into one read.
+          Applications must delineate messages using length prefixes or delimiters.
+          Options A, C, and D describe false technical constraints.
+        concept: "stream-framing-necessity"
+
+      - kind: why-fails
+        q: "Why does relying on fixed-size read(sd, buf, 64) fail unpredictably in a network stream server?"
+        choices:
+          - "The C standard library forbids buffers larger than 32 bytes"
+          - "The kernel automatically closes socket descriptors when reading fewer than 64 bytes"
+          - "TCP connections disallow reading fixed buffers unless the port is below 1024"
+          - "Network fragmentation and packet timing mean read() may return fewer than 64 bytes even when more are in transit"
+        answer: 3
+        why: |
+          read() on a stream socket returns whatever bytes are currently available in the kernel buffer up to the
+          requested size. It does not wait for 64 bytes to arrive unless specially configured with MSG_WAITALL.
+          Parsing incomplete chunks as complete 64-byte messages causes data corruption.
+          Options A, B, and C are completely fictitious rules.
+        concept: "partial-read-hazard"
+
+      - kind: eipe
+        q: "In one sentence, what is the fundamental purpose of appending a delimiter character (like '$') to wire messages on a stream socket?"
+        choices:
+          - "It tells the network card hardware to flush its hardware FIFO buffers immediately"
+          - "It escapes null characters so ASCII strings can be transmitted over 7-bit serial lines"
+          - "It establishes unambiguous message boundaries so the receiver can isolate discrete records from an unstructured byte stream"
+          - "It verifies that the sender has superuser privileges to write to the socket"
+        answer: 2
+        why: |
+          Because stream channels provide continuous byte sequences with no record boundaries, a delimiter
+          character serves as an application-level frame marker, enabling the receiving parser to slice
+          individual messages. Options A, B, and D cite irrelevant or fictitious mechanisms.
+        concept: "delimiter-purpose"
+
+      - kind: fillblank
+        q: "Fill in the socket type constant that creates an ordered, reliable, connection-oriented byte stream:"
+        code: |
+          int sd = socket(AF_UNIX, ___________, 0);
+        answer_text: "SOCK_STREAM"
+        why: |
+          SOCK_STREAM designates a connection-oriented, sequenced byte stream socket. SOCK_DGRAM designates
+          a connectionless, record-oriented datagram socket.
+        concept: "sock-stream-type-constant"
+
+      - kind: trace
+        q: "Trace message boundary behavior on a datagram socket. If a sender transmits two 10-byte packets, what is the return value of the first recvfrom() call with a 64-byte buffer?"
+        code: |
+          // Sender:
+          sendto(sd, "0123456789", 10, 0, (struct sockaddr*)&srv, len);
+          sendto(sd, "ABCDEFGHIJ", 10, 0, (struct sockaddr*)&srv, len);
+
+          // Receiver:
+          char buf[64];
+          int n = recvfrom(sd, buf, sizeof(buf), 0, NULL, NULL);
+        trace:
+          headers: ["Call", "Buffer Size", "Bytes Transmitted in Packet", "recvfrom() Return Value"]
+          rows:
+            - step: 1
+              line: 6
+              cells: ["recvfrom() #1", "64", "10", "???"]
+        target: {row: 0, col: 3}
+        choices: ["20", "10", "64", "-1"]
+        answer: 1
+        why: |
+          Datagram sockets preserve discrete message boundaries. Even though the receiver provides a 64-byte buffer
+          and a second packet is already pending in the kernel, each recvfrom() returns exactly one datagram (10 bytes).
+          Option A assumes stream coalescence. Option C confuses buffer capacity with returned count.
+        concept: "datagram-boundary-preservation"
+
+  - id: b3
+    type: design
+    title: "Decouple Core Business Logic from Network Transport"
+    explain_md: |
+      A paramount principle of enterprise C architecture is the separation of business logic from communication
+      and transport mechanisms. In the calculator project, the core arithmetic service (`calc_service_t`) is
+      completely isolated from sockets, network headers, and serialization formats.
+
+      The calculator service interface defines pure computational operations (`add`, `sub`, `mul`, `div`) accepting
+      standard C primitive types (`double`, `int`). It has zero dependencies on POSIX socket headers (`sys/socket.h`),
+      file descriptors, or wire protocols. This decoupling allows the service to be unit-tested in isolation, reused in
+      monolithic embedded environments without networking, or deployed behind any transport mechanism (UDS stream, UDS
+      datagram, TCP, UDP, or HTTP).
+
+      Furthermore, service architectures must account for statefulness. In the calculator project, the service
+      features an internal memory accumulator (`get_mem`, `reset_mem`, `ADDM`, `SUBM`, `MULM`). Because each connected
+      client expects its own independent calculator memory, the server cannot share a single global service object
+      across all connections. Instead, the server instantiates a dedicated, stateful `calc_service_t` instance for each
+      client session, encapsulating client state and preventing cross-client data contamination.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <stdlib.h>
+
+        typedef struct {
+          double mem;
+        } calc_service_t;
+
+        calc_service_t* calc_service_new(void) {
+          calc_service_t* svc = (calc_service_t*)malloc(sizeof(calc_service_t));
+          if (svc) svc->mem = 0.0;
+          return svc;
+        }
+
+        double calc_service_add(calc_service_t* svc, double a, double b, int use_mem) {
+          double res = a + b + (use_mem ? svc->mem : 0.0);
+          if (use_mem) svc->mem = res;
+          return res;
+        }
+
+        int main(void) {
+          calc_service_t* svc = calc_service_new();
+          printf("Res1: %.1f\n", calc_service_add(svc, 10.0, 5.0, 1));
+          printf("Res2: %.1f\n", calc_service_add(svc, 2.0, 3.0, 1));
+          free(svc);
+          return 0;
+        }
+      run_expected: "Res1: 15.0\nRes2: 20.0\n"
+      subgoals:
+        - label: "Define encapsulated stateful service struct"
+          lines: [4, 5, 6]
+        - label: "Construct and zero accumulator state"
+          lines: [8, 9, 10, 11, 12]
+        - label: "Execute state-dependent business calculation"
+          lines: [14, 15, 16, 17, 18]
+    checks:
+      - kind: mcq
+        q: "Why must the server allocate an independent calc_service_t instance for each connected client rather than using a single shared global instance?"
+        choices:
+          - "The C compiler refuses to link functions that reference global structs across threads"
+          - "Operating systems restrict global memory access to file descriptor 0"
+          - "The calculator service is stateful, maintaining an accumulator memory that must remain private to each client"
+          - "Shared structs trigger SIGSEGV whenever accessed by non-root threads"
+        answer: 2
+        why: |
+          The service supports accumulator memory operations (+M, -M, mem). If a single global service instance
+          were shared across all clients, one client's calculations would overwrite another client's accumulator,
+          causing race conditions and data corruption.
+          Options A, B, and D cite fictitious compiler and OS constraints.
+        concept: "stateful-service-isolation"
+
+      - kind: eipe
+        q: "In one sentence, what is the architectural benefit of keeping calc_service_t completely independent of socket descriptors and network headers?"
+        choices:
+          - "It isolates the computational domain logic so it can be tested in isolation and reused across any transport protocol"
+          - "It converts all floating-point math into hardware GPU assembly instructions"
+          - "It eliminates the need for dynamic memory allocation via malloc"
+          - "It enables the compiler to automatically convert blocking sockets into asynchronous event loops"
+        answer: 0
+        why: |
+          Separating business logic from transport protocols adheres to the Single Responsibility Principle,
+          allowing the arithmetic engine to be compiled as a standalone static library (`libcalcsvc.a`),
+          thoroughly unit-tested without network harnesses, and plugged into UDS, TCP, or UDP servers.
+          Options B, C, and D describe impossible compiler optimizations.
+        concept: "transport-decoupling-purpose"
+
+      - kind: choose-better
+        q: "Which architecture better supports testability and multi-transport flexibility for a network calculation daemon?"
+        choices:
+          - |
+            // Mixing socket I/O directly into arithmetic functions
+            void handle_client(int sd) {
+              char buf[64];
+              read(sd, buf, 64);
+              double a, b;
+              sscanf(buf, "%lf %lf", &a, &b);
+              double sum = a + b;
+              dprintf(sd, "%lf\n", sum);
+            }
+          - |
+            // Separating transport, serialization, and domain service into layers
+            void handle_client(int sd, calc_service_t* svc) {
+              calc_proto_req_t req;
+              if (read_and_deserialize(sd, &req) == 0) {
+                calc_proto_resp_t resp = execute_service(svc, &req);
+                serialize_and_write(sd, &resp);
+              }
+            }
+        answer: 1
+        why: |
+          Option B separates transport I/O, protocol serialization, and core business computation into discrete,
+          composable layers. This allows swapping socket types, changing wire formats, or testing arithmetic
+          logic without spinning up network sockets. Option A tightly couples I/O, parsing, and arithmetic.
+        concept: "layered-architecture-choice"
+
+      - kind: why-fails
+        q: "Why does the following divide operation fail to provide safe service semantics in a network server?"
+        code: |
+          int calc_service_div(calc_service_t* svc, double a, double b, double* out) {
+            // Missing divisor guard!
+            *out = a / b;
+            return 0;
+          }
+        choices:
+          - "Pointers to double are not allowed as function return parameters in C99"
+          - "Dividing floating point numbers in user space requires kernel elevation"
+          - "calc_service_t cannot execute division while holding an active accumulator"
+          - "When b is 0.0, the function produces +/-INFINITY or NaN without notifying the caller via an error code"
+        answer: 3
+        why: |
+          A robust domain service must check for boundary failures (such as division by zero: `if (b == 0.0)`).
+          Without this check, the service returns 0 (success) while writing infinity or NaN, preventing the server
+          from sending a proper `STATUS_DIV_BY_ZERO` response code to the client.
+          Options A, B, and C state fictitious language limitations.
+        concept: "division-by-zero-error-handling"
+
+      - kind: predict
+        q: "Trace the state of accumulator memory across operations. What is the value printed by the final printf?"
+        code: |
+          calc_service_t* svc = calc_service_new();
+          calc_service_add(svc, 4.0, 6.0, 1); // mem becomes 10.0
+          calc_service_add(svc, 5.0, 5.0, 0); // use_mem = 0, returns 10.0, mem untouched
+          calc_service_add(svc, 1.0, 2.0, 1); // uses mem (10.0), res = 1.0 + 2.0 + 10.0 = 13.0
+          printf("%.1f\n", calc_service_get_mem(svc));
+          free(svc);
+        choices:
+          - "10.0"
+          - "13.0"
+          - "3.0"
+          - "0.0"
+        answer: 1
+        why: |
+          The first call sets mem to 4.0 + 6.0 = 10.0. The second call does not use or update mem.
+          The third call adds 1.0 + 2.0 + 10.0 = 13.0 and updates mem to 13.0. Thus get_mem returns 13.0.
+          Option A misses the third update. Option C ignores the memory term. Option D assumes reset.
+        concept: "service-memory-state-trace"
+
+      - kind: mcq
+        from_chapter: ch10
+        from_block: b2
+        q: "In C object-oriented architecture, why is the relationship between the server's client context and calc_service_t classified as composition rather than aggregation?"
+        choices:
+          - "The client context creates calc_service_t in its constructor and exclusively destroys it when the client disconnects"
+          - "The calculator service is declared as a static global singleton shared across all contexts"
+          - "The client context receives a non-owning pointer from an external dependency injector"
+          - "Composition requires all struct fields to be declared as void* pointers"
+        answer: 0
+        why: |
+          In composition, the container object exclusively owns the lifecycle of the contained object:
+          it allocates the child in constructor/setup and frees it in destructor/teardown. In aggregation,
+          the container references an object whose lifecycle is managed externally.
+          Options B, C, and D describe aggregation, global singletons, or false syntax rules.
+        concept: "interleaved-composition-ownership"
+
+  - id: b4
+    type: syntax
+    title: "Structure Application Wire Protocols and Message Framing"
+    explain_md: |
+      Network and IPC transports require an explicit wire protocol contract so distributed processes can interpret
+      each other's messages. In the calculator project, the wire protocol is textual and variable-length:
+      - Field delimiter: `#` (separates individual attributes within a record).
+      - Message terminator: `$` (signals the definitive end of an entire message frame).
+
+      A client request is represented in C by `struct calc_proto_req_t`, containing `id` (`int32_t`), `method`
+      (`method_t` enum: `ADD`, `SUB`, `MUL`, `DIV`, etc.), `operand1` (`double`), and `operand2` (`double`).
+      When serialized over the wire, it formats as: `<id>#<method>#<op1>#<op2>$`
+      (e.g., `1000#ADD#1.5#5.6$`).
+
+      A server response is represented in C by `struct calc_proto_resp_t`, containing `req_id` (`int32_t`),
+      `status` (`status_t`: `0=STATUS_OK`, `1=STATUS_INVALID_REQUEST`, `4=STATUS_DIV_BY_ZERO`, etc.), and
+      `result` (`double`). On the wire, it formats as: `<req_id>#<status>#<result>$`
+      (e.g., `1000#0#7.1$`).
+
+      Using printable ASCII characters and explicit delimiters makes the protocol easily human-debuggable via
+      packet inspection or terminal tools (`nc`, `socat`), while providing robust framing boundaries for stream
+      reassembly.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+
+        typedef struct {
+          int req_id;
+          int status;
+          double result;
+        } calc_proto_resp_t;
+
+        int main(void) {
+          calc_proto_resp_t resp = { .req_id = 1000, .status = 0, .result = 7.1 };
+          char buf[64];
+          snprintf(buf, sizeof(buf), "%d#%d#%.1f$", resp.req_id, resp.status, resp.result);
+          printf("Serialized: %s\n", buf);
+          return 0;
+        }
+      run_expected: "Serialized: 1000#0#7.1$\n"
+      subgoals:
+        - label: "Populate response object fields"
+          lines: [10]
+        - label: "Format fields into delimited wire frame"
+          lines: [12]
+        - label: "Output serialized wire string"
+          lines: [13]
+    checks:
+      - kind: order
+        q: "Order the lines to correctly serialize a calculator request struct into a delimited wire frame buffer:"
+        lines:
+          - "char* buf = (char*)malloc(64);"
+          - "snprintf(buf, 64, \"%d#%s#%.2f#%.2f$\", req.id, method_str, req.op1, req.op2);"
+          - "const char* method_str = method_to_str(req.method);"
+          - "buf[0] = '$'; // Distractor: premature termination"
+          - "return buf;"
+        answer_order: [0, 2, 1, 4]
+        distractor_why:
+          "buf[0] = '$'; // Distractor: premature termination": "Writing '$' at index 0 prematurely truncates the wire message with an empty frame."
+        why: |
+          Correct serialization order requires: 1. Allocating memory for the output buffer, 2. Converting
+          the enum method into its wire string equivalent, 3. Formatting the fields with '#' delimiters and
+          ending with '$', 4. Returning the buffer pointer.
+        concept: "request-serialization-sequence"
+
+      - kind: fillblank
+        q: "Fill in the character constant used in the calculator application protocol to delimit individual record fields:"
+        code: |
+          #define FIELD_DELIMITER '____'
+          #define MESSAGE_DELIMITER '$'
+        answer_text: "#"
+        why: |
+          In the calculator application protocol, '#' is used to separate adjacent fields within a message
+          (e.g., id#method#op1#op2$), and '$' is used to terminate each complete message.
+        concept: "field-delimiter-token"
+
+      - kind: mcq
+        q: "What is the primary role of the request ID (req_id) field in the calculator protocol?"
+        choices:
+          - "It specifies the TCP port number on the server host"
+          - "It encrypts the floating-point operands using a Caesar cipher"
+          - "It enforces memory alignment for 64-bit double values"
+          - "It correlates an asynchronous response back to the specific originating request that generated it"
+        answer: 3
+        why: |
+          In client-server protocols where multiple requests may be transmitted concurrently or across
+          shared channels, the unique req_id allows the client to match incoming server responses to the
+          original request that triggered them. Options A, B, and C state fictitious roles.
+        concept: "request-id-correlation"
+
+      - kind: why-fails
+        q: "Why does the wire frame '1000#DIV#15.0#0.0$' cause the calculator server to return status 4 rather than 0?"
+        choices:
+          - "Status 4 corresponds to STATUS_DIV_BY_ZERO, rejecting the division by zero operand"
+          - "The protocol requires integer operands rather than floating point numbers"
+          - "Request IDs above 999 are reserved for internal kernel diagnostics"
+          - "The method token 'DIV' must be formatted as lowercase 'div'"
+        answer: 0
+        why: |
+          Operand 2 is 0.0 and the method is DIV. The calculator service intercepts division by zero and
+          reports STATUS_DIV_BY_ZERO (defined as integer 4 in calc_proto_resp.h).
+          Options B, C, and D are contradicted by the protocol specification.
+        concept: "status-div-by-zero-error"
+
+      - kind: predict
+        q: "Trace the serialization of this response struct. What exact string is written into buf?"
+        code: |
+          #include <stdio.h>
+
+          int main(void) {
+            int id = 55;
+            int status = 1; // STATUS_INVALID_REQUEST
+            double result = 0.0;
+            char buf[32];
+            snprintf(buf, sizeof(buf), "%d#%d#%.1f$", id, status, result);
+            printf("%s\n", buf);
+            return 0;
+          }
+        choices:
+          - "55,1,0.0"
+          - "55#1#0.0"
+          - "55#1#0.0$"
+          - "STATUS_INVALID_REQUEST#55$"
+        answer: 2
+        why: |
+          snprintf formats id (55), delimiter '#', status (1), delimiter '#', result with one decimal (0.0),
+          and terminator '$', yielding exactly "55#1#0.0$".
+          Option A uses commas. Option B omits the terminator '$'. Option D reorders fields.
+        concept: "response-wire-trace"
+
+      - kind: spot-bug
+        q: "Analyze the serialization function. Which line causes a buffer overflow when formatting large request IDs?"
+        code: |
+          char* serialize_req(int id, const char* m, double a, double b) {
+            // Line 2: Insufficient buffer size allocated!
+            char* buf = (char*)malloc(10);
+            sprintf(buf, "%d#%s#%.1f#%.1f$", id, m, a, b);
+            return buf;
+          }
+        diagnostic_log: |
+          *** buffer overflow detected ***: terminated
+        target_line: 2
+        choices:
+          - "Line 4: sprintf return value must be cast to void"
+          - "Line 2: Allocating only 10 bytes is far too small for a 4-field formatted string, causing heap corruption in sprintf"
+          - "Line 3: Delimiter '#' must be escaped with a backslash"
+        answer: 1
+        why: |
+          A formatted request like "1000#ADD#1.5#5.6$" requires 18 bytes including the null terminator.
+          Allocating only 10 bytes on line 2 guarantees heap buffer overflow when sprintf writes past the buffer.
+          Options A and C describe invalid syntax requirements.
+        concept: "heap-overflow-in-serialization"
+
+  - id: b5
+    type: algorithm
+    title: "Parse Delimited Streams via Ring Buffers and Event Observers"
+    explain_md: |
+      Handling variable-length stream messages requires a continuous ingestion algorithm. When data arrives from
+      a stream socket via `read()`, the bytes arrive in arbitrary chunk sizes. The serializer/deserializer class
+      (`calc_proto_ser_t`) solves this using a ring buffer (or dynamic accumulator buffer) coupled with the
+      Observer/Callback pattern.
+
+      The ingestion algorithm operates as follows:
+      1. Incoming bytes from `read()` are appended into the internal ring buffer.
+      2. The parser scans the buffer for the message delimiter `$`.
+      3. If no `$` is found, the parser preserves the accumulated bytes and yields control, awaiting the next `read()`.
+      4. When `$` is located, the parser extracts the delimited frame, slices it by field delimiters `#`, and
+         converts the tokens into target struct fields (`req_id`, `method`, `operand1`, `operand2`).
+      5. Upon successfully reviving the object, the deserializer dispatches it immediately to registered callbacks
+         (`req_cb_t` or `resp_cb_t`) along with an opaque context pointer (`owner_obj`).
+      6. The processed message bytes are pruned from the ring buffer, and the scan repeats in case multiple messages
+         were received in the same chunk.
+
+      This design completely decouples stream chunk fragmentation from message processing logic.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include <stdlib.h>
+
+        typedef void (*frame_cb_t)(void* ctx, const char* frame);
+
+        void parse_chunks(const char* chunk, frame_cb_t cb, void* ctx) {
+          static char acc[128];
+          static size_t acc_len = 0;
+          strcat(acc + acc_len, chunk);
+          acc_len += strlen(chunk);
+
+          char* delim;
+          while ((delim = strchr(acc, '$')) != NULL) {
+            *delim = '\0';
+            cb(ctx, acc);
+            size_t frame_len = (delim - acc) + 1;
+            memmove(acc, delim + 1, acc_len - frame_len + 1);
+            acc_len -= frame_len;
+          }
+        }
+
+        void print_frame(void* ctx, const char* frame) {
+          printf("Extracted [%s]: %s\n", (const char*)ctx, frame);
+        }
+
+        int main(void) {
+          parse_chunks("100#ADD", print_frame, "Client1");
+          parse_chunks("#1#2$200#SUB#", print_frame, "Client1");
+          parse_chunks("9#3$", print_frame, "Client1");
+          return 0;
+        }
+      run_expected: "Extracted [Client1]: 100#ADD#1#2\nExtracted [Client1]: 200#SUB#9#3\n"
+      subgoals:
+        - label: "Accumulate arbitrary stream chunk fragments"
+          lines: [9, 10, 11]
+        - label: "Detect delimiter and slice completed frame"
+          lines: [14, 15, 16]
+        - label: "Dispatch completed message to callback"
+          lines: [17]
+        - label: "Shift residual buffer bytes forward"
+          lines: [18, 19, 20]
+    checks:
+      - kind: order
+        q: "Order the algorithmic steps executed by a stream message deserializer when new bytes arrive on a socket:"
+        lines:
+          - "Append received bytes into the internal accumulator or ring buffer."
+          - "Invoke registered observer callback (req_cb_t) passing the populated struct."
+          - "Scan the buffer for the terminating delimiter '$'."
+          - "Tokenize the extracted frame on '#' and parse numerical fields."
+          - "Discard all bytes preceding '$' and repeat scan for coalesced messages."
+        answer_order: [0, 2, 3, 1, 4]
+        why: |
+          The deserializer must: 1. Ingest new bytes into buffer, 2. Search for '$', 3. Tokenize fields on '#',
+          4. Notify observers via callback, 5. Prune extracted bytes and check for subsequent messages.
+        concept: "stream-deserialization-lifecycle"
+
+      - kind: predict
+        q: "Trace the execution of parse_chunks with partial inputs. How many frames are dispatched after the second call?"
+        code: |
+          parse_chunks("100#ADD#", print_frame, "Ctx"); // Call 1: No delimiter '$'
+          parse_chunks("2#3$", print_frame, "Ctx");      // Call 2: Delimiter '$' present
+        choices:
+          - "0 frames"
+          - "1 frame"
+          - "2 frames"
+          - "Call 2 crashes with buffer underflow"
+        answer: 1
+        why: |
+          Call 1 accumulates "100#ADD#" but finds no '$', so 0 frames are dispatched.
+          Call 2 appends "2#3$", finds '$', and dispatches exactly 1 frame: "100#ADD#2#3".
+          Option A ignores Call 2 completion. Option C assumes Call 1 emitted a frame.
+        concept: "partial-chunk-accumulation-trace"
+
+      - kind: why-fails
+        q: "Why does omitting memmove() after slicing a message in a stream accumulator cause subsequent frames to be lost or corrupted?"
+        choices:
+          - "The socket descriptor closes automatically if memmove is not called"
+          - "The compiler optimizes away while loops that lack memmove"
+          - "Residual bytes from the next message remain stranded behind the null terminator instead of shifting to the buffer start"
+          - "POSIX sockets require memory movement to synchronize CPU cache lines"
+        answer: 2
+        why: |
+          When multiple messages are received in a single chunk (e.g. "MSG1$MSG2$"), slicing MSG1 leaves "MSG2$"
+          in the buffer. Without memmove shifting the remaining bytes to index 0, subsequent appends will overwrite
+          or orphan the unparsed bytes. Options A, B, and D are false claims.
+        concept: "buffer-pruning-necessity"
+
+      - kind: mcq
+        q: "In the calc_proto_ser_t library, what is the role of the owner_obj argument passed to calc_proto_ser_ctor and forwarded to callbacks?"
+        choices:
+          - "It provides an opaque context pointer (such as client_context_t*) allowing callbacks to access session state without global variables"
+          - "It identifies the process owner UID for kernel authentication"
+          - "It specifies the thread priority of the worker thread"
+          - "It forces the deserializer to allocate memory on the stack instead of the heap"
+        answer: 0
+        why: |
+          In C callback architectures, passing an opaque `void* owner_obj` context allows the callback function
+          to retrieve its caller's instance data (such as the client context, socket descriptor, or service instance)
+          without relying on dangerous global variables.
+          Options B, C, and D state fictitious attributes.
+        concept: "callback-context-pointer"
+
+      - kind: trace
+        q: "Trace the ring buffer search. If the buffer contains 'REQ1#ADD$REQ2#SUB', at what index is the message delimiter located?"
+        code: |
+          const char* buf = "REQ1#ADD$REQ2#SUB";
+          char* p = strchr(buf, '$');
+        trace:
+          headers: ["Target Character", "Matched String", "Index of '$'"]
+          rows:
+            - step: 1
+              line: 2
+              cells: ["'$'", "REQ1#ADD$", "???"]
+        target: {row: 0, col: 2}
+        choices: ["4", "7", "8", "16"]
+        answer: 2
+        why: |
+          Indexing: 'R'(0), 'E'(1), 'Q'(2), '1'(3), '#'(4), 'A'(5), 'D'(6), 'D'(7), '$'(8).
+          The delimiter '$' is located at index 8.
+          Option A is the index of '#'. Option B is 'D'. Option D is the end of the string.
+        concept: "delimiter-index-trace"
+
+      - kind: choose-better
+        q: "Which callback architecture is superior for a multi-client server deserialization library?"
+        choices:
+          - |
+            // Hardcoding a global handler function
+            extern void global_request_handler(struct calc_proto_req_t req);
+            void on_message(struct calc_proto_req_t req) {
+              global_request_handler(req);
+            }
+          - |
+            // Configurable callback function pointer with instance context pointer
+            typedef void (*req_cb_t)(void* owner, struct calc_proto_req_t req);
+            void calc_proto_ser_set_req_callback(calc_proto_ser_t* ser, req_cb_t cb);
+        answer: 1
+        why: |
+          Option B enables loose coupling and multi-tenancy. Different server modules or unit tests can register
+          custom callback handlers with their own distinct context pointers. Option A locks the library into a
+          single hardcoded global function, making concurrent multi-session handling and unit testing impossible.
+        concept: "callback-vs-global-choice"
+
+  - id: b6
+    type: model
+    title: "Manage Unix Domain Stream Server Lifecycles and Multithreading"
+    explain_md: |
+      A Unix Domain Socket (UDS) stream server provides high-performance, single-host IPC using the filesystem
+      as its namespace. Developing a robust UDS stream server in C demands a rigorous lifecycle sequence:
+
+      1. **Socket Allocation**: `int server_sd = socket(AF_UNIX, SOCK_STREAM, 0)`.
+      2. **Filesystem Cleanup**: `unlink(sock_file)`. When a UDS server binds to a path (e.g. `/tmp/calc.sock`),
+         the OS creates a socket file inode. If the server restarts after a previous run, the file persists on disk.
+         Calling `bind()` on an existing path fails with `EADDRINUSE`. The server must proactively `unlink()` the path.
+      3. **Address Binding**: Initialize `struct sockaddr_un`, set `sun_family = AF_UNIX`, copy path into `sun_path`
+         (max 108 bytes on Linux, null-terminated), and invoke `bind(server_sd, (struct sockaddr*)&addr, sizeof(addr))`.
+      4. **Backlog Setup**: `listen(server_sd, backlog)`. Defines the kernel queue capacity for pending connection
+         requests awaiting acceptance.
+      5. **Acceptance Loop & Concurrency**: The server enters `accept_forever()`, invoking `int client_sd = accept(...)`.
+         Because `accept()` and subsequent `read()` operations are blocking, a multi-client server spawns a dedicated
+         worker thread (`pthread_create`) for each accepted client descriptor. The worker thread owns the `client_sd`,
+         initializes a private `calc_proto_ser_t` and `calc_service_t`, and handles client requests until disconnection.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include <unistd.h>
+        #include <sys/socket.h>
+        #include <sys/un.h>
+
+        int main(void) {
+          const char* path = "/tmp/test_uds_lifecycle.sock";
+          unlink(path);
+          int sd = socket(AF_UNIX, SOCK_STREAM, 0);
+          struct sockaddr_un addr;
+          memset(&addr, 0, sizeof(addr));
+          addr.sun_family = AF_UNIX;
+          strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+          if (bind(sd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+            printf("UDS Bound: %s\n", path);
+            listen(sd, 5);
+          }
+          close(sd);
+          unlink(path);
+          return 0;
+        }
+      run_expected: "UDS Bound: /tmp/test_uds_lifecycle.sock\n"
+      subgoals:
+        - label: "Unlink stale filesystem socket node"
+          lines: [9]
+        - label: "Create stream UDS descriptor"
+          lines: [10]
+        - label: "Configure sockaddr_un and bind"
+          lines: [11, 12, 13, 14, 15]
+        - label: "Clean up descriptor and socket file"
+          lines: [19, 20]
+    viz:
+      kind: ascii-memory
+      steps:
+        - "STEP 1: socket(AF_UNIX, SOCK_STREAM) -> server_sd allocated in file descriptor table"
+        - "STEP 2: unlink(/tmp/calc.sock) -> Deletes lingering socket inode from filesystem directory"
+        - "STEP 3: bind() -> Inode created in /tmp/calc.sock linked to server_sd kernel struct"
+        - "STEP 4: listen(server_sd, 10) -> Inbound connection queue initialized (capacity 10)"
+        - "STEP 5: accept() -> Blocks until client connects; returns client_sd (handed off to pthread)"
+    checks:
+      - kind: spot-bug
+        q: "Analyze the server initialization sequence. Which line causes bind() to fail with EADDRINUSE on process restart?"
+        code: |
+          #include <sys/socket.h>
+          #include <sys/un.h>
+          #include <string.h>
+
+          int init_server(const char* path) {
+            int sd = socket(AF_UNIX, SOCK_STREAM, 0);
+            struct sockaddr_un addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sun_family = AF_UNIX;
+            strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+            // Missing: unlink(path);
+            if (bind(sd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+              return -1;
+            }
+            return sd;
+          }
+        diagnostic_log: |
+          bind: Address already in use
+        target_line: 11
+        choices:
+          - "Line 6: socket() must specify protocol 6 for Unix domain"
+          - "Line 8: sun_family must be set to AF_INET"
+          - "Line 11: Omitting unlink(path) leaves a pre-existing socket file in the filesystem, causing bind to fail with EADDRINUSE"
+        answer: 2
+        why: |
+          When a UDS server terminates, the socket file node remains on the filesystem. A subsequent bind()
+          call to that exact path will fail with EADDRINUSE unless unlink() is called first to delete the old node.
+          Options A and B specify incorrect address families and protocols.
+        concept: "uds-unlink-eaddrinuse-trap"
+
+      - kind: why-fails
+        q: "Why does passing a 120-character pathname to addr.sun_path trigger memory corruption or truncation?"
+        choices:
+          - "struct sockaddr_un has a fixed sun_path array of only 108 bytes on Linux (104 on BSD)"
+          - "Unix domain sockets disallow paths containing more than 3 directory separators"
+          - "The C standard forbids string constants longer than 64 characters in network code"
+          - "socket() returns ENAMETOOLONG if the path is declared before bind()"
+        answer: 0
+        why: |
+          The POSIX / Linux definition of struct sockaddr_un defines char sun_path[108]. Copying a 120-byte
+          string into this array overflows the struct or truncates the path, causing bind() to attach to
+          a corrupted filename. Options B, C, and D are false claims.
+        concept: "sun-path-length-limit"
+
+      - kind: predict
+        q: "Trace thread allocation in accept_forever. If 3 clients connect simultaneously to a running server, how many total client handler threads are spawned?"
+        code: |
+          void accept_forever(int server_sd) {
+            while (1) {
+              int client_sd = accept(server_sd, NULL, NULL);
+              pthread_t th;
+              pthread_create(&th, NULL, client_handler, arg);
+            }
+          }
+        choices:
+          - "0 (all work runs in the main thread)"
+          - "1 thread shared among all clients"
+          - "6 threads (2 per client)"
+          - "3 threads (exactly 1 dedicated thread per accepted client descriptor)"
+        answer: 3
+        why: |
+          The server loops on accept(), spawning one dedicated pthread for each newly accepted client_sd.
+          For 3 accepted clients, exactly 3 handler threads are created.
+          Option A ignores pthread_create. Option B describes an event loop. Option C assumes dual threads.
+        concept: "thread-per-client-trace"
+
+      - kind: mcq
+        q: "What is the purpose of passing an integer like 10 as the second argument to listen(server_sd, 10)?"
+        choices:
+          - "It limits the maximum lifetime of the server process to 10 minutes"
+          - "It specifies the backlog queue size: the maximum number of completed incoming connections queued awaiting accept()"
+          - "It restricts the server to accepting a total of 10 clients before terminating"
+          - "It configures the socket to use 10 worker threads"
+        answer: 1
+        why: |
+          The backlog argument configures the maximum length to which the queue of pending connections for
+          server_sd may grow. If a connection request arrives when the queue is full, the client may receive
+          an ECONNREFUSED error. Options A, C, and D are incorrect.
+        concept: "listen-backlog-purpose"
+
+      - kind: order
+        q: "Order the system calls required to properly establish a listening Unix Domain stream server:"
+        lines:
+          - "unlink(sock_path);"
+          - "listen(server_sd, backlog);"
+          - "int server_sd = socket(AF_UNIX, SOCK_STREAM, 0);"
+          - "accept(server_sd, NULL, NULL);"
+          - "bind(server_sd, (struct sockaddr*)&addr, sizeof(addr));"
+        answer_order: [2, 0, 4, 1, 3]
+        why: |
+          The standard stream server sequence is: 1. socket() creation, 2. unlink() existing path,
+          3. bind() to sockaddr_un, 4. listen() with backlog, 5. accept() incoming clients.
+        concept: "uds-server-sequence"
+
+      - kind: trace
+        q: "Trace descriptor lifecycle. When accept() returns client_sd = 5, what is the status of server_sd?"
+        code: |
+          int server_sd = socket(AF_UNIX, SOCK_STREAM, 0); // sd = 3
+          bind(server_sd, ...);
+          listen(server_sd, 5);
+          int client_sd = accept(server_sd, NULL, NULL);   // client_sd = 5
+        trace:
+          headers: ["Descriptor", "Role", "Status after accept()"]
+          rows:
+            - step: 1
+              line: 4
+              cells: ["server_sd (3)", "Listener", "???"]
+            - step: 2
+              line: 4
+              cells: ["client_sd (5)", "Connection", "Active two-way stream"]
+        target: {row: 0, col: 2}
+        choices:
+          - "Remains open and actively listening for further connections"
+          - "Automatically closed by the kernel upon first accept"
+          - "Transformed into a client socket descriptor"
+          - "Reset to 0"
+        answer: 0
+        why: |
+          server_sd remains unchanged in listening mode to accept further connections. accept() returns
+          a brand new socket descriptor (client_sd = 5) dedicated to the specific accepted client.
+          Options B, C, and D represent common novice misconceptions about accept().
+        concept: "listener-vs-client-descriptor"
+  - id: b7
+    type: syntax
+    title: "Execute Stream Client Connections and Bidirectional I/O"
+    explain_md: |
+      The stream client initiates communication by following the connector sequence:
+      1. Allocate client socket: `int conn_sd = socket(AF_UNIX, SOCK_STREAM, 0)`.
+      2. Prepare destination address: populate `struct sockaddr_un` with target server path.
+      3. Establish channel: `connect(conn_sd, (struct sockaddr*)&addr, sizeof(addr))`. When `connect()` returns 0,
+         the kernel has established a dedicated full-duplex byte stream to the server.
+
+      Once connected, the client interacts using standard POSIX I/O functions:
+      - `write(conn_sd, buf, len)` pushes request bytes into the socket. Because `write()` may send fewer bytes than
+        requested under network congestion or buffer pressure, robust implementations check the return value and loop
+        if `ret < len`.
+      - `read(conn_sd, buf, sz)` retrieves response bytes. In blocking mode, `read()` blocks until bytes arrive.
+        Crucially, a return value of `0` indicates End-of-File (EOF), signaling that the server has closed its end.
+        A return value of `-1` indicates an error (e.g. `ECONNRESET`).
+
+      Graceful teardown uses `shutdown(conn_sd, SHUT_RD)` to stop inbound traffic and wake reader threads, followed by
+      `calc_proto_ser_dtor()`, `pthread_join()`, and `close(conn_sd)`.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include <unistd.h>
+        #include <sys/socket.h>
+
+        int main(void) {
+          int sv[2];
+          socketpair(AF_UNIX, SOCK_STREAM, 0, sv);
+          const char* msg = "PING$";
+          write(sv[0], msg, strlen(msg));
+
+          char reply[16] = {0};
+          int n = read(sv[1], reply, sizeof(reply) - 1);
+          if (n > 0) {
+            printf("Received: %s\n", reply);
+          }
+          close(sv[0]);
+          close(sv[1]);
+          return 0;
+        }
+      run_expected: "Received: PING$\n"
+      subgoals:
+        - label: "Establish stream communication conduit"
+          lines: [8, 9]
+        - label: "Write request bytes to channel"
+          lines: [10, 11]
+        - label: "Read response bytes and verify non-zero count"
+          lines: [13, 14, 15]
+    checks:
+      - kind: order
+        q: "Order the operations executed by a Unix Domain stream client to connect, send a request, and disconnect:"
+        lines:
+          - "int conn_sd = socket(AF_UNIX, SOCK_STREAM, 0);"
+          - "write(conn_sd, req_buf, req_len);"
+          - "connect(conn_sd, (struct sockaddr*)&addr, sizeof(addr));"
+          - "close(conn_sd);"
+          - "listen(conn_sd, 5); // Distractor: clients never listen"
+          - "read(conn_sd, resp_buf, sizeof(resp_buf));"
+        answer_order: [0, 2, 1, 5, 3]
+        distractor_why:
+          "listen(conn_sd, 5); // Distractor: clients never listen": "Clients are connectors that call connect(); listen() is only valid for server listeners."
+        why: |
+          Stream client sequence: 1. socket() creation, 2. connect() to server endpoint, 3. write() request,
+          4. read() response, 5. close() descriptor.
+        concept: "stream-client-sequence"
+
+      - kind: fillblank
+        q: "Fill in the function call used by a stream client to establish a connection to a remote listener socket:"
+        code: |
+          int res = ___________(conn_sd, (struct sockaddr*)&addr, sizeof(addr));
+        answer_text: "connect"
+        why: |
+          connect() initiates a connection on a socket to the address specified by addr. On success, it binds
+          the descriptor to an active channel.
+        concept: "connect-syscall"
+
+      - kind: mcq
+        q: "When reading from an active stream socket, what does a return value of 0 from read(sd, buf, len) signify?"
+        choices:
+          - "The socket descriptor has experienced a fatal checksum mismatch"
+          - "A zero-byte ping datagram was received from the peer"
+          - "End-of-File (EOF): the remote peer has closed its write channel or disconnected"
+          - "The kernel buffer is locked by an active mutex"
+        answer: 2
+        why: |
+          In POSIX stream sockets, read() returning 0 indicates that the remote peer performed an orderly shutdown
+          or closed its socket descriptor, sending a FIN packet (EOF).
+          Options A, B, and D state incorrect or fabricated conditions.
+        concept: "socket-read-eof-semantics"
+
+      - kind: why-fails
+        q: "Why does the client spawn a dedicated reader pthread rather than reading synchronously in the main thread?"
+        choices:
+          - "Reading from the server is a blocking operation; a background reader thread keeps the terminal command prompt responsive to user input"
+          - "The Linux kernel prohibits write() and read() from being executed in the same thread"
+          - "Pointers to calc_proto_ser_t can only be dereferenced from POSIX thread routines"
+          - "The connect() system call terminates the main thread automatically"
+        answer: 0
+        why: |
+          The interactive client features a terminal REPL loop prompting the user for input. If reading responses
+          occurred synchronously on the main thread, the terminal prompt would freeze whenever the server was slow,
+          preventing the user from typing commands or 'quit'.
+          Options B, C, and D are false claims.
+        concept: "client-multithread-rationale"
+
+      - kind: predict
+        q: "Trace the execution of this client send loop. If write() sends 3 bytes on the first iteration and 2 bytes on the second, how many total bytes are sent?"
+        code: |
+          const char* data = "HELLO";
+          int remaining = 5;
+          const char* p = data;
+          // Iteration 1: ret = 3 -> remaining = 2, p += 3
+          // Iteration 2: ret = 2 -> remaining = 0
+          printf("Remaining: %d\n", remaining - 5);
+        choices:
+          - "Remaining: 5"
+          - "Remaining: 2"
+          - "Remaining: -5"
+          - "Remaining: 0"
+        answer: 3
+        why: |
+          3 bytes + 2 bytes = 5 bytes transmitted. The total 5-byte payload is fully sent, leaving 0 remaining bytes.
+          Option A assumes no bytes sent. Option B represents state after one iteration. Option C is negative.
+        concept: "partial-write-loop-trace"
+
+      - kind: choose-better
+        q: "Which error-handling strategy should a client employ when write() returns -1 with errno = EPIPE?"
+        choices:
+          - |
+            // Ignore error and continue retrying write() in an infinite loop
+            while (write(sd, msg, len) == -1);
+          - |
+            // Clean up session, close descriptor, and inform the user of server disconnect
+            fprintf(stderr, "Connection lost: server closed socket.\n");
+            close(sd);
+            return -1;
+        answer: 1
+        why: |
+          EPIPE indicates that the remote peer has closed the connection. Attempting to write repeatedly
+          to a broken socket will trigger SIGPIPE or continue failing with EPIPE. The client must terminate
+          the session gracefully and close the descriptor. Option A creates an infinite busy-wait loop.
+        concept: "epipe-handling-choice"
+
+  - id: b8
+    type: model
+    title: "Architect Unix Domain Datagram Services and Client Return Addressing"
+    explain_md: |
+      Unix Domain Datagram sockets (`AF_UNIX`, `SOCK_DGRAM`) combine the high performance of kernel-space IPC with
+      connectionless, packet-oriented delivery. Unlike stream servers, a datagram server does NOT call `listen()`
+      or `accept()`. It creates a socket, binds it to a socket file (`/tmp/calc_svc.sock`), and immediately enters
+      a `recvfrom()` loop.
+
+      Because datagram channels are connectionless, every incoming packet is an atomic entity carrying the sender's
+      address metadata. In `recvfrom(sd, buf, sz, 0, (struct sockaddr*)&client_addr, &addr_len)`, the kernel populates
+      `client_addr` with the sender's identity. The server processes the request and dispatches the response via
+      `sendto(sd, resp_buf, resp_len, 0, (struct sockaddr*)&client_addr, addr_len)`.
+
+      **The Critical UDS Datagram Invariant**:
+      In UDP over IP (`AF_INET`), when an unbound client sends a packet, the kernel automatically assigns an
+      ephemeral port, providing the server with a valid return address. In Unix Domain Datagrams (`AF_UNIX`),
+      **THERE IS NO AUTOMATIC PATH ASSIGNMENT**. If a UDS datagram client does not explicitly `bind()` its socket
+      to a unique client socket file (e.g., `/tmp/calc_cli.sock`), its address structure in `recvfrom()` is empty!
+      The server will have NO destination pathname to send the reply to. Therefore, UDS datagram clients MUST
+      bind to their own client socket file before transmitting.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include <unistd.h>
+        #include <sys/socket.h>
+        #include <sys/un.h>
+
+        int main(void) {
+          const char* srv_path = "/tmp/test_uds_dgram_srv.sock";
+          const char* cli_path = "/tmp/test_uds_dgram_cli.sock";
+          unlink(srv_path); unlink(cli_path);
+
+          int srv_sd = socket(AF_UNIX, SOCK_DGRAM, 0);
+          struct sockaddr_un srv_addr = { .sun_family = AF_UNIX };
+          strncpy(srv_addr.sun_path, srv_path, sizeof(srv_addr.sun_path) - 1);
+          bind(srv_sd, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
+
+          int cli_sd = socket(AF_UNIX, SOCK_DGRAM, 0);
+          struct sockaddr_un cli_addr = { .sun_family = AF_UNIX };
+          strncpy(cli_addr.sun_path, cli_path, sizeof(cli_addr.sun_path) - 1);
+          bind(cli_sd, (struct sockaddr*)&cli_addr, sizeof(cli_addr));
+
+          sendto(cli_sd, "REQ", 3, 0, (struct sockaddr*)&srv_addr, sizeof(srv_addr));
+          char buf[16] = {0};
+          struct sockaddr_un from; socklen_t from_len = sizeof(from);
+          recvfrom(srv_sd, buf, sizeof(buf), 0, (struct sockaddr*)&from, &from_len);
+          printf("Server received: %s from %s\n", buf, from.sun_path);
+
+          close(srv_sd); close(cli_sd);
+          unlink(srv_path); unlink(cli_path);
+          return 0;
+        }
+      run_expected: "Server received: REQ from /tmp/test_uds_dgram_cli.sock\n"
+      subgoals:
+        - label: "Bind server socket file"
+          lines: [14, 15, 16, 17]
+        - label: "Bind client socket file (vital for return path!)"
+          lines: [19, 20, 21, 22]
+        - label: "Transmit datagram and inspect populated sender address"
+          lines: [24, 25, 26, 27]
+    viz:
+      kind: ascii-memory
+      steps:
+        - "CLIENT BIND: Client binds socket to /tmp/calc_cli.sock (Filesystem return inode created)"
+        - "DATAGRAM TRANSMIT: Client sendto(/tmp/calc_svc.sock) -> Kernel packages data + client path metadata"
+        - "SERVER RECV: recvfrom() extracts '1000#ADD#1#2$' and populates from_addr = '/tmp/calc_cli.sock'"
+        - "SERVER REPLY: sendto(server_sd, resp, from_addr) -> Kernel routes reply directly to client socket file"
+        - "CRITICAL FAILURE IF UNBOUND: Client omits bind() -> from_addr is empty -> Server cannot reply!"
+    checks:
+      - kind: why-fails
+        q: "Why must a Unix Domain datagram client call bind() to a unique socket file before sending requests?"
+        choices:
+          - "AF_UNIX sockets reject packets unless the client process runs with superuser privileges"
+          - "Without binding a client socket file, recvfrom() on the server receives an empty sender address and cannot route replies back"
+          - "The kernel requires client files to allocate memory for the client's file descriptor table"
+          - "bind() is required to encrypt datagrams transmitted through the filesystem"
+        answer: 1
+        why: |
+          Unlike IP network sockets where the kernel automatically selects an ephemeral IP/port, UDS datagram
+          sockets have no automatic filesystem path generator. If the client does not bind to a path,
+          the server receives an address structure with sun_path[0] = '\0' and sendto() fails.
+          Options A, C, and D are fabricated requirements.
+        concept: "uds-datagram-client-bind-requirement"
+
+      - kind: predict
+        q: "Trace the execution of this UDS datagram server. What is printed by printf when the client transmits 'CALC'?"
+        code: |
+          char buf[16] = {0};
+          struct sockaddr_un sender;
+          socklen_t len = sizeof(sender);
+          recvfrom(server_sd, buf, sizeof(buf), 0, (struct sockaddr*)&sender, &len);
+          printf("Length: %lu, Msg: %s\n", strlen(buf), buf);
+        choices:
+          - "Length: 0, Msg: "
+          - "Length: 16, Msg: CALC"
+          - "Length: 4, Msg: CALC"
+          - "Length: 5, Msg: CALC$"
+        answer: 2
+        why: |
+          The incoming datagram contains the 4 characters 'C', 'A', 'L', 'C'. recvfrom populates buf,
+          which was zero-initialized, leaving a null terminator at index 4. strlen(buf) is 4, printing
+          "Length: 4, Msg: CALC". Option A assumes empty read. Option B assumes full buffer. Option D adds '$'.
+        concept: "uds-recvfrom-trace"
+
+      - kind: mcq
+        q: "Why does a Unix Domain datagram server NOT invoke listen() or accept() during initialization?"
+        choices:
+          - "Datagram sockets are connectionless; communication occurs via discrete packets rather than persistent 1-to-1 connection streams"
+          - "listen() is deprecated in POSIX 2008 for all Unix domain sockets"
+          - "The kernel automatically spawns listener threads whenever socket(AF_UNIX) is called"
+          - "accept() only works over network interfaces that support ARP resolution"
+        answer: 0
+        why: |
+          listen() and accept() are connection-oriented mechanisms for establishing persistent stream channels
+          (SOCK_STREAM). In datagram communication (SOCK_DGRAM), there are no connections to listen for or accept;
+          sockets exchange independent packets directly via sendto() and recvfrom().
+          Options B, C, and D state fictitious claims.
+        concept: "datagram-no-listen-accept"
+
+      - kind: spot-bug
+        q: "Analyze the code for a UDS datagram server. Which line contains a fatal concurrency defect when replying to clients?"
+        code: |
+          void serve(int srv_sd) {
+            char buf[64];
+            struct sockaddr_un cli;
+            socklen_t len = sizeof(cli);
+            recvfrom(srv_sd, buf, sizeof(buf), 0, (struct sockaddr*)&cli, &len);
+            // Line 7: Hardcoded destination path instead of using cli.sun_path!
+            const char* fixed_path = "/tmp/client.sock";
+            struct sockaddr_un target = { .sun_family = AF_UNIX };
+            strncpy(target.sun_path, fixed_path, sizeof(target.sun_path) - 1);
+            sendto(srv_sd, "RESP", 4, 0, (struct sockaddr*)&target, sizeof(target));
+          }
+        diagnostic_log: |
+          Bug: Server replies always routed to single client, ignoring actual sender
+        target_line: 7
+        choices:
+          - "Line 4: socklen_t must be passed by value to recvfrom"
+          - "Line 5: recvfrom requires flag MSG_WAITALL on datagram sockets"
+          - "Line 7: Hardcoding target path sends all responses to /tmp/client.sock instead of the dynamic sender address in cli"
+        answer: 2
+        why: |
+          In a multi-client datagram environment, each client binds to its own unique socket file (e.g. client_1.sock,
+          client_2.sock). Hardcoding the reply destination to a static path on line 7 routes all replies to that one file,
+          corrupting communication for all other concurrent clients.
+          Options A and B describe invalid socket usage.
+        concept: "datagram-return-address-bug"
+
+      - kind: eipe
+        q: "In one sentence, what is the role of the sockaddr and socklen pointers in recvfrom()?"
+        choices:
+          - "They allow the kernel to populate the source address metadata of the incoming packet so the receiver knows where to send a reply"
+          - "They configure the kernel to drop all packets originating from external IP networks"
+          - "They dynamically reallocate the application receive buffer if the packet exceeds 64 bytes"
+          - "They authenticate the sender's Unix permissions against the sudoers file"
+        answer: 0
+        why: |
+          recvfrom() acts as an output parameter for the sender's addressing information. When a datagram arrives,
+          the kernel writes the sender's address and its length into the provided pointers, enabling subsequent
+          replies via sendto(). Options B, C, and D are completely fictitious.
+        concept: "recvfrom-address-extraction-purpose"
+
+      - kind: trace
+        q: "Trace socket file unlinking. How many total socket files exist on the filesystem after both clients complete and unlink?"
+        code: |
+          // Server creates: /tmp/srv.sock
+          // Client 1 creates: /tmp/cli1.sock
+          // Client 2 creates: /tmp/cli2.sock
+          // Client 1 calls unlink("/tmp/cli1.sock")
+          // Client 2 calls unlink("/tmp/cli2.sock")
+          // Server remains active
+        trace:
+          headers: ["Event", "File Remaining on Disk", "Total Count"]
+          rows:
+            - step: 1
+              line: 6
+              cells: ["Clients disconnected and unlinked", "/tmp/srv.sock", "???"]
+        target: {row: 0, col: 2}
+        choices: ["0", "3", "1", "2"]
+        answer: 2
+        why: |
+          Both client socket files (/tmp/cli1.sock and /tmp/cli2.sock) were explicitly deleted via unlink().
+          Only the server's socket file (/tmp/srv.sock) remains bound and active on the filesystem, yielding 1 file.
+          Option A assumes server unlinked. Option B assumes clients didn't unlink. Option D is an off-by-one.
+        concept: "socket-filesystem-cleanup-trace"
+
+  - id: b9
+    type: model
+    title: "Convert Endianness and Formulate IPv4 Internet Socket Addresses"
+    explain_md: |
+      Moving from Unix Domain Sockets to Network Sockets introduces network architecture constraints, primarily
+      address representation and CPU byte ordering (endianness).
+
+      Internet IPv4 sockets use the `AF_INET` address family and are configured via `struct sockaddr_in`
+      (from `<netinet/in.h>`):
+      - `sin_family`: Set to `AF_INET`.
+      - `sin_port`: 16-bit TCP or UDP port number.
+      - `sin_addr.s_addr`: 32-bit IPv4 address (e.g. `INADDR_ANY` to bind to all local interfaces, or converted via
+        `inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr)`).
+
+      **The Endianness / Byte Order Rule**:
+      Modern host CPUs (such as x86_64 and ARM in standard modes) are Little Endian: multi-byte integers are stored
+      with the least significant byte (LSB) at the lowest memory address. In contrast, standard Internet protocols
+      mandate Network Byte Order, which is **Big Endian**: the most significant byte (MSB) comes first.
+
+      If a program assigns a port directly (`addr.sin_port = 8080`), on a Little Endian machine the byte pattern
+      `0x1F90` is placed into memory backwards (`0x90`, `0x1F`), causing the kernel to bind to port 36895 (`0x901F`)!
+      To prevent this, programs MUST convert integers using POSIX byte-order macros:
+      - `htons(val)` / `ntohs(val)`: Host-to-Network / Network-to-Host Short (16-bit, for ports).
+      - `htonl(val)` / `ntohl(val)`: Host-to-Network / Network-to-Host Long (32-bit, for IPv4 addresses).
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <stdint.h>
+        #include <arpa/inet.h>
+
+        int main(void) {
+          uint16_t host_port = 8080; // 0x1F90
+          uint16_t net_port = htons(host_port);
+          uint8_t* p = (uint8_t*)&net_port;
+          printf("Port: %u, Bytes in memory: 0x%02x 0x%02x\n",
+                 host_port, p[0], p[1]);
+          return 0;
+        }
+      run_expected: "Port: 8080, Bytes in memory: 0x1f 0x90\n"
+      subgoals:
+        - label: "Declare port in host byte order"
+          lines: [6]
+        - label: "Convert to network byte order (Big Endian)"
+          lines: [7]
+        - label: "Inspect physical memory bytes"
+          lines: [8, 9, 10]
+    viz:
+      kind: ascii-memory
+      steps:
+        - "HOST (Little Endian, x86): Port 8080 (0x1F90) in RAM -> [Addr 0: 0x90 (LSB)] [Addr 1: 0x1F (MSB)]"
+        - "htons(8080) CONVERSION: Swaps bytes to Big Endian Network Order"
+        - "NETWORK BYTE ORDER: [Addr 0: 0x1F (MSB)] [Addr 1: 0x90 (LSB)] -> Wire transmits 0x1F then 0x90"
+        - "FAILURE TRAP: Assigning sin_port = 8080 without htons -> Kernel binds to port 0x901F = 36895!"
+    checks:
+      - kind: predict
+        q: "Trace byte swapping. On a Little Endian CPU, what hexadecimal bytes are printed for htons(0x1234)?"
+        code: |
+          #include <stdio.h>
+          #include <stdint.h>
+          #include <arpa/inet.h>
+
+          int main(void) {
+            uint16_t val = 0x1234;
+            uint16_t net = htons(val);
+            uint8_t* p = (uint8_t*)&net;
+            printf("%02x %02x\n", p[0], p[1]);
+            return 0;
+          }
+        choices:
+          - "34 12"
+          - "00 34"
+          - "00 12"
+          - "12 34"
+        answer: 3
+        why: |
+          htons() converts host order to Network Byte Order (Big Endian), placing the most significant byte
+          (0x12) at index 0 and least significant byte (0x34) at index 1, printing "12 34".
+          Option A is host order before conversion. Options B and C are corrupt representations.
+        concept: "htons-byte-order-trace"
+
+      - kind: trace
+        q: "Trace integer conversion across ntohs(). If net_val holds Big Endian [0x01, 0x00], what host integer value does ntohs(net_val) return?"
+        code: |
+          uint16_t net_val;
+          uint8_t* p = (uint8_t*)&net_val;
+          p[0] = 0x01; // MSB
+          p[1] = 0x00; // LSB
+          uint16_t host_val = ntohs(net_val);
+        trace:
+          headers: ["Raw Memory Bytes", "Big Endian Value", "ntohs() Return Value"]
+          rows:
+            - step: 1
+              line: 5
+              cells: ["[0x01, 0x00]", "0x0100", "???"]
+        target: {row: 0, col: 2}
+        choices: ["1", "256", "65536", "0"]
+        answer: 1
+        why: |
+          In Big Endian, 0x01 at MSB and 0x00 at LSB represents (1 * 256) + 0 = 256. ntohs() interprets
+          the network bytes and returns the host integer 256.
+          Option A assumes LSB at index 0. Option C is 2^16. Option D ignores index 0.
+        concept: "ntohs-integer-trace"
+
+      - kind: why-fails
+        q: "Why does assigning 'addr.sin_port = 6666;' without htons() cause a client on another machine to fail to connect?"
+        choices:
+          - "The kernel interprets 6666 in host byte order, binding the server to an unintended port (e.g. 27162 on Little Endian)"
+          - "Ports above 1024 cannot be opened without invoking htons()"
+          - "The compiler inserts a breakpoint trap on un-converted socket assignments"
+          - "sin_port is an 8-bit field that overflows when assigned 6666"
+        answer: 0
+        why: |
+          6666 in hex is 0x1A0A. On a Little Endian host, assigning 6666 directly places 0x0A then 0x1A into memory.
+          The network stack reads this in Big Endian as 0x0A1A = 2586 (or vice versa), listening on the wrong port.
+          Options B, C, and D are false claims.
+        concept: "missing-htons-port-corruption"
+
+      - kind: mcq
+        q: "What does setting 'addr.sin_addr.s_addr = INADDR_ANY;' accomplish when binding a server socket?"
+        choices:
+          - "It configures the socket to accept only loopback connections from 127.0.0.1"
+          - "It generates a random available IP address using DHCP"
+          - "It binds the server to all available network interfaces on the local host (0.0.0.0)"
+          - "It allows the server to bypass operating system firewall rules"
+        answer: 2
+        why: |
+          INADDR_ANY (0.0.0.0) binds the server to all local network interfaces (e.g. Ethernet, Wi-Fi, loopback),
+          allowing it to accept incoming connections destined for any of the host's IP addresses.
+          Options A, B, and D describe incorrect behaviors.
+        concept: "inaddr-any-semantics"
+
+      - kind: fillblank
+        q: "Fill in the standard POSIX conversion function that converts a 32-bit integer from host byte order to network byte order:"
+        code: |
+          uint32_t net_ip = ___________(host_ip);
+        answer_text: "htonl"
+        why: |
+          htonl() (Host to Network Long) converts 32-bit unsigned integers from host byte order to network byte order.
+          htons() converts 16-bit values.
+        concept: "htonl-conversion-function"
+
+      - kind: spot-bug
+        q: "Analyze the sockaddr_in initialization. Which line contains a fatal addressing defect?"
+        code: |
+          int setup_address(struct sockaddr_in* addr, int port) {
+            memset(addr, 0, sizeof(*addr));
+            // Line 3: Setting sun_family instead of sin_family!
+            addr->sin_family = AF_UNIX;
+            addr->sin_port = htons(port);
+            addr->sin_addr.s_addr = INADDR_ANY;
+            return 0;
+          }
+        diagnostic_log: |
+          bind: Address family not supported by protocol
+        target_line: 3
+        choices:
+          - "Line 2: memset corrupts kernel socket pointers"
+          - "Line 4: htons must be replaced by ntohs"
+          - "Line 5: INADDR_ANY requires explicit casting to void*"
+          - "Line 3: addr->sin_family must be set to AF_INET for network IPv4 sockets, not AF_UNIX"
+        answer: 3
+        why: |
+          AF_UNIX specifies Unix domain sockets. Passing AF_UNIX inside a struct sockaddr_in to an AF_INET
+          socket triggers EAFNOSUPPORT (Address family not supported by protocol). It must be AF_INET.
+          Options A, B, and C state incorrect requirements.
+        concept: "sin-family-mismatch-bug"
+
+  - id: b10
+    type: syntax
+    title: "Deploy TCP Network Servers with Address Reusability"
+    explain_md: |
+      A TCP server provides reliable, connection-oriented network communication using `AF_INET` and `SOCK_STREAM`.
+      Architecturally, once a connection is accepted, TCP sockets behave almost identically to Unix Domain stream
+      sockets: data is read and written as an unstructured byte stream using `read()` and `write()`, and multithreading
+      is employed to handle concurrent clients.
+
+      However, network servers must manage the TCP connection state machine, particularly the `TIME_WAIT` state.
+      When a server terminates or restarts, recent TCP connections remain in `TIME_WAIT` in the kernel for up to
+      several minutes to ensure stray packets in the network are cleanly dissipated. During this interval, restarting
+      the server and invoking `bind()` on the same port fails with `EADDRINUSE` ("Address already in use").
+
+      To prevent this downtime during development and deployment, servers configure socket options via `setsockopt()`
+      before binding:
+      ```c
+      int enable = 1;
+      setsockopt(server_sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+      ```
+      This instructs the kernel to permit immediate reuse of local addresses in `TIME_WAIT`, allowing the server
+      daemon to restart instantaneously without port collision errors.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include <unistd.h>
+        #include <sys/socket.h>
+        #include <netinet/in.h>
+
+        int main(void) {
+          int sd = socket(AF_INET, SOCK_STREAM, 0);
+          int enable = 1;
+          setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));
+
+          struct sockaddr_in addr;
+          memset(&addr, 0, sizeof(addr));
+          addr.sin_family = AF_INET;
+          addr.sin_addr.s_addr = INADDR_ANY;
+          addr.sin_port = htons(9999);
+
+          if (bind(sd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+            printf("TCP Server bound to port %u\n", ntohs(addr.sin_port));
+            listen(sd, 10);
+          }
+          close(sd);
+          return 0;
+        }
+      run_expected: "TCP Server bound to port 9999\n"
+      subgoals:
+        - label: "Create TCP stream socket descriptor"
+          lines: [8]
+        - label: "Enable SO_REUSEADDR socket option"
+          lines: [9, 10]
+        - label: "Configure sockaddr_in and bind port"
+          lines: [12, 13, 14, 15, 16, 18]
+    checks:
+      - kind: order
+        q: "Order the initialization steps required to bring up a production-ready TCP server:"
+        lines:
+          - "setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &enable, sizeof(enable));"
+          - "int sd = socket(AF_INET, SOCK_STREAM, 0);"
+          - "accept(sd, (struct sockaddr*)&client, &client_len);"
+          - "bind(sd, (struct sockaddr*)&addr, sizeof(addr));"
+          - "listen(sd, backlog);"
+        answer_order: [1, 0, 3, 4, 2]
+        why: |
+          Correct order: 1. socket() creation, 2. setsockopt(SO_REUSEADDR) before bind, 3. bind() to port,
+          4. listen() for backlog queue, 5. accept() client connections.
+        concept: "tcp-server-setup-order"
+
+      - kind: mcq
+        q: "What critical problem does enabling the SO_REUSEADDR socket option solve for network server daemons?"
+        choices:
+          - "It encrypts inbound TCP packets against man-in-the-middle attacks"
+          - "It allows the server to bind to its port immediately after restart without failing due to lingering TIME_WAIT sockets"
+          - "It permits multiple distinct processes to read from the exact same TCP socket descriptor simultaneously"
+          - "It disables TCP flow control to maximize raw wire throughput"
+        answer: 1
+        why: |
+          When a TCP server shuts down, existing sockets linger in the TIME_WAIT state for 30–120 seconds.
+          Without SO_REUSEADDR, calling bind() on that port during this period immediately fails with EADDRINUSE.
+          Options A, C, and D describe fictitious capabilities.
+        concept: "so-reuseaddr-purpose"
+
+      - kind: why-fails
+        q: "Why does invoking setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, ...) AFTER calling bind() fail to prevent EADDRINUSE?"
+        choices:
+          - "bind() checks address availability during its execution; options set after bind cannot alter prior binding validation"
+          - "setsockopt() is only valid after listen() has been invoked"
+          - "SO_REUSEADDR can only be applied to datagram sockets"
+          - "The kernel resets socket descriptors to default settings upon every bind() call"
+        answer: 0
+        why: |
+          bind() performs the conflict check against existing sockets and the TIME_WAIT table when it runs.
+          If SO_REUSEADDR has not already been enabled on the descriptor prior to bind(), bind() will reject the
+          conflicting address immediately. Options B, C, and D are false claims.
+        concept: "setsockopt-ordering-constraint"
+
+      - kind: spot-bug
+        q: "Analyze the TCP client connection code. Which line causes the connection to fail due to incorrect byte ordering?"
+        code: |
+          int connect_server(const char* ip, int port) {
+            int sd = socket(AF_INET, SOCK_STREAM, 0);
+            struct sockaddr_in addr;
+            memset(&addr, 0, sizeof(addr));
+            addr.sin_family = AF_INET;
+            inet_pton(AF_INET, ip, &addr.sin_addr);
+            // Line 8: Port assigned in host byte order!
+            addr.sin_port = port;
+            if (connect(sd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+              close(sd);
+              return -1;
+            }
+            return sd;
+          }
+        diagnostic_log: |
+          connect: Connection refused
+        target_line: 8
+        choices:
+          - "Line 6: inet_pton requires an IP string formatted in hexadecimal"
+          - "Line 4: AF_INET requires sockaddr_un rather than sockaddr_in"
+          - "Line 8: addr.sin_port must be wrapped in htons(port) to convert from host byte order to network byte order"
+        answer: 2
+        why: |
+          Assigning addr.sin_port = port assigns host byte order. On a Little Endian machine, port 6666 is read
+          by connect() as port 2586 (or similar byte-swapped value), targeting a non-existent port on the server
+          and failing with ECONNREFUSED. It must be htons(port). Options A and B state false syntax rules.
+        concept: "client-port-byte-order-bug"
+
+      - kind: choose-better
+        q: "Which error-handling strategy is appropriate when accepting clients in an infinite accept_forever loop?"
+        choices:
+          - |
+            // Immediately terminate entire server process if a single client accept fails
+            int client_sd = accept(server_sd, NULL, NULL);
+            if (client_sd == -1) {
+              exit(1);
+            }
+          - |
+            // Log transient network errors (like ECONNABORTED or EINTR) and continue listening
+            int client_sd = accept(server_sd, NULL, NULL);
+            if (client_sd == -1) {
+              if (errno == EINTR || errno == ECONNABORTED) continue;
+              perror("accept error");
+              break;
+            }
+        answer: 1
+        why: |
+          A production server must be resilient. Transient network errors (such as a client disconnecting
+          before accept completes: ECONNABORTED, or a signal interruption: EINTR) should not crash the entire
+          daemon. The server should log and continue serving other incoming connections. Option A is brittle.
+        concept: "accept-error-resilience-choice"
+
+      - kind: predict
+        from_chapter: ch11
+        from_block: b3
+        q: "In an object-oriented C architecture, if a generic server delegates socket read operations through a function pointer vtable, what technique is being applied?"
+        code: |
+          typedef struct {
+            int (*read_msg)(void* self, char* buf, int sz);
+            int (*write_msg)(void* self, const char* buf, int sz);
+          } transport_vtable_t;
+
+          typedef struct {
+            transport_vtable_t* vtable;
+            int sd;
+          } transport_t;
+        choices:
+          - "Polymorphism: decoupling abstract socket I/O from specific underlying transport implementations"
+          - "Multiple inheritance with virtual base classes"
+          - "Kernel-mode packet filtering via BPF"
+          - "Compiler optimization for loop unrolling"
+        answer: 0
+        why: |
+          Defining an interface struct with function pointers (vtable) and invoking methods through that table
+          is the classic C implementation of runtime polymorphism. This enables stream server cores to operate
+          transparently across UDS and TCP transports. Options B, C, and D are incorrect.
+        concept: "interleaved-polymorphic-vtable"
+
+  - id: b11
+    type: algorithm
+    title: "Dispatch UDP Datagram Transactions and Ephemeral Port Routing"
+    explain_md: |
+      UDP (`AF_INET`, `SOCK_DGRAM`) provides lightweight, connectionless datagram networking. It shares the same
+      message-boundary preservation and packet semantics as Unix Domain datagrams, but operates across IP networks.
+
+      A UDP server binds to an IP address and port, and executes `recvfrom()` in a loop. Because transactions are
+      discrete packets, a UDP server can effortlessly serve thousands of clients using a simple single-threaded loop:
+      ```c
+      recvfrom(server_sd, buf, sz, 0, (struct sockaddr*)&cli_addr, &cli_len);
+      // Process calculation...
+      sendto(server_sd, resp, len, 0, (struct sockaddr*)&cli_addr, cli_len);
+      ```
+
+      **The Network Ephemeral Port Mechanism**:
+      In stark contrast to Unix Domain Datagrams (where clients MUST call `bind()` to a local pathname to establish
+      a return address), a UDP client does NOT need to call `bind()`. When an unbound UDP socket calls
+      `sendto(conn_sd, ..., (struct sockaddr*)&srv_addr, ...)`, the operating system kernel automatically allocates
+      a free ephemeral port (typically in the range 32768–60999) and binds it to the socket.
+
+      The server's `recvfrom()` automatically captures this client IP and ephemeral port in `cli_addr`, allowing
+      the server to transmit replies directly back to the client with zero manual client configuration.
+    example:
+      lang: c
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include <unistd.h>
+        #include <sys/socket.h>
+        #include <netinet/in.h>
+
+        int main(void) {
+          int srv_sd = socket(AF_INET, SOCK_DGRAM, 0);
+          struct sockaddr_in srv = {
+            .sin_family = AF_INET,
+            .sin_addr.s_addr = htonl(INADDR_LOOPBACK),
+            .sin_port = htons(9876)
+          };
+          bind(srv_sd, (struct sockaddr*)&srv, sizeof(srv));
+
+          int cli_sd = socket(AF_INET, SOCK_DGRAM, 0);
+          sendto(cli_sd, "CALC", 4, 0, (struct sockaddr*)&srv, sizeof(srv));
+
+          char buf[16] = {0};
+          struct sockaddr_in from;
+          socklen_t len = sizeof(from);
+          recvfrom(srv_sd, buf, sizeof(buf), 0, (struct sockaddr*)&from, &len);
+          printf("UDP Server received: %s from port %u\n", buf, ntohs(from.sin_port));
+
+          close(srv_sd);
+          close(cli_sd);
+          return 0;
+        }
+      subgoals:
+        - label: "Bind UDP server to loopback IP and port"
+          lines: [8, 9, 10, 11, 12, 13, 14]
+        - label: "Send datagram from unbound client socket"
+          lines: [16, 17]
+        - label: "Receive datagram and inspect kernel-assigned ephemeral port"
+          lines: [19, 20, 21, 22, 23]
+    checks:
+      - kind: predict
+        q: "Trace UDP client port assignment. When the unbound client calls sendto(), what port does the server observe in recvfrom()?"
+        code: |
+          int cli_sd = socket(AF_INET, SOCK_DGRAM, 0);
+          // Notice: No bind() call on client socket!
+          sendto(cli_sd, "PING", 4, 0, (struct sockaddr*)&srv, sizeof(srv));
+        choices:
+          - "Port 0"
+          - "Port 80"
+          - "A dynamic ephemeral port assigned automatically by the operating system kernel (e.g. 45123)"
+          - "Port 9876 (mirrors the destination server port)"
+        answer: 2
+        why: |
+          For UDP network sockets, the kernel automatically assigns a random free ephemeral port from its
+          dynamic port range upon the first sendto() call. The server captures this ephemeral port in recvfrom()
+          and uses it to route the reply. Option A assumes no port. Option B is HTTP. Option D confuses source with dest.
+        concept: "udp-ephemeral-port-assignment"
+
+      - kind: mcq
+        q: "Why can a UDP calculator server remain single-threaded while serving multiple concurrent clients, unlike a blocking stream server?"
+        choices:
+          - "UDP packets are processed directly inside CPU L1 cache without kernel context switches"
+          - "The UDP protocol requires all clients to share a single global mutex"
+          - "Single-threaded execution is mandated by IEEE 802.3 Ethernet standards"
+          - "Each UDP request is an independent datagram accompanied by sender address metadata, allowing the server to process and reply without maintaining connection state"
+        answer: 3
+        why: |
+          In UDP, there are no persistent connections or stateful stream channels to maintain open in blocking
+          threads. The server simply reads one datagram, computes the response, dispatches it to the sender's
+          address via sendto(), and immediately moves to the next datagram.
+          Options A, B, and C state fictitious rules.
+        concept: "udp-single-threaded-scalability"
+
+      - kind: why-fails
+        q: "Why does sending a 70,000-byte UDP datagram fail with EMSGSIZE or trigger packet loss?"
+        choices:
+          - "UDP requires all packets to be exactly 1024 bytes"
+          - "The standard IPv4 maximum transmission unit (MTU) and 16-bit UDP length field limit packets to under 65,535 bytes"
+          - "The C standard library caps sendto() buffers at 4096 bytes"
+          - "socket(AF_INET, SOCK_DGRAM) rejects packets unless compressed with gzip"
+        answer: 1
+        why: |
+          The UDP header defines a 16-bit total length field (header + data), imposing an absolute theoretical limit
+          of 65,535 bytes (and practical network MTUs are typically 1500 bytes). Attempting to send a 70,000-byte
+          datagram exceeds the protocol maximum and fails with EMSGSIZE. Options A, C, and D are false claims.
+        concept: "udp-packet-size-limit"
+
+      - kind: eipe
+        q: "In one sentence, what distinguishes the client binding requirement in Unix Domain datagrams from UDP datagrams?"
+        choices:
+          - "UDS datagram clients must explicitly bind a filesystem path because the kernel lacks an automatic path allocator, whereas UDP kernels assign ephemeral ports automatically"
+          - "UDS datagrams require socket descriptors to be converted to pipes"
+          - "UDP datagrams do not support floating-point operands"
+          - "UDS datagrams enforce encryption on all transmitted payloads"
+        answer: 0
+        why: |
+          In AF_INET UDP, the kernel provides automatic ephemeral port assignment so servers receive a valid
+          return address without client binding. In AF_UNIX datagrams, there is no automatic path generator,
+          requiring the client to explicitly bind its own socket file. Options B, C, and D are false.
+        concept: "uds-vs-udp-client-bind-contrast"
+
+      - kind: fillblank
+        q: "Fill in the socket type constant used to create a connectionless UDP network socket:"
+        code: |
+          int udp_sd = socket(AF_INET, ___________, 0);
+        answer_text: "SOCK_DGRAM"
+        why: |
+          SOCK_DGRAM specifies a datagram socket (UDP over AF_INET). SOCK_STREAM specifies a stream socket (TCP).
+        concept: "udp-sock-dgram-constant"
+
+      - kind: trace
+        q: "Trace datagram routing. If 3 separate UDP clients send datagrams to the server, how many socket descriptors does the server use to receive and reply to all 3?"
+        code: |
+          int server_sd = socket(AF_INET, SOCK_DGRAM, 0);
+          bind(server_sd, ...);
+          // Loop receiving from clients 1, 2, and 3:
+          while (1) {
+            recvfrom(server_sd, buf, ...);
+            sendto(server_sd, resp, ...);
+          }
+        trace:
+          headers: ["Clients Serviced", "Server Socket Descriptors Allocated"]
+          rows:
+            - step: 1
+              line: 6
+              cells: ["Client 1, Client 2, Client 3", "???"]
+        target: {row: 0, col: 1}
+        choices: ["3", "1", "6", "0"]
+        answer: 1
+        why: |
+          In UDP, the server uses a single bound socket descriptor (server_sd) to receive packets from all
+          clients and send replies back to their respective addresses. No new descriptors are created.
+          Option A confuses UDP with TCP accept(). Option C assumes dual descriptors per client.
+        concept: "udp-single-descriptor-trace"

@@ -86,3 +86,35 @@
 4. **Lab difficulty + toolchain**: medium, C with gcc -Wall -std=c99 -O0, 2s timeout (default)
 5. **Explanation language**: English (default)
 6. **Interleaved review**: 3+ checks spanning last 3 chapters (ch09, ch10, ch11)
+
+---
+
+# Chapter Generation Notes: extreme-c / ch23
+
+- **Chapter**: Chapter 20 — Socket Programming
+- **Source**: Text/socket_programming.xhtml
+- **Target Pack**: packs/extreme-c/ch23/ (modular: meta/study/quiz/labs/cards/test)
+
+## User Interrogation Responses (ASK_USER.md)
+
+1. **Level**: comfortable-in-C (default)
+2. **Depth vs speed**: deep (exhaustive blocks, 5-7 checks each, zero placeholders, complete code breakdowns)
+3. **Prioritize / skip**: keep all core socket concepts, protocol serialization, UDS stream/datagram, TCP/UDP, and multi-threaded calculator architecture; skip platform-specific tangents (Windows-only notes)
+4. **Lab difficulty + toolchain**: medium multi-file C labs, gcc -Wall -Wextra -std=c99, 2s timeout
+5. **Explanation language**: English
+6. **Interleaved review**: 2 checks (ch10, ch11)
+
+## Pack Statistics
+
+- 11 blocks (model / syntax / design / algorithm), 66 scaffolded block checks
+- 20 atomic SM-2 spaced repetition flashcards
+- 40-question dedicated chapter quiz (intro/core/advanced, mixed, zero duplicates with block checks)
+- 5 practical multi-file labs with scaffolded starter files, fail-first verification, and unit test assertions:
+  1. lab1: Application Protocol Framing and Deserialization (calc_frame.c)
+  2. lab2: Unix Domain Socket Stream Server and Client Lifecycle (uds_socket.c)
+  3. lab3: Network Byte Order Binary Packet Marshaler (net_calc.c)
+  4. lab4: Stream Accumulator Deserializer with Observer Callbacks (stream_deserializer.c)
+  5. lab5: Reliable Stream Transmission and Delimited Frame Reception (reliable_stream_io.c)
+- 5 final mastery checks; gate needs all 11 blocks at min_quiz 80
+- Strict validation: PASS (`python main.py validate --book extreme-c --chapter ch23 --strict`)
+

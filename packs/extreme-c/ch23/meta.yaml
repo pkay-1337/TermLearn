@@ -1,0 +1,15 @@
+meta:
+  book: extreme-c
+  chapter_id: ch23
+  title: "Chapter 20 — Socket Programming"
+  source_ref: "Text/socket_programming.xhtml"
+  level: advanced
+  prereqs:
+    - ch22
+objectives:
+  - "Differentiate push-based socket channels from pull-based IPC media, identifying why lseek fails on socket descriptors."
+  - "Analyze stream vs datagram socket semantics and implement wire-level message framing for variable-length protocols."
+  - "Architect decoupled client-server systems separating pure business service logic from network transport layers."
+  - "Construct concurrent Unix Domain Socket (UDS) stream and datagram servers with proper filesystem lifecycle management."
+  - "Formulate network socket communications using IPv4 TCP and UDP with network byte order conversions and address structures."
+  - "Diagnose socket lifecycle hazards including EADDRINUSE, dangling socket files, and SIGPIPE on broken connections."

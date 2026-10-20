@@ -1,0 +1,127 @@
+test:
+  gates:
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11]
+      min_quiz: 80
+  final_checks:
+    - kind: mcq
+      level: advanced
+      q: "In a high-throughput microservices architecture deployed entirely on a single Linux host, why should inter-process communication favor Unix Domain Sockets over TCP loopback sockets (127.0.0.1)?"
+      choices:
+        - "Unix Domain Sockets use kernel-space zero-copy memory transfers and bypass the IP routing, packet framing, and checksumming overhead of the network stack"
+        - "TCP loopback sockets cannot support bidirectional communication between non-root user accounts"
+        - "Unix Domain Sockets enforce synchronous file locking across concurrent processes"
+        - "TCP loopback sockets restrict maximum packet payload sizes to 512 bytes"
+      answer: 0
+      why: |
+        Unix Domain Sockets (AF_UNIX) transfer data directly through kernel buffers without traversing the
+        TCP/IP network protocol stack, avoiding IP header construction, TCP checksum computation, packet
+        framing, and network device emulation. Options B, C, and D state fictitious system limitations.
+      concept: "uds-vs-loopback-performance"
+
+    - kind: predict
+      level: advanced
+      q: "Trace the byte values in memory on a Little Endian system. What integer does the final printf display?"
+      code: |
+        #include <stdio.h>
+        #include <stdint.h>
+        #include <arpa/inet.h>
+
+        int main(void) {
+          uint16_t port = 0x1234;
+          uint16_t net_port = htons(port);
+          uint8_t* p = (uint8_t*)&net_port;
+          printf("%02x %02x\n", p[0], p[1]);
+          return 0;
+        }
+      choices:
+        - "34 12"
+        - "00 34"
+        - "12 34"
+        - "00 12"
+      answer: 2
+      why: |
+        On a Little Endian host, 0x1234 is stored in memory as low byte first: [0x34, 0x12].
+        htons() converts host byte order to Network Byte Order (Big Endian), where the most significant
+        byte comes first: [0x12, 0x34]. Thus p[0] is 0x12 and p[1] is 0x34.
+        Option A is host byte order before conversion. Options B and D are corrupt representations.
+      concept: "htons-byte-order-trace"
+
+    - kind: spot-bug
+      level: advanced
+      q: "Analyze the code and error output. Which line is responsible for the server initialization failure when restarting the process?"
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include <sys/socket.h>
+        #include <sys/un.h>
+
+        int main(void) {
+          int sd = socket(AF_UNIX, SOCK_STREAM, 0);
+          struct sockaddr_un addr;
+          memset(&addr, 0, sizeof(addr));
+          addr.sun_family = AF_UNIX;
+          strncpy(addr.sun_path, "/tmp/calc.sock", sizeof(addr.sun_path) - 1);
+          // Line 12: Missing cleanup before bind!
+          if (bind(sd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+            perror("bind failed");
+            return 1;
+          }
+          return 0;
+        }
+      diagnostic_log: |
+        bind failed: Address already in use
+      target_line: 12
+      choices:
+        - "Line 6: socket() must specify SOCK_DGRAM for Unix domain files"
+        - "Line 10: sun_path cannot point to the /tmp directory without superuser privileges"
+        - "Line 12: Omitting unlink(\"/tmp/calc.sock\") leaves a pre-existing socket inode in the filesystem, causing bind() to fail with EADDRINUSE"
+      answer: 2
+      why: |
+        When a Unix Domain Socket binds to a filesystem path, the OS creates a socket node in the filesystem.
+        Unlike regular files, subsequent bind() calls will not overwrite existing socket files and immediately
+        fail with EADDRINUSE unless unlink(sock_path) is called first.
+        Options A and B describe non-existent API rules.
+      concept: "uds-unlink-eaddrinuse"
+
+    - kind: why-fails
+      level: advanced
+      q: "Why does a Unix Domain datagram client fail to receive responses from a server if the client never invokes bind() before sending?"
+      choices:
+        - "The kernel assigns file descriptor 0 to unbound sockets, closing stdin"
+        - "Without an explicit bind() to a client socket pathname, the client socket lacks a filesystem address, leaving the server with no return address in recvfrom()"
+        - "AF_UNIX datagram sockets reject connect() calls unless encrypted"
+        - "sendto() requires root permissions when transmitting across unbound descriptors"
+      answer: 1
+      why: |
+        In network sockets (AF_INET UDP), the kernel automatically assigns an ephemeral port when a client sends
+        data without binding. In Unix Domain datagram sockets (AF_UNIX SOCK_DGRAM), there is no automatic
+        pathname assignment; if the client does not bind to its own socket file, recvfrom() on the server
+        receives an empty client address and cannot route replies back.
+        Options A, C, and D are false claims.
+      concept: "uds-datagram-unbound-client-failure"
+
+    - kind: choose-better
+      level: advanced
+      q: "Which pattern correctly implements robust message reception for a variable-length protocol over a stream socket (SOCK_STREAM)?"
+      choices:
+        - |
+          // Rely on fixed read() expecting exact message length
+          char msg[64];
+          read(sd, msg, 64);
+          parse_message(msg);
+        - |
+          // Accumulate into a buffer and search for message delimiter
+          char chunk[128];
+          while ((n = read(sd, chunk, sizeof(chunk))) > 0) {
+            ring_buf_append(rb, chunk, n);
+            while (ring_buf_find_delimiter(rb, '$', &msg)) {
+              process_message(msg);
+            }
+          }
+      answer: 1
+      why: |
+        Stream sockets (TCP and UDS Stream) provide continuous streams of raw bytes without message boundaries.
+        A single read() may return a fragment of a message, or multiple merged messages. Robust protocols
+        must accumulate incoming chunks in a buffer and parse complete units delimited by a boundary token (like '$')
+        or length prefix. Option A dangerously assumes network packet sizes mirror application message boundaries.
+      concept: "stream-message-framing-pattern"

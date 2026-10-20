@@ -1,0 +1,590 @@
+labs:
+  - id: lab1
+    title: "Application Protocol Framing and Deserialization"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement an application protocol frame parser and serializer in C for the
+      calculator project.
+
+      ### Wire Protocol Specification
+      - **Request frame**: `<id>#<METHOD>#<op1>#<op2>$`
+        Example: `101#ADD#12.50#7.50$`
+        Valid methods: `ADD`, `SUB`, `MUL`, `DIV`.
+      - **Response frame**: `<id>#<status>#<result>$`
+        Example: `101#0#20.00$` (formatted with two decimal digits).
+
+      ### Requirements
+      1. Implement `calc_frame_parse_req(const char* frame, calc_req_t* req)` in
+         `calc_frame.c`:
+         - Verify that `frame` ends with `$`.
+         - Parse four tokens delimited by `#`: integer `req_id`, string `method`,
+           floating-point `op1`, and floating-point `op2`.
+         - Map the method string to `calc_op_t` (`OP_ADD`, `OP_SUB`, `OP_MUL`, `OP_DIV`).
+         - Return `0` on success, or `-1` on any format or syntax error.
+      2. Implement `calc_frame_serialize_resp(...)` in `calc_frame.c`:
+         - Format the response into the destination buffer as `<id>#<status>#%.2f$`.
+         - Ensure the output string does not exceed buffer capacity `sz`.
+         - Return `0` on success, or `-1` on buffer overflow.
+    files:
+      - path: calc_frame.h
+        content: |
+          #ifndef CALC_FRAME_H
+          #define CALC_FRAME_H
+
+          #include <stddef.h>
+
+          typedef enum {
+            OP_NONE = 0,
+            OP_ADD,
+            OP_SUB,
+            OP_MUL,
+            OP_DIV
+          } calc_op_t;
+
+          typedef struct {
+            int req_id;
+            calc_op_t op;
+            double op1;
+            double op2;
+          } calc_req_t;
+
+          int calc_frame_parse_req(const char* frame, calc_req_t* req);
+          int calc_frame_serialize_resp(int id, int status, double res,
+                                        char* buf, size_t sz);
+
+          #endif
+      - path: calc_frame.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "calc_frame.h"
+
+          int main(void) {
+            calc_req_t req;
+            const char* raw = "101#ADD#12.50#7.50$";
+            if (calc_frame_parse_req(raw, &req) == 0) {
+              printf("REQ ID: %d, OP: %d, OP1: %.2f, OP2: %.2f\n",
+                     req.req_id, req.op, req.op1, req.op2);
+              char out[64];
+              calc_frame_serialize_resp(req.req_id, 0, req.op1 + req.op2,
+                                        out, sizeof(out));
+              printf("RESP: %s\n", out);
+            }
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include <string.h>
+          #include "calc_frame.h"
+
+          int main(void) {
+            calc_req_t req;
+            assert(calc_frame_parse_req("100#ADD#2.5#3.5$", &req) == 0);
+            assert(req.req_id == 100);
+            assert(req.op == OP_ADD);
+            assert(req.op1 == 2.5);
+            assert(req.op2 == 3.5);
+
+            assert(calc_frame_parse_req("200#DIV#10.0#2.0$", &req) == 0);
+            assert(req.req_id == 200);
+            assert(req.op == OP_DIV);
+
+            assert(calc_frame_parse_req("BADFRAME", &req) == -1);
+            assert(calc_frame_parse_req("100#UNKNOWN#1#2$", &req) == -1);
+
+            char buf[64];
+            assert(calc_frame_serialize_resp(100, 0, 6.0, buf, sizeof(buf)) == 0);
+            assert(strcmp(buf, "100#0#6.00$") == 0);
+
+            printf("All calc_frame assertions passed!\n");
+            return 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 calc_frame.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 calc_frame.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "Parse and serialize request/response"
+        stdin: ""
+        expect: "REQ ID: 101, OP: 1, OP1: 12.50, OP2: 7.50\nRESP: 101#0#20.00$\n"
+        expect_exit: 0
+    hints:
+      - "Verify that frame is non-null and that its final character is the message terminator '$'."
+      - "Create a mutable working copy of frame without the trailing '$' and use strtok with delimiter '#' to extract fields."
+      - "Use atoi for req_id, atof for operands, and snprintf with %.2f to format the response into buf."
+
+  - id: lab2
+    title: "Unix Domain Socket Stream Server and Client Lifecycle"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement the lifecycle functions for initializing and connecting a Unix
+      Domain stream socket (`AF_UNIX`, `SOCK_STREAM`) on Linux.
+
+      ### Requirements
+      1. Implement `uds_stream_server_init(const char* sock_path, int backlog)` in
+         `uds_socket.c`:
+         - Create a socket using `socket(AF_UNIX, SOCK_STREAM, 0)`.
+         - Call `unlink(sock_path)` to ensure any stale socket file is removed.
+         - Populate a `struct sockaddr_un` with `sun_family = AF_UNIX` and copy
+           `sock_path` into `sun_path`.
+         - Bind the socket descriptor with `bind()`.
+         - Mark the socket as listening with `listen(sd, backlog)`.
+         - Return the server socket descriptor on success, or `-1` on any failure.
+      2. Implement `uds_stream_client_init(const char* sock_path)` in `uds_socket.c`:
+         - Create a socket using `socket(AF_UNIX, SOCK_STREAM, 0)`.
+         - Populate a `struct sockaddr_un` with the target `sock_path`.
+         - Connect the socket with `connect()`.
+         - Return the connected client socket descriptor on success, or `-1` on error.
+    files:
+      - path: uds_socket.h
+        content: |
+          #ifndef UDS_SOCKET_H
+          #define UDS_SOCKET_H
+
+          #include <sys/socket.h>
+          #include <sys/un.h>
+
+          int uds_stream_server_init(const char* sock_path, int backlog);
+          int uds_stream_client_init(const char* sock_path);
+
+          #endif
+      - path: uds_socket.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <unistd.h>
+          #include "uds_socket.h"
+
+          int main(void) {
+            const char* path = "/tmp/test_uds_demo.sock";
+            int srv_sd = uds_stream_server_init(path, 5);
+            if (srv_sd != -1) {
+              printf("Server listening on %s\n", path);
+              int cli_sd = uds_stream_client_init(path);
+              if (cli_sd != -1) {
+                printf("Client connected successfully\n");
+                close(cli_sd);
+              }
+              close(srv_sd);
+              unlink(path);
+            }
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include <string.h>
+          #include <unistd.h>
+          #include "uds_socket.h"
+
+          int main(void) {
+            const char* path = "/tmp/test_uds_runner.sock";
+            int srv = uds_stream_server_init(path, 5);
+            assert(srv >= 0);
+
+            int cli = uds_stream_client_init(path);
+            assert(cli >= 0);
+
+            int accepted = accept(srv, NULL, NULL);
+            assert(accepted >= 0);
+
+            const char* msg = "HELLO_UDS";
+            char buf[32] = {0};
+            assert(write(cli, msg, 9) == 9);
+            assert(read(accepted, buf, sizeof(buf)) == 9);
+            assert(strcmp(buf, "HELLO_UDS") == 0);
+
+            close(cli);
+            close(accepted);
+            close(srv);
+            unlink(path);
+
+            printf("All UDS assertions passed!\n");
+            return 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 uds_socket.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 uds_socket.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "Initialize UDS server and connect client"
+        stdin: ""
+        expect: "Server listening on /tmp/test_uds_demo.sock\nClient connected successfully\n"
+        expect_exit: 0
+    hints:
+      - "Remember to zero out struct sockaddr_un using memset(&addr, 0, sizeof(addr)) before setting sun_family."
+      - "Always invoke unlink(sock_path) prior to bind() so that pre-existing socket files do not trigger EADDRINUSE."
+      - "Use strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1) to guard against pathname buffer overflow."
+
+  - id: lab3
+    title: "Network Byte Order Binary Packet Marshaler"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement binary packet marshaling and unmarshaling with Network Byte Order
+      conversions (`htons`, `htonl`, `ntohs`, `ntohl`) in C.
+
+      ### Requirements
+      1. Implement `net_calc_pack_req(...)` in `net_calc.c`:
+         - Convert 32-bit `req_id`, 16-bit `op`, 32-bit `op1`, and 32-bit `op2` to
+           Network Byte Order (Big Endian) and store in `pkt`.
+      2. Implement `net_calc_unpack_req(...)` in `net_calc.c`:
+         - Convert fields from Network Byte Order back to Host Byte Order and
+           store into target pointers if non-null.
+      3. Implement `net_calc_pack_resp(...)` and `net_calc_unpack_resp(...)` in
+         `net_calc.c` using the same network byte order conventions.
+    files:
+      - path: net_calc.h
+        content: |
+          #ifndef NET_CALC_H
+          #define NET_CALC_H
+
+          #include <stdint.h>
+
+          #pragma pack(push, 1)
+          typedef struct {
+            uint32_t req_id;
+            uint16_t op;
+            int32_t op1;
+            int32_t op2;
+          } net_req_pkt_t;
+
+          typedef struct {
+            uint32_t req_id;
+            int32_t status;
+            int32_t result;
+          } net_resp_pkt_t;
+          #pragma pack(pop)
+
+          void net_calc_pack_req(net_req_pkt_t* pkt, uint32_t id,
+                                 uint16_t op, int32_t a, int32_t b);
+          void net_calc_unpack_req(const net_req_pkt_t* pkt, uint32_t* id,
+                                   uint16_t* op, int32_t* a, int32_t* b);
+          void net_calc_pack_resp(net_resp_pkt_t* pkt, uint32_t id,
+                                  int32_t status, int32_t res);
+          void net_calc_unpack_resp(const net_resp_pkt_t* pkt, uint32_t* id,
+                                    int32_t* status, int32_t* res);
+
+          #endif
+      - path: net_calc.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "net_calc.h"
+
+          int main(void) {
+            net_req_pkt_t pkt;
+            net_calc_pack_req(&pkt, 500, 1, 100, 200);
+
+            uint32_t id;
+            uint16_t op;
+            int32_t a, b;
+            net_calc_unpack_req(&pkt, &id, &op, &a, &b);
+            printf("Unpacked Req: ID=%u OP=%u A=%d B=%d\n", id, op, a, b);
+
+            net_resp_pkt_t resp_pkt;
+            net_calc_pack_resp(&resp_pkt, id, 0, a + b);
+
+            uint32_t resp_id;
+            int32_t status, res;
+            net_calc_unpack_resp(&resp_pkt, &resp_id, &status, &res);
+            printf("Unpacked Resp: ID=%u STATUS=%d RES=%d\n", resp_id, status, res);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include "net_calc.h"
+
+          int main(void) {
+            net_req_pkt_t pkt;
+            net_calc_pack_req(&pkt, 0x11223344, 0x0506, 0x10203040, 0x01020304);
+
+            const uint8_t* raw = (const uint8_t*)&pkt;
+            assert(raw[0] == 0x11 && raw[1] == 0x22 &&
+                   raw[2] == 0x33 && raw[3] == 0x44);
+            assert(raw[4] == 0x05 && raw[5] == 0x06);
+
+            uint32_t id;
+            uint16_t op;
+            int32_t a, b;
+            net_calc_unpack_req(&pkt, &id, &op, &a, &b);
+            assert(id == 0x11223344);
+            assert(op == 0x0506);
+            assert(a == 0x10203040);
+            assert(b == 0x01020304);
+
+            net_resp_pkt_t resp;
+            net_calc_pack_resp(&resp, 999, 0, 42);
+            uint32_t r_id;
+            int32_t st, rs;
+            net_calc_unpack_resp(&resp, &r_id, &st, &rs);
+            assert(r_id == 999);
+            assert(st == 0);
+            assert(rs == 42);
+
+            printf("All net_calc assertions passed!\n");
+            return 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 net_calc.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 net_calc.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "Pack and unpack binary packets with network byte order"
+        stdin: ""
+        expect: "Unpacked Req: ID=500 OP=1 A=100 B=200\nUnpacked Resp: ID=500 STATUS=0 RES=300\n"
+        expect_exit: 0
+    hints:
+      - "Include <arpa/inet.h> to access htons(), htonl(), ntohs(), and ntohl()."
+      - "Use htonl() for 32-bit fields (req_id, operands, status, result) and htons() for 16-bit fields (op)."
+      - "Cast signed int32_t values to uint32_t before passing to htonl/ntohl and cast back to int32_t upon receipt."
+
+  - id: lab4
+    title: "Stream Accumulator Deserializer with Observer Callbacks"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement a streaming request deserializer in C that reassembles fragmented
+      and coalesced byte chunks from a stream socket, using an internal accumulator
+      buffer and notifying registered observer callbacks.
+
+      ### Wire Format
+      `<id>#<METHOD>#<op1>#<op2>$` (e.g. `101#ADD#3.5#4.5$`)
+
+      ### Requirements
+      1. Implement `stream_deser_init(...)` in `stream_deserializer.c`:
+         - Zero out the buffer, set `len = 0`, and store `handler` and `user_ctx`.
+      2. Implement `stream_deser_feed(deser, data, nbytes)` in `stream_deserializer.c`:
+         - Append incoming `nbytes` into `deser->buf` (guarding against overflow).
+         - Continuously scan for message delimiter `$` using `strchr()`.
+         - For each delimited frame:
+           - Extract and null-terminate the frame.
+           - Parse the four fields: integer `req_id`, string `method`, floating-point `op1`,
+             and floating-point `op2`.
+           - Invoke `deser->handler(deser->user_ctx, &req)`.
+           - Shift the remaining buffer bytes forward with `memmove()` and decrement `deser->len`.
+         - Return the count of complete frames successfully extracted and dispatched.
+    files:
+      - path: stream_deserializer.h
+        content: |
+          #ifndef STREAM_DESERIALIZER_H
+          #define STREAM_DESERIALIZER_H
+
+          #include <stddef.h>
+
+          typedef struct {
+            int req_id;
+            char method[16];
+            double op1;
+            double op2;
+          } stream_req_t;
+
+          typedef void (*stream_req_handler_t)(void* user_ctx,
+                                               const stream_req_t* req);
+
+          typedef struct {
+            char buf[256];
+            size_t len;
+            stream_req_handler_t handler;
+            void* user_ctx;
+          } stream_deser_t;
+
+          void stream_deser_init(stream_deser_t* deser,
+                                 stream_req_handler_t handler,
+                                 void* user_ctx);
+          int stream_deser_feed(stream_deser_t* deser,
+                                const char* data,
+                                size_t nbytes);
+
+          #endif
+      - path: stream_deserializer.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <string.h>
+          #include "stream_deserializer.h"
+
+          static void on_request(void* ctx, const stream_req_t* req) {
+            printf("[%s] Req #%d: %s (%.1f, %.1f)\n",
+                   (const char*)ctx, req->req_id, req->method,
+                   req->op1, req->op2);
+          }
+
+          int main(void) {
+            stream_deser_t deser;
+            stream_deser_init(&deser, on_request, "CLIENT");
+
+            const char* c1 = "101#ADD#3.";
+            stream_deser_feed(&deser, c1, strlen(c1));
+
+            const char* c2 = "5#4.5$102#SUB#10.0#2.0$";
+            stream_deser_feed(&deser, c2, strlen(c2));
+
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include <string.h>
+          #include "stream_deserializer.h"
+
+          static int g_count = 0;
+          static stream_req_t g_last_req;
+
+          static void test_handler(void* ctx, const stream_req_t* req) {
+            (void)ctx;
+            g_count++;
+            g_last_req = *req;
+          }
+
+          int main(void) {
+            stream_deser_t deser;
+            stream_deser_init(&deser, test_handler, NULL);
+
+            int parsed = stream_deser_feed(&deser, "100#AD", 6);
+            assert(parsed == 0);
+            assert(g_count == 0);
+
+            parsed = stream_deser_feed(&deser, "D#1.0#2.0$200#MUL#", 18);
+            assert(parsed == 1);
+            assert(g_count == 1);
+            assert(g_last_req.req_id == 100);
+            assert(strcmp(g_last_req.method, "ADD") == 0);
+            assert(g_last_req.op1 == 1.0);
+            assert(g_last_req.op2 == 2.0);
+
+            parsed = stream_deser_feed(&deser, "4.0#5.0$300#DIV#8.0#2.0$", 24);
+            assert(parsed == 2);
+            assert(g_count == 3);
+            assert(g_last_req.req_id == 300);
+            assert(strcmp(g_last_req.method, "DIV") == 0);
+            assert(g_last_req.op1 == 8.0);
+            assert(g_last_req.op2 == 2.0);
+
+            printf("All stream_deserializer assertions passed!\n");
+            return 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 stream_deserializer.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 stream_deserializer.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "Feed fragmented chunks and extract reassembled messages"
+        stdin: ""
+        expect: "[CLIENT] Req #101: ADD (3.5, 4.5)\n[CLIENT] Req #102: SUB (10.0, 2.0)\n"
+        expect_exit: 0
+    hints:
+      - "Append data into deser->buf + deser->len and update deser->len before scanning."
+      - "Use while ((delim = strchr(deser->buf, '$')) != NULL) to handle multiple coalesced frames in a single chunk."
+      - "After dispatching each frame, use memmove(deser->buf, delim + 1, deser->len - (delim - deser->buf + 1)) to slide remaining bytes forward."
+
+  - id: lab5
+    title: "Reliable Stream Transmission and Delimited Frame Reception"
+    instruction_md: |-
+      ### Pedagogical Mission
+      Implement robust stream socket transmission and reception functions in C
+      that handle partial writes and extract delimited message frames.
+
+      ### Requirements
+      1. Implement `send_all(int sd, const void* buf, size_t len)` in
+         `reliable_stream_io.c`:
+         - Transmit all `len` bytes across stream socket descriptor `sd`.
+         - Loop until `total_sent == len` to guard against partial writes.
+         - Handle `EINTR` signals cleanly by continuing the loop.
+         - Return total bytes sent (`len`) on success, or `-1` on socket write error.
+      2. Implement `recv_until(int sd, char* out_buf, size_t max_sz, char delim)` in
+         `reliable_stream_io.c`:
+         - Read bytes from stream descriptor `sd` until delimiter `delim` is reached,
+           `max_sz - 1` bytes are stored, or EOF is encountered (`read() == 0`).
+         - Null-terminate `out_buf`.
+         - Return count of bytes stored (excluding null), `0` on EOF, or `-1` on error.
+    files:
+      - path: reliable_stream_io.h
+        content: |
+          #ifndef RELIABLE_STREAM_IO_H
+          #define RELIABLE_STREAM_IO_H
+
+          #include <stddef.h>
+          #include <sys/types.h>
+
+          ssize_t send_all(int sd, const void* buf, size_t len);
+          ssize_t recv_until(int sd, char* out_buf, size_t max_sz, char delim);
+
+          #endif
+      - path: reliable_stream_io.c
+        content: ''
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <unistd.h>
+          #include <sys/socket.h>
+          #include "reliable_stream_io.h"
+
+          int main(void) {
+            int sv[2];
+            if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) return 1;
+
+            const char* msg = "101#ADD#5#5$";
+            ssize_t sent = send_all(sv[0], msg, 12);
+            printf("Sent bytes: %zd\n", sent);
+
+            char recv_buf[32];
+            ssize_t recvd = recv_until(sv[1], recv_buf, sizeof(recv_buf), '$');
+            printf("Received frame: %s (bytes: %zd)\n", recv_buf, recvd);
+
+            close(sv[0]);
+            close(sv[1]);
+            return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <assert.h>
+          #include <unistd.h>
+          #include <string.h>
+          #include <sys/socket.h>
+          #include "reliable_stream_io.h"
+
+          int main(void) {
+            int sv[2];
+            assert(socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == 0);
+
+            const char* payload = "FRAME1$FRAME2$";
+            assert(send_all(sv[0], payload, strlen(payload)) ==
+                   (ssize_t)strlen(payload));
+
+            char buf1[32];
+            ssize_t n1 = recv_until(sv[1], buf1, sizeof(buf1), '$');
+            assert(n1 == 7);
+            assert(strcmp(buf1, "FRAME1$") == 0);
+
+            char buf2[32];
+            ssize_t n2 = recv_until(sv[1], buf2, sizeof(buf2), '$');
+            assert(n2 == 7);
+            assert(strcmp(buf2, "FRAME2$") == 0);
+
+            close(sv[0]);
+            char eof_buf[32];
+            ssize_t n_eof = recv_until(sv[1], eof_buf, sizeof(eof_buf), '$');
+            assert(n_eof == 0);
+
+            close(sv[1]);
+            printf("All reliable_stream_io assertions passed!\n");
+            return 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 reliable_stream_io.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 reliable_stream_io.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "Send and receive delimited frame with partial write protection"
+        stdin: ""
+        expect: "Sent bytes: 12\nReceived frame: 101#ADD#5#5$ (bytes: 12)\n"
+        expect_exit: 0
+    hints:
+      - "In send_all, keep track of total_sent and advance the buffer pointer ptr + total_sent until total_sent == len."
+      - "Check for write() returning -1: if errno == EINTR, continue looping; otherwise return -1."
+      - "In recv_until, read byte-by-byte into out_buf[idx], breaking when char equals delim or read() returns 0 (EOF)."

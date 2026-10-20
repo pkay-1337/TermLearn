@@ -1,0 +1,80 @@
+cards:
+  - front: "What distinguishes push-based IPC (sockets, pipes) from pull-based IPC (shared memory, files)?"
+    back: "Push-based delivers data to kernel buffers signaled via descriptors; pull-based requires polling a shared medium prone to race conditions."
+    concept: "push-vs-pull-ipc"
+
+  - front: "Why does calling lseek() on a socket descriptor return an error (-1 with errno ESPIPE)?"
+    back: "Sockets represent transient bidirectional data channels with no persistent storage or seekable file offset pointer."
+    concept: "socket-descriptor-seek"
+
+  - front: "What is the fundamental difference between SOCK_STREAM and SOCK_DGRAM?"
+    back: "SOCK_STREAM provides an ordered, continuous byte-stream; SOCK_DGRAM transmits discrete, boundary-preserving datagram packets."
+    concept: "stream-vs-datagram"
+
+  - front: "Why does stream communication require an application-level message delimiter or length header?"
+    back: "Stream sockets do not preserve message boundaries, allowing individual reads to return partial or merged packets."
+    concept: "stream-message-framing"
+
+  - front: "Why are Unix Domain Sockets (UDS) faster than loopback TCP network sockets for single-host IPC?"
+    back: "UDS bypasses TCP/IP network protocol stack layers, checksumming, packet fragmentation, and network device emulation."
+    concept: "uds-vs-tcp-performance"
+
+  - front: "What is the maximum permitted length of a socket file path in struct sockaddr_un on Linux?"
+    back: "108 bytes (including the terminating null byte; 104 bytes on traditional BSD/POSIX systems)."
+    concept: "sockaddr-un-path-limit"
+
+  - front: "Why must unlink() be called on a UDS socket file before calling bind()?"
+    back: "Sockets left on the filesystem from previous runs cause bind() to fail with EADDRINUSE."
+    concept: "uds-unlink-before-bind"
+
+  - front: "In a blocking stream server, why does accept_forever spawn a new pthread for each accepted client descriptor?"
+    back: "accept() and subsequent read() calls block; multithreading enables concurrent servicing of multiple clients without stalling the listener."
+    concept: "stream-server-multithreading"
+
+  - front: "What happens if a process writes to a socket descriptor after the peer has abruptly closed its connection?"
+    back: "The kernel delivers a SIGPIPE signal (terminating the process unless caught/ignored) and write() returns -1 with errno EPIPE."
+    concept: "socket-sigpipe-epipe"
+
+  - front: "Why must a UDS datagram client explicitly call bind() to a client socket file, unlike a UDP client over IP?"
+    back: "UDS has no automatic ephemeral port mechanism; the server needs a filesystem path in recvfrom() to know where to send replies."
+    concept: "uds-datagram-client-bind"
+
+  - front: "What is the purpose of the backlog argument passed to listen(sd, backlog)?"
+    back: "It sets the maximum number of pending, completed incoming connection requests queued in the kernel awaiting accept()."
+    concept: "socket-listen-backlog"
+
+  - front: "Why must multi-byte integers transmitted across network sockets be passed through htons() or htonl()?"
+    back: "Network protocols mandate Big Endian byte order; host architectures (like x86/ARM) may use Little Endian."
+    concept: "network-byte-order"
+
+  - front: "Which function converts a human-readable dotted-decimal IPv4 address string into a 32-bit network binary IP address?"
+    back: "inet_pton(AF_INET, src, dst) (or inet_addr), storing the result in network byte order in sin_addr.s_addr."
+    concept: "inet-pton-address-conversion"
+
+  - front: "What does assigning INADDR_ANY to addr.sin_addr.s_addr signify when binding a server socket?"
+    back: "The socket binds to all available network interfaces on the local host (0.0.0.0), accepting traffic from any local IP."
+    concept: "inaddr-any-binding"
+
+  - front: "What socket option prevents the 'Address already in use' (EADDRINUSE) error when restarting a server in TIME_WAIT?"
+    back: "setsockopt(sd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int))."
+    concept: "so-reuseaddr-option"
+
+  - front: "What is the difference between shutdown(sd, SHUT_RDWR) and close(sd)?"
+    back: "shutdown() immediately terminates socket communication (sending TCP FIN); close() merely decrements the file descriptor reference count."
+    concept: "shutdown-vs-close"
+
+  - front: "Why is the calculator service class (calc_service_t) stateful in the calculator project?"
+    back: "It maintains an internal accumulator memory unique to each client's session, requiring a dedicated instance per client."
+    concept: "stateful-service-instance"
+
+  - front: "When using read() on a stream socket, what does a return value of 0 indicate?"
+    back: "End-of-file (EOF), meaning the peer has closed its write channel or disconnected."
+    concept: "socket-read-eof"
+
+  - front: "What should a robust server do if write() or send() returns a positive integer less than the requested buffer length?"
+    back: "It must loop to transmit the remaining unsent bytes, since non-atomic socket writes may transmit partial buffers."
+    concept: "partial-write-handling"
+
+  - front: "Why can UDP datagram servers remain single-threaded while serving multiple concurrent clients?"
+    back: "Each request-response exchange is a discrete, self-contained datagram with client address metadata processed via recvfrom/sendto."
+    concept: "udp-single-threaded-architecture"

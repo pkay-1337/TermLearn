@@ -21,7 +21,7 @@
 # - Mixed: not grouped by level or concept.
 # - Concept coverage: distinct concepts span core chapter topics (e.g. composition, aggregation, ownership, diagnostics).
 # - Each item carries 1.1–1.10 (positively worded, 2-4 choices, answer in bounds, randomized answer index,
-#   self-contained with embedded code, elaborated why, exact kinds, scrambled order, load-bearing fillblank, width <=80/120 cols).
+#   self-contained with embedded code, elaborated why, exact kinds, scrambled order, load-bearing fillblank, prose width <=120 cols).
 #
 # COMMON RULES: see master_prompt.md for GENERATE.md, ASK_USER.md,
 # the SRS §4.8 / §4.9 excerpts, and the chapter source assets.

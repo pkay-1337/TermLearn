@@ -4,7 +4,7 @@
 #
 # [DIRECTIVES FOR cards.yaml]
 # 1. Read the chapter from `books/extreme-c/raw_chapters/ch23.txt` (see master_prompt.md).
-# 2. Author 15 to 25 atomic flashcards for durable concepts, rules, syntax, and memory models.
+# 2. Author as many atomic flashcards as needed for durable concepts, rules, syntax, and memory models (no set count).
 # 3. Each card must be answerable in <10s: front = concise prompt; back = answer + 1-line 'why'.
 # 4. Include 'why/when' conceptual cards ('When must X be used?') alongside 'what' cards.
 # 5. Assign a descriptive 'concept:' tag to each card for telemetry tracking.

@@ -13,10 +13,10 @@
 # Instead, create directory 'packs/extreme-c/ch11/' and author focused, modular YAML files:
 #
 # Step 1: Write 'packs/extreme-c/ch11/meta.yaml' (metadata, prerequisites, 1–6 objectives)
-# Step 2: Write 'packs/extreme-c/ch11/study.yaml' (6–15 concept blocks, Notional Machine viz, micro-checks)
+# Step 2: Write 'packs/extreme-c/ch11/study.yaml' (as many concept blocks as needed, Notional Machine viz, micro-checks)
 # Step 3: Write 'packs/extreme-c/ch11/quiz.yaml' (30–50 standalone diagnostic questions across difficulty levels)
 # Step 4: Write 'packs/extreme-c/ch11/labs.yaml' (1–4 multi-file coding projects with stubs & test harnesses)
-# Step 5: Write 'packs/extreme-c/ch11/cards.yaml' (15–25 atomic SM-2 flashcards)
+# Step 5: Write 'packs/extreme-c/ch11/cards.yaml' (as many atomic SM-2 flashcards as needed)
 # Step 6: Write 'packs/extreme-c/ch11/test.yaml' (mastery gates and certification criteria)
 #
 # [POST-GENERATION TESTING PROTOCOL (MUST TEST AFTER CREATING YAMLS)]
@@ -34,7 +34,7 @@
 #    - Fail-first — running commands.test on the untouched starter must FAIL (missing symbols/compile error).
 #    - Safe commands — no denylisted patterns (rm -rf, curl, wget, ssh, mkfs, fork bombs); no network.
 #    - Hints ordered general -> specific -> operation.
-#    - Code width <=80 cols.
+#    - Code lines: no line-count or column caps — include as much as the lab needs.
 # 4. Runnable code (all packs / study.yaml):
 #    - Every blocks[].example.code compiles under packs/extreme-c/book.yaml: toolchain.
 #    - If run_expected is declared, it matches actual output for a correct solution.
@@ -85,10 +85,10 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   For highest pedagogical depth and to prevent token truncation, author focused
   modular YAML files inside this directory:
   - `meta.yaml` — metadata, prerequisites, and 1–6 falsifiable objectives.
-  - `study.yaml` — 6–15 concept blocks, Notional Machine state transitions, and scaffolded checks.
+  - `study.yaml` — as many concept blocks as the chapter's idea units demand (one single-concept block per unit; no set count), Notional Machine state transitions, and scaffolded checks.
   - `quiz.yaml` — 30–50 dedicated synthesis questions across difficulty levels.
   - `labs.yaml` — 1–4 practical coding workspaces with blank starters and test runners.
-  - `cards.yaml` — 15–25 atomic SM-2 spaced repetition flashcards.
+  - `cards.yaml` — as many atomic SM-2 spaced repetition flashcards as the chapter's facts demand (no set count).
   - `test.yaml` — mastery gates and passing thresholds.
 - `packs/<slug>/<id>.yaml` — LEGACY MONOLITHIC TARGET FILE: Single unified YAML pack.
 - `packs/<slug>/runner/run` — runner script (only when authoring a runner, §5).
@@ -148,7 +148,7 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
 
 - **Length Independence**: Do NOT worry about the length or character count of
   the YAML file! Thoroughness, depth, and pedagogical completeness strictly
-  override brevity. A chapter with 8–15 richly explained blocks, deep code breakdowns,
+  override brevity. A chapter wielding as many richly explained blocks as its idea units demand, deep code breakdowns,
   and 30+ diagnostic checks is vastly superior to a rushed 3-block summary.
 - **Never Truncate to Save Tokens**: Never rush, combine distinct concepts, or
   cut code examples to fit into a single response context.
@@ -277,7 +277,7 @@ learning science, cognitive psychology, and computing education research (CER):
     MUST thoroughly unpack the concept, bridge technical jargon with intuitive mental models,
     and walk through the example code and Notional Machine state changes. Never abbreviate or
     cut short to save space; depth and conceptual clarity are paramount.
-  - `example`: Verified code snippet (≤35 lines, ≤80 cols), runnable where applicable.
+  - `example`: Verified code snippet; no line-count or column caps — include exactly as much code as the concept needs, runnable where applicable.
     Every code example MUST have an accompanying breakdown of its lines, memory mutations,
     and design rationale in `explain_md` or check `why`.
     - `subgoals` (OPTIONAL but HIGHLY RECOMMENDED for complex multi-step examples):
@@ -671,7 +671,7 @@ learning science, cognitive psychology, and computing education research (CER):
 11. Language ≠ C? Runner `run` authored per docs/SRS.md §4.9 (check/exec JSON,
     exit-0 rule, sandbox prohibitions), `toolchain:` carries `runner`,
     `version_cmd`, `smoke`; C book? No runner file emitted.
-12. Line lengths sane (prose ≤120, code ≤80)?
+12. Line lengths sane (prose ≤120; code lines carry no cap)?
 13. Dedicated top-level `quiz:` stanza authored with 30–50 standalone questions across levels (intro/core/advanced) in no specific order, including code boxes where relevant, distinct from block checks?
 
 ## 8. Post-Generation Testing & Verification Protocol (MUST execute after writing YAMLs)
@@ -688,7 +688,7 @@ After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or mo
 - **1.7 Exact vocabularies**: `kind:` is exactly in (`mcq`, `predict`, `why-fails`, `fillblank`, `order`, `trace`, `spot-bug`, `eipe`, `choose-better`).
 - **1.8 Scrambled Parsons (`order`)**: Lines scrambled in `lines:`, paired distractors excluded from `answer_order:`, non-sequential order.
 - **1.9 Program completion (`fillblank`)**: Single load-bearing token, program visible in `code:`, answer not reserved `?` or `help`.
-- **1.10 Line formatting**: Code width ≤80 columns, prose ≤120 columns.
+- **1.10 Line formatting**: Prose ≤120 columns; code lines carry no width cap.
 
 ### 2. Quiz Stanza (if `quiz:` present / `quiz.yaml`)
 - **Count**: 30–50 dedicated questions.
@@ -704,7 +704,7 @@ After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or mo
 - **Fail-first**: Running `commands.test` on the untouched starter files MUST FAIL (missing symbols, undefined references, or assertion compile error).
 - **Safe commands**: No denylisted patterns (`rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs); strictly no network.
 - **Hints ordered**: Progressive hints ordered general → specific → concrete operation.
-- **Code width**: All starter and harness code lines ≤80 columns.
+- **Code length**: No line-count or column caps on starter and harness code — include as much as the lab needs.
 
 ### 4. Runnable Code (All Packs / `study.yaml`)
 - **Compilation**: Every `blocks[].example.code` compiles cleanly under `book.yaml: toolchain:`.
@@ -884,7 +884,7 @@ test:                          # SHOULD; REQUIRED for chapters that gate advance
 
 `FR-PACK-003`: Unknown top-level keys **MUST** cause a warning; unknown `kind`/`type` values **MUST** cause validation failure.
 `FR-PACK-004`: All Markdown fields **MUST** be UTF-8 and **MUST** render without exception in Rich. Embedded ANSI escapes **MUST NOT** appear in YAML.
-`FR-PACK-005`: Line length **SHOULD** be ≤120 chars for terminal readability; code lines **SHOULD** be ≤80 cols.
+`FR-PACK-005`: Prose lines **SHOULD** be ≤120 chars for terminal readability; code blocks (`example.code`) and lab starters/harness code carry **no** line-count or column caps.
 `FR-PACK-006`: `packs/` content **MUST** be the sole teaching source at runtime. The app **MUST NOT** read `raw_chapters/*.txt` during `study`/`quiz`/`test` (those are authoring inputs only).
 <!-- SCHEMA-END -->
 

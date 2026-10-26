@@ -465,7 +465,7 @@ test:                          # SHOULD; REQUIRED for chapters that gate advance
 
 `FR-PACK-003`: Unknown top-level keys **MUST** cause a warning; unknown `kind`/`type` values **MUST** cause validation failure.
 `FR-PACK-004`: All Markdown fields **MUST** be UTF-8 and **MUST** render without exception in Rich. Embedded ANSI escapes **MUST NOT** appear in YAML.
-`FR-PACK-005`: Line length **SHOULD** be ≤120 chars for terminal readability; code lines **SHOULD** be ≤80 cols.
+`FR-PACK-005`: Prose lines **SHOULD** be ≤120 chars for terminal readability; code blocks (`example.code`) and lab starters/harness code carry **no** line-count or column caps.
 `FR-PACK-006`: `packs/` content **MUST** be the sole teaching source at runtime. The app **MUST NOT** read `raw_chapters/*.txt` during `study`/`quiz`/`test` (those are authoring inputs only).
 <!-- SCHEMA-END -->
 

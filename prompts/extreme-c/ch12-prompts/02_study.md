@@ -5,7 +5,7 @@
 # [DIRECTIVES FOR study.yaml]
 # 1. Read the chapter from `books/extreme-c/raw_chapters/ch12.txt` (see master_prompt.md).
 # 2. Dedicate your full cognitive might to deep, pedagogical explanations.
-# 3. Break the chapter into 6–15 single-concept blocks ('blocks: [...]').
+# 3. Break the chapter into as many single-concept blocks as needed ('blocks: [...]'); no set count — one block per concept.
 # 4. For each block:
 #    - 'id': unique block id ('b1', 'b2', ...)
 #    - 'type': 'model' | 'syntax' | 'design' | 'algorithm'

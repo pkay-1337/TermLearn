@@ -347,8 +347,6 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
             continue
         ex = b.get("example")
         if isinstance(ex, dict):
-            if ex.get("code") and len(str(ex["code"]).splitlines()) > 80:
-                warnings.append(_err("EX-LONG", f"{loc} example >80 lines; keep terminal-readable (FR-PACK-005)"))
             if "subgoals" in ex:
                 sgs = ex.get("subgoals")
                 if not isinstance(sgs, list) or not sgs:
@@ -430,8 +428,6 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
         starter = lab.get("starter_c", "")
         lang = (lab.get("lang", "c") or "c").lower()
         if starter and lang == "c":
-            if len(starter.splitlines()) > 80:
-                warnings.append(_err("LAB-LONG", f"{fname}:lab starter_c >80 lines"))
             ok, tail = _compiles_c(starter)
             if not ok:
                 errors.append(_err("LAB-COMPILE", f"{fname}:lab starter_c does not compile: {tail[:300]}"))

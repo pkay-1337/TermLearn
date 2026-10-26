@@ -20,7 +20,7 @@
 # - Fail-first: running commands.test on the untouched starter must FAIL (missing symbols/compile error).
 # - Safe commands: no denylisted patterns (rm -rf, curl, wget, ssh, mkfs, fork bombs); no network.
 # - Hints ordered: general -> specific -> operation.
-# - Code width <=80 cols.
+# - Code lines: no line-count or column caps — include as much as the lab needs.
 # - Cannot be fully automated (need a solution trace):
 #   * commands.run output byte-matches test_cases[].expect for a reference solution.
 #   * Fail->pass lifecycle verified with a real reference implementation.

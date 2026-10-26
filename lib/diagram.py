@@ -562,13 +562,6 @@ def _avoid(col: int, g0c: set[int], wl: int, wr: int) -> int:
     return col
 
 
-def _delim(art: str) -> str:
-    """End-of-diagram delimiter: heavy rule matching the art's widest line
-    (capped at MAX_COLS), separating the picture from what follows."""
-    w = min(max((len(r) for r in art.splitlines()), default=0), MAX_COLS)
-    return "━" * max(w, 3)
-
-
 def render(diagram: dict) -> list[str]:
     """Public entry: diagram dict -> list of step strings (FR-DIAG-003).
 
@@ -591,6 +584,4 @@ def render(diagram: dict) -> list[str]:
             art += "\n" + _wrap("note:", note)
         out.append(art.strip("\n"))
     res = [s for s in out if s.strip()]
-    if res:
-        res[-1] += "\n\n" + _delim(res[-1])
     return res

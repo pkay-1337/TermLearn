@@ -158,9 +158,10 @@ class StudyScreen(VimScrollMixin, _Base):
             else:
                 body.mount(Static("👉 Press [bold cyan]n[/] to proceed to next block · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
         elif self.stage == "diagram":
-            # SPEC-EXPL-003 F2 (FR-DIAG-004): stepped reveal, same keys as viz
+            # SPEC-EXPL-003 F2 (FR-DIAG-004): one step per screen, n advances
             darts = self._diagram_arts() or []
-            body.mount(Static("\n\n".join(darts[:self.di + 1]), classes="study-viz-box"))
+            cur = darts[self.di] if self.di < len(darts) else ""
+            body.mount(Static(cur, classes="study-viz-box"))
             dots = "● " * (self.di + 1) + "○ " * max(0, len(darts) - self.di - 1)
             body.mount(Static(f"Diagram step {self.di + 1} of {len(darts)}  ({dots.strip()})  —  Press [bold cyan]n[/] to advance · [bold cyan]s[/] skip", classes="study-nav-box"))
         elif self.stage == "viz":

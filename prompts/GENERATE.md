@@ -470,6 +470,23 @@ learning science, cognitive psychology, and computing education research (CER):
   picture (protocol timelines, pin maps).
 - Step reveals like `viz` — each step ADDS nodes, building the picture
   progressively. Keep node labels noun-phrases; the story goes in step `note`s.
+- **Layout constraints** (the renderer layers nodes by longest path; the
+  validator errors above 100 rendered columns — author WITHIN these rules):
+  - Every edge must go from level `L` to level `L+1`. Same-level edges and
+    jumps beyond `+1` render as `──▶` footnote lines under the picture —
+    restructure with extra nodes instead (fork bars fan a source out to
+    several targets; join funnels merge several sources into one target;
+    upward/back edges ride side channels beside the graph).
+  - Width discipline: a node's box is `len(label) + 4` cols and each layer
+    is laid out side by side — keep the widest layer's total
+    (`Σ len(label)+4` + `4×(n−1)`) ≤ 96, else the whole picture degrades to
+    a plain edge list. Shorten labels first; never let one layer sprawl.
+  - At most ONE edge label rides each bar line; the renderer puts extra
+    labels beside the head (`▼ label`) — so label one edge per bar and let
+    the others ride the drop heads. Back-edge labels ride their channel
+    (`└─again──┃`); keep them to 1–3 words.
+  - Step `note`s word-wrap at 98 cols; keep each note one crisp sentence —
+    it is the narration for that reveal, not a paragraph.
 
 ### 3.9 `cards` — atomic retrieval units (SHOULD ≥3 per fact-dense chapter)
 

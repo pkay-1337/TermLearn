@@ -16,7 +16,6 @@ def books():
 @app.command()
 def chapters(book: str = typer.Option(..., "--book", help="Book slug, e.g. extreme-c")):
     """List chapters in author order with status. (FR-CHAP-001..002)"""
-    from lib import progress as _p  # lazy to keep startup fast (NFR-PERF-001)
     books_mod.list_chapters(book)
 
 

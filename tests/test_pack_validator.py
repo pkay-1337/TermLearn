@@ -137,15 +137,17 @@ def test_more_branches():
     bad["meta"]["prereqs"] = ["ghost"]
     assert any("META-PREREQ" in x for x in
                pack.validate_chapter_data(bad, known_chapters={"c"})[0])
+    # FR-PACK-005 (amended bddf3c0): code blocks and lab starters carry no
+    # line-count or column caps — long code must not emit EX-LONG/LAB-LONG.
     bad = _ch()
     bad["blocks"][0]["example"] = {"lang": "c",
                                    "code": "int main(void){\n" * 90}
-    _, w = pack.validate_chapter_data(bad)
-    assert any("EX-LONG" in x for x in w)
+    e, w = pack.validate_chapter_data(bad)
+    assert not any("EX-LONG" in x for x in e + w)
     bad = _ch()
     bad["lab"] = {"starter_c": "int x;\n" * 90}
-    _, w = pack.validate_chapter_data(bad)
-    assert any("LAB-LONG" in x for x in w)
+    e, w = pack.validate_chapter_data(bad)
+    assert not any("LAB-LONG" in x for x in e + w)
     assert pack.toolchain_gate(True, bad) is None
     assert pack._has_runnable({"blocks": []}) is False
     assert pack.scan_denylist("") == []

@@ -27,6 +27,16 @@ def _clean(s: str) -> str:
     return s.strip()
 
 
+# Metadata-only: drop parentheticals that are empty or a bare connector word
+# left over from publisher templates like "Title (for <brand>)" with a blank
+# brand (FR-EXT-001). Real parentheticals with extra words are kept.
+_EMPTY_PAREN = re.compile(r"\s*\(\s*(?:for|by|with|from)?\s*\)", re.IGNORECASE)
+
+
+def _tidy(s: str) -> str:
+    return _clean(_EMPTY_PAREN.sub("", _clean(s)))
+
+
 def _inline_text(el) -> str:
     """Render inline element: code -> `x`, em/strong kept as text, links keep text."""
     parts = []
@@ -199,8 +209,8 @@ def extract_epub(epub_path: Path, out_dir: Path, force: bool = False) -> dict:
         vals = book.get_metadata("DC", key)
         return _clean(vals[0][0]) if vals else ""
 
-    title = _md("title") or epub_path.stem
-    authors = [_clean(v[0]) for v in book.get_metadata("DC", "creator")]
+    title = _tidy(_md("title")) or epub_path.stem
+    authors = [_tidy(_clean(v[0])) for v in book.get_metadata("DC", "creator")]
     language = _md("language") or "en"
 
     spine_ids = [sid for sid, _ in book.spine]

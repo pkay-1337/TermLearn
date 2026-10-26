@@ -86,10 +86,15 @@ def test_topup_from_mastered(tmp_path, monkeypatch, capsys):
     con.commit()
     con.close()
     assert srs.mastered_topup(["extreme-c"], 2)[0][:2] == ("extreme-c", "ch10")
-    # Feed enough input to grade every due card in the book (count grows as
-    # chapters are added); surplus input is simply left unconsumed.
-    monkeypatch.setattr(sys, "stdin", io.StringIO("f\n4\n" * 500))
-    srs.run("extreme-c")  # grades all due cards into the future
+    # Drain all due cards: due_cards batches 50 per run and the book carries
+    # >100 cards across 4 packed chapters, so loop until the queue is empty;
+    # surplus input is simply left unconsumed.
+    for _ in range(10):
+        capsys.readouterr()
+        monkeypatch.setattr(sys, "stdin", io.StringIO("f\n4\n" * 500))
+        srs.run("extreme-c")  # grades every due card into the future
+        if "card(s) due" not in capsys.readouterr().out:
+            break
     monkeypatch.setattr(sys, "stdin", io.StringIO("5\n1\n"))
     srs.run("extreme-c")  # due=0 -> 2 top-up checks
     out = capsys.readouterr().out

@@ -1,8 +1,10 @@
 """Book/chapter discovery. (SRS FR-BOOK-001..005, FR-CHAP-001..004)"""
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+_CH_ID = re.compile(r"ch\d{2}$")
 
 
 def _read_json(p: Path) -> dict | None:
@@ -37,13 +39,27 @@ def discover_books() -> list[dict]:
         for d in sorted(pdir.iterdir()):
             if not d.is_dir():
                 continue
-            n = len(list(d.glob("ch*.yaml")))
+            n = _count_pack_chapters(d)
             if d.name in out:
                 out[d.name]["pack_chapters"] = n
             else:
                 out[d.name] = {"slug": d.name, "title": d.name, "authors": [],
                                "n_chapters": 0, "has_epub": False, "pack_chapters": n}
     return list(out.values())
+
+
+def _count_pack_chapters(pdir: Path) -> int:
+    """Chapters with YAML: monolithic chNN.yaml or modular chNN/ dir with
+    at least one YAML file. (FR-BOOK-002 pack coverage)"""
+    n = 0
+    for p in pdir.iterdir():
+        stem = p.stem if p.is_file() else p.name
+        if not _CH_ID.match(stem):
+            continue
+        if (p.is_file() and p.suffix == ".yaml") or (
+                p.is_dir() and any(p.glob("*.yaml"))):
+            n += 1
+    return n
 
 
 def _slugify(title: str) -> str:

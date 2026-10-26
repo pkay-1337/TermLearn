@@ -1,0 +1,164 @@
+cards:
+  - front: "Which two IPC techniques are pull-based according to the chapter?"
+    back: "Shared memory and the filesystem (on disk or in memory); every other listed technique is push-based."
+    concept: "pull-based-ipc-membership"
+
+  - front: "What is the single storage difference between pull-based and push-based IPC?"
+    back: "Pull-based stores messages in a shared user-space medium; push-based holds them in a channel with no intermediate storage medium."
+    concept: "pull-vs-push-storage"
+
+  - front: "Why does push-based IPC need no explicit synchronization while pull-based does?"
+    back: "There is no shared concurrent medium for push-based; the kernel itself guarantees buffer consistency, so processes skip explicit locking."
+    concept: "push-based-no-kernel-sync-by-user"
+
+  - front: "When can a push-based receiver lose incoming messages?"
+    back: "When it is not up and running at delivery time; push schemes are synchronous, unlike stashable pull-based media."
+    concept: "push-based-sync-failure"
+
+  - front: "Where does a push-based technique keep its temporary message buffer?"
+    back: "In the kernel, one buffer per process, alive as long as the process runs."
+    concept: "kernel-message-buffer"
+
+  - front: "What is serialization (marshalling)?"
+    back: "Translating an object into a byte series in a well-defined order before transmitting or storing it."
+    concept: "serialization-definition"
+
+  - front: "What is deserialization (unmarshaling)?"
+    back: "Reconstructing the original object from received bytes; the inverse of serialization."
+    concept: "deserialization-definition"
+
+  - front: "Do pull-based IPC techniques need serialization too?"
+    back: "Yes — a shared file or shared memory stores bytes, so objects must be serialized there as well; serialization is universal."
+    concept: "serialization-universal"
+
+  - front: "Why must the deserializer obey the same rules as the serializer?"
+    back: "Differing byte orders mean the receiver cannot resurrect the same object: incompatible serializer/deserializer means no communication."
+    concept: "protocol-dictates-serialization"
+
+  - front: "Which binary-to-text encoding carries binary content through text-only protocols such as JSON?"
+    back: "Base64."
+    concept: "base64-encoding"
+
+  - front: "Name one purely textual and one purely binary protocol."
+    back: "JSON is purely textual; DNS is fully binary; HTTP and BSON allow message contents that mix text and raw bytes."
+    concept: "protocol-content-types"
+
+  - front: "What fixed-size prefix marks message boundaries in length-prefix framing, and how big is it usually?"
+    back: "A byte-count header announcing how many bytes follow — 'usually 4 bytes'; TLV/ASN.1 protocols use it."
+    concept: "length-prefix-framing"
+
+  - front: "When reading fixed-length messages, what C facility can overlay the received bytes?"
+    back: "A C structure: same-size, same-structure messages can be interpreted directly through predefined struct fields."
+    concept: "fixed-length-struct-mapping"
+
+  - front: "In the request-response world, what does a SYNCHRONOUS protocol do with the sender?"
+    back: "It keeps the sender blocked until the listener's reply arrives."
+    concept: "synchronous-blocking"
+
+  - front: "What are the two reply-retrieval styles for an asynchronous sender?"
+    back: "Pulling (regularly polling the listener) or pushing (listener delivers the reply on the same or a different channel)."
+    concept: "async-reply-mechanisms"
+
+  - front: "Can a POSIX signal transfer a data channel's byte stream?"
+    back: "No; signals only notify a process that an event or error happened — they create notification, not communication channels."
+    concept: "signals-notify-only"
+
+  - front: "Which two POSIX signals are reserved as user-definable?"
+    back: "SIGUSR1 and SIGUSR2."
+    concept: "sigusr-user-signals"
+
+  - front: "Which signal cannot be handled (or ignored) by any process?"
+    back: "SIGKILL — its sole job is kill; the parent process may be notified of the death."
+    concept: "sigkill-uncatchable"
+
+  - front: "How is SIGINT usually delivered to the foreground process?"
+    back: "The keyboard combination Ctrl+C sends it; a default handler stops the program, but it can be overridden."
+    concept: "sigint-ctrl-c"
+
+  - front: "What functions let a process signal others vs itself?"
+    back: "kill(target_PID, signal_number) signals any process that knows the PID; raise() delivers a signal to the current thread."
+    concept: "kill-vs-raise"
+
+  - front: "How do signals arrive relative to the main thread's busy loop?"
+    back: "Asynchronously — signal delivery interrupts the loop at any moment, so pending signals are never missed mid-loop."
+    concept: "asynchronous-delivery"
+
+  - front: "pipe() hands you two descriptors. Which index reads and which writes?"
+    back: "fds[0] is the read end; fds[1] is the write end."
+    concept: "pipe-descriptor-roles"
+
+  - front: "Why does each ancestor in a pipe example close the end it does not use?"
+    back: "The pipe is unidirectional; the parent closes the write end and the child closes the read end to fit their roles."
+    concept: "pipe-unidirectional-closing"
+
+  - front: "What happens to a reading process when the pipe is empty?"
+    back: "It blocks on read() until something is written into the pipe."
+    concept: "pipe-blocking-read"
+
+  - front: "When is a pipe's kernel buffer's content destroyed?"
+    back: "When the owner process quits, the pipe object and its kernel buffer are gone."
+    concept: "pipe-buffer-lifetime"
+
+  - front: "Two unrelated processes want to share data. Name the pipe way and the socket way."
+    back: "mkfifo creates a named pipe file that either process may open by path; a Unix domain socket channel is the socket way."
+    concept: "named-pipe-fifo"
+
+  - front: "A queue holds messages of 10, 20, and 30 bytes. How does it compare against a pipe?"
+    back: "A pipe sees 60 bytes (reading 15 mid-message allowed); the queue keeps 3 messages and never accepts a 15-byte read."
+    concept: "message-boundaries"
+
+  - front: "What unit caps a message queue's capacity, versus a pipe's?"
+    back: "A pipe maxes in bytes; a message queue maxes in MESSAGE COUNT, with a byte cap per message."
+    concept: "mq-capacity-unit"
+
+  - front: "What file backs every POSIX message queue instance?"
+    back: "A non-regular file, so later processes can open the same queue by name."
+    concept: "mq-file-backed"
+
+  - front: "What property lets one process pick a queue message written by another?"
+    back: "Both pipes and queues are connection-less: messages have no owner; any reader may take any of them."
+    concept: "connection-less-ownership"
+
+  - front: "What makes Unix domain sockets richer than pipes and queues?"
+    back: "They are bidirectional (full-duplex) and can be session-aware and message-aware."
+    concept: "uds-duplex-session"
+
+  - front: "At what network layer do the calling parties stop being computers and become processes?"
+    back: "The transport layer; hosts connect at the network layer, processes connect via ports."
+    concept: "transport-layer-processes"
+
+  - front: "Which link-layer protocols govern wired and wireless networks?"
+    back: "Ethernet for wired LANs and IEEE 802.11 for wireless."
+    concept: "link-protocols"
+
+  - front: "What device joins a computer to a LAN, and what address does the link layer give it?"
+    back: "A network adapter / NIC; link protocols assign it a MAC address unique inside the LAN."
+    concept: "nic-mac-address"
+
+  - front: "How does a packet traverse different LAN types?"
+    back: "A router with a NIC in each LAN forwards packets; one network protocol (IP) governs them all from above."
+    concept: "router-ip-network-layer"
+
+  - front: "What change does the Internet Protocol Suite make to the classic layer list?"
+    back: "The network layer is renamed the internet layer (IPv4/IPv6/ICMP live there); IPS is the deployed model, OSI is theory."
+    concept: "ips-renaming"
+
+  - front: "What guarantees distinguish TCP (connection-oriented) transport?"
+    back: "Delivery of every packet AND sequence order is preserved; the receiver OS reorders and re-requests lost pieces."
+    concept: "tcp-guarantees"
+
+  - front: "What quantity is a UDP 'datagram', and what can't you say about the next one?"
+    back: "One deliverable chunk whose individual correctness holds; nothing about its correlation with adjacent datagrams."
+    concept: "udp-datagram-units"
+
+  - front: "Which sequence must a stream LISTENER walk through?"
+    back: "socket() -> bind() to an endpoint -> listen() to configure the backlog -> accept() incoming connections in a loop."
+    concept: "stream-listener-sequence"
+
+  - front: "What does accept() return, and what does that imply about sockets used?"
+    back: "A NEW dedicated socket per accepted connection; a listener that accepted 100 clients uses at least 101 sockets."
+    concept: "accept-dedicated-socket"
+
+  - front: "What distinguishes FILE descriptors from SOCKET descriptors?"
+    back: "FDs reference regular or device files; socket descriptors come from socket(), accept(), and connect() — though read/write and non-blocking APIs are shared."
+    concept: "fd-vs-socket-descriptor"

@@ -1,0 +1,156 @@
+test:
+  gates:
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14,
+              b15, b16, b17, b18, b19, b20]
+      min_quiz: 80
+  final_checks:
+    - kind: mcq
+      level: advanced
+      q: "A plant controller must (1) hand whole, prioritized records to a consumer on the same host, (2) keep an archive that consumers can read even while the producer's process is down, and (3) let newly started plant-support processes — unrelated to the producer — join later. Which combination of this chapter's techniques and storage rules serves all three?"
+      choices:
+        - "A POSIX pipe for records plus the pipe's kernel buffer as the archive, because pipe buffers persist between runs"
+        - "A POSIX message queue for the prioritized records, plus the filesystem (pull-based medium) as the archive, plus path-based access — like the queue's backing file — so unrelated processes reach the shared instances"
+        - "POSIX signals for all three, because signals carry the record priority field"
+        - "A shared-memory medium only, because pull-based media cover priorities natively"
+      answer: 1
+      why: |
+        The three needs split exactly along the chapter's stored taxonomy:
+        message queues keep whole messages with boundaries and priorities,
+        and their byte pipe counterpart would lose both; persistence across
+        a down producer belongs to pull-based media — filesystem, shared
+        memory — because push-based kernel buffers are destroyed when the
+        owning process quits; and unrelated processes reaching a shared
+        instance by path mirrors how message queues open a backing file for
+        future processes and how named pipes rendezvous via mkfifo's path.
+        Option A misstates pipe-buffer persistence. Option C invents priority
+        fields inside signals. Option D invents native priorities for stored
+        media that the chapter never grants.
+      concept: "technique-synthesis-mastery"
+
+    - kind: predict
+      level: advanced
+      q: "Predict the exact printed output of this length-prefix framing session:"
+      code: |
+        #include <stdio.h>
+        #include <string.h>
+        #include "framing.h"
+
+        int main(void) {
+          unsigned char out[64];
+          char msg[FRAME_MAX_PAYLOAD];
+          int n = frame_encode("AB", 2, out, 64);
+          printf("n=%d\n", n);
+          frame_decoder_t d;
+          frame_decoder_init(&d);
+          int r1 = frame_decoder_feed(&d, out, 2, msg, FRAME_MAX_PAYLOAD);
+          printf("r1=%d\n", r1);
+          int r2 = frame_decoder_feed(&d, out + 2, n - 2, msg,
+                                      FRAME_MAX_PAYLOAD);
+          printf("r2=%d\n", r2);
+          printf("msg=%s\n", msg);
+          return 0;
+        }
+      choices:
+        - "n=6 / r1=0 / r2=2 / msg=AB — the 2-byte feed holds the partial prefix (NEED-MORE state), and the second feed completes the claimed payload"
+        - "n=6 / r1=2 / r2=0 / msg=AB — the prefix completes on the first call"
+        - "n=4 / r1=0 / r2=-1 — the prefix counts only 2 bytes for a 2-byte payload"
+        - "n=6 / r1=-1 / r2=2 — the partial prefix is a malformed stream"
+      answer: 0
+      why: |
+        frame_encode serializes a 4-byte big-endian length prefix plus the
+        payload, so 'AB' costs 6 bytes on the wire. The first feed call holds
+        just 2 bytes: the prefix is incomplete, the claim cannot be latched
+        yet, and the FSM returns 0 (more bytes needed). The second feed
+        delivers the remaining 4 bytes — prefix tail plus the 2 payload
+        bytes — the claim of 2 is fulfilled, and the message 'AB' is
+        reported with its payload length 2.
+        Option B misreads wire lengths as per-call deliverables. Option C
+        misstates the prefix size. Option D invents malformedness for a
+        merely partial stream.
+      concept: "framing-fsm-mastery"
+
+    - kind: spot-bug
+      level: advanced
+      q: "This server wiring fails at runtime with the logged symptom. Which line carries the bug?"
+      code: |
+        int s = socket(AF_UNIX, SOCK_STREAM, 0);   /* line 1 */
+        int c = socket(AF_UNIX, SOCK_STREAM, 0);   /* line 2 */
+        bind(s, ...path to socket file...);        /* line 3 */
+        listen(s, 8);                              /* line 4 */
+        connect(c, ...same path...);               /* line 5 */
+        connect(s, ...same path...);               /* line 6 */
+      diagnostic_log: |
+        Runtime trace (from the sequencing rules):
+          steps 1-5 succeed: the listener binds and listens, and the
+          connector's connect at line 5 parks in the backlog.
+          line 6 fails: connect() was invoked with the LISTENER's socket
+          object s — a socket in listening mode never connects outward;
+          the call reports a wrong-state refusal.
+      target_line: 6
+      choices:
+        - "Line 6: the connector variable c was meant — the listener socket s may accept connections in the accept loop but can never be the connecting end"
+        - "Line 2: the connector socket must reuse the listener's descriptor"
+        - "Line 3: bind must pass the connector's socket instead"
+        - "Line 5: connect may only be called after an accept has returned"
+      answer: 0
+      why: |
+        Roles are fixed at the socket-object level: the listener socket
+        binds, listens, and accepts; connectors create their own sockets and
+        connect outward toward the bound endpoint. The trace shows line 5
+        succeeding through the backlog and line 6 redialing from the
+        listener's own socket — which the sequencing rules refuse as a
+        wrong-state call.
+        Option B invents descriptor sharing. Option C reverses bind's
+        roles. Option D invents an accept-first dependency for connectors.
+      concept: "socket-role-discipline-mastery"
+
+    - kind: why-fails
+      level: advanced
+      q: "A queue is created with mq_maxmsg = 4 and mq_msgsize = 32. A producer sends five 20-byte messages in a row; the fifth send is refused even though only 100 bytes are in play. Why?"
+      code: |
+        attr.mq_maxmsg  = 4;    /* capacity counted in MESSAGES */
+        attr.mq_msgsize = 32;   /* per-message byte cap         */
+        mq_send(q, m20, 20, 0);  /* ok */
+        mq_send(q, m20, 20, 0);  /* ok */
+        mq_send(q, m20, 20, 0);  /* ok */
+        mq_send(q, m20, 20, 0);  /* ok */
+        mq_send(q, m20, 20, 0);  /* refused */
+      choices:
+        - "Because message queues measure capacity in the NUMBER of messages — the queue already holds its four-message maximum — and the refusal is the queue-full limit, not a byte budget"
+        - "Because 20-byte sends always consume a full 32-byte slot, so four sends swallow 128 bytes of budget"
+        - "Because sends without any consumer are always refused outright"
+        - "Because priority 0 messages count double toward capacity"
+      answer: 0
+      why: |
+        The chapter separates the two capacity units deliberately: pipes own
+        a byte count, message queues count messages, and each queue caps the
+        size of every message via mq_msgsize. Four sends fill the
+        four-message maximum, so the fifth is the fullness refusal — while
+        the byte total of 100 is behind the mixed 4×32-byte slots, not
+        against a byte budget.
+        Option B invents slot-padding arithmetic. Option C confuses fullness
+        with consumerless blocking. Option D invents priority weighting.
+      concept: "mq-capacity-mastery"
+
+    - kind: choose-better
+      level: advanced
+      q: "A file-transfer daemon must deliver customer archives over the internet: every archive must arrive complete, byte order must hold end to end, and bursts of many clients are normal. Which transport design from the chapter fits, including its backlog reasoning?"
+      choices:
+        - "Connection-less UDP datagrams: datagrams are whole units, so reassembly is free"
+        - "A connection-oriented stream channel (AF_INET with SOCK_STREAM — the OS chooses TCP by default), which guarantees per-packet delivery and sequence; the listener configures a backlog matched to the program's dynamics, since low sizes reject many connections under congestion and huge sizes pile up connections that eventually time out"
+        - "A raw socket so the daemon parses headers itself and controls reordering"
+        - "A Unix domain socket, since local channels are inherently lossless"
+      answer: 1
+      why: |
+        The guarantee bundle — delivery of individual packets plus preserved
+        sequence — is exactly the connection-oriented scheme's promise
+        (TCP behaves this way), reached through AF_INET + SOCK_STREAM with
+        the protocol attribute left for the OS to settle. The backlog is a
+        number matched to the listener's dynamics: too small rejects
+        connectors while the listener is congested, too large accumulates
+        pending connections that time out — the chapter's explicit sizing
+        trade-off.
+        Option A discards the order and completeness guarantees; Option C
+        volunteers for kernel duties the daemon does not need; Option D
+        abandons the internet scope the requirement states.
+      concept: "transport-choice-mastery"

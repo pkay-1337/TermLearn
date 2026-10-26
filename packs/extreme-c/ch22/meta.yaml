@@ -1,0 +1,15 @@
+meta:
+  book: extreme-c
+  chapter_id: ch22
+  title: "Chapter 19 — Single-Host IPC and Sockets"
+  source_ref: "Text/single-host_ipc_and_sockets.xhtml"
+  level: core
+  prereqs:
+    - ch21
+objectives:
+  - "Classify any IPC technique as pull-based (stored medium, async, needs sync) or push-based (channel, sync, kernel-buffered) and predict the consequences of each for a given two-process scenario."
+  - "Explain serialization and deserialization as the universal byte-translation layer of IPC, and map a protocol's content type, message-length strategy, and sequentiality onto concrete receiver behavior."
+  - "Trace how a POSIX signal travels from sender to handler asynchronously, and use signal(), kill(), and raise() while knowing exactly which signals can never be handled."
+  - "Wire a unidirectional POSIX pipe parent-to-child and contrast pipe byte-oriented behavior with a POSIX message queue's message boundaries, priorities, and mq_* lifecycle calls."
+  - "Map a transport connection onto the five network layers (physical, link, network/internet, transport, application) and identify the addressing unit at each layer, from MAC frames and IP packets to ports."
+  - "Execute the full listener-connector initialization sequences for connection-oriented (socket, bind, listen, accept / socket, connect) and connection-less channels, including backlog and dedicated-socket semantics."

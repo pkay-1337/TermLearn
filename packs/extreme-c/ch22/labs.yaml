@@ -1,0 +1,442 @@
+labs:
+- id: lab1
+  title: Length-Prefix Framing over a Pushed Byte Channel
+  instruction_md: "### Pedagogical Mission\nImplement length-prefix **framing** for a push-based byte\
+    \ channel: the\nreceiver-side finite-state machine (FSM) that survives partial chunks and\nstraddling\
+    \ frames.\n\n### Background\n`channel.c` is a complete stand-in for a pushed byte channel: bytes are\n\
+    buffered in order, exactly as a kernel would deliver them from a POSIX pipe.\nA frame on the wire\
+    \ is `[4-byte big-endian length prefix][payload]`, and a\nraw 5-byte chunk may end mid-prefix or straddle\
+    \ two adjacent frames.\n\n### Requirements (implement everything inside `framing.c`)\n1. `frame_encode(msg,\
+    \ msg_len, out, out_cap)` writes the 4-byte big-endian\n   prefix followed by the payload, returns\
+    \ the total byte count, and returns\n   `-1` when the frame cannot fit into `out_cap` bytes.\n2. `frame_decoder_init(dec)`\
+    \ resets the FSM for a brand-new frame.\n3. `frame_decoder_feed(dec, bytes, n, out_msg, out_cap)`\
+    \ implements the exact\n   contract documented in `framing.h`:\n   - buffer raw bytes; once 4 prefix\
+    \ bytes exist, latch the claimed length;\n   - reject a claimed payload larger than `FRAME_MAX_PAYLOAD`\
+    \ with `-1`;\n   - absorb payload bytes until the claim is fulfilled, then report the\n     message\
+    \ (copy it into `out_msg`, return its length);\n   - report AT MOST ONE completion per call; hold\
+    \ a later completion in\n     `dec->ready` and report it on the NEXT feed call, even with `n == 0`;\n\
+    \   - an empty-payload frame (claimed 0) is absorbed silently (return 0);\n   - never drop a byte.\n\
+    4. Do not edit `framing.h`, `channel.h`, `channel.c`, `main.c`, or\n   `test_runner.c`.\n\n### Acceptance\n\
+    - `test` builds `framing.c` with `test_runner.c` and must print\n  `FRAMING TESTS PASSED` (prefix\
+    \ bytes, zero-length frames, split headers,\n  back-to-back frames, and the oversize-claim rejection\
+    \ are asserted).\n- `run` replays the two-frame demo read in 5-byte chunks and must reproduce\n  the\
+    \ expected transcript byte for byte."
+  files:
+  - path: framing.h
+    content: "#ifndef FRAMING_H\n#define FRAMING_H\n\n/* Length-prefix framing for a push-based byte channel.\n\
+      \ *\n * A frame on the wire is:\n *   [ 4-byte big-endian length prefix ][ payload bytes ]\n *\n\
+      \ * frame_decoder_t is a finite-state machine (FSM): it buffers raw\n * channel bytes, reads the\
+      \ prefix, then accumulates exactly the\n * claimed number of payload bytes before announcing the\
+      \ message. */\n\n#define FRAME_PREFIX_BYTES 4\n#define FRAME_MAX_PAYLOAD  48\n\ntypedef struct {\n\
+      \  unsigned char buf[FRAME_PREFIX_BYTES + FRAME_MAX_PAYLOAD];\n  int filled;   /* raw bytes buffered\
+      \ so far               */\n  int claimed;  /* payload length announced by the prefix  */\n  int\
+      \ ready_len;  /* payload of a completed-but-unreported msg */\n  unsigned char ready[FRAME_MAX_PAYLOAD];\n\
+      } frame_decoder_t;\n\n/* Serializes msg into out as one length-prefixed frame.\n * Returns total\
+      \ bytes written (FRAME_PREFIX_BYTES + msg_len),\n * or -1 when it cannot fit into out (out_cap bytes).\
+      \ */\nint frame_encode(const char* msg, int msg_len,\n                 unsigned char* out, int out_cap);\n\
+      \n/* Resets the FSM so it starts scanning a brand new frame. */\nvoid frame_decoder_init(frame_decoder_t*\
+      \ dec);\n\n/* Feeds n raw channel bytes into the FSM. API contract:\n * - At most ONE completion\
+      \ is REPORTED per call.\n * - A message that fully arrives later in the same call is HELD\n *  \
+      \ in dec->ready and is reported by the NEXT feed call, even\n *   when called with n == 0.\n * -\
+      \ No byte is ever dropped; partial prefixes and straddling\n *   chunks are buffered.\n * Returns:\n\
+      \ *   >0  payload length of the message now reported (out_msg set)\n *    0  more bytes needed from\
+      \ the channel\n *   -1  malformed stream: claimed payload > FRAME_MAX_PAYLOAD, or\n *       too\
+      \ many completions inside a single call               */\nint frame_decoder_feed(frame_decoder_t*\
+      \ dec,\n                       const unsigned char* bytes, int n,\n                       char*\
+      \ out_msg, int out_cap);\n\n#endif\n"
+  - path: channel.h
+    content: "#ifndef CHANNEL_H\n#define CHANNEL_H\n\n/* An in-memory stand-in for a push-based byte channel\
+      \ (a POSIX pipe\n * or socket would live in the kernel; this one lives in a pool). */\n#define CHANNEL_CAP\
+      \ 256\n\ntypedef struct {\n  unsigned char pool[CHANNEL_CAP];\n  int used;\n} channel_t;\n\nvoid\
+      \ channel_init(channel_t* ch);\n\n/* Appends n raw bytes; returns n, or -1 when the pool would overflow.\
+      \ */\nint channel_write(channel_t* ch, const unsigned char* bytes, int n);\n\n#endif\n"
+  - path: channel.c
+    content: "#include \"channel.h\"\n\nvoid channel_init(channel_t* ch) {\n  ch->used = 0;\n}\n\nint\
+      \ channel_write(channel_t* ch, const unsigned char* bytes, int n) {\n  if (n < 0 || ch->used + n\
+      \ > CHANNEL_CAP) {\n    return -1;\n  }\n  for (int i = 0; i < n; i++) {\n    ch->pool[ch->used]\
+      \ = bytes[i];\n    ch->used++;\n  }\n  return n;\n}\n"
+  - path: main.c
+    content: "#include <stdio.h>\n#include \"channel.h\"\n#include \"framing.h\"\n\nint main(void) {\n\
+      \  channel_t ch;\n  channel_init(&ch);\n\n  /* Sender: serialize each message under its own length\
+      \ prefix. */\n  unsigned char f1[64];\n  unsigned char f2[64];\n  int n1 = frame_encode(\"ALPHA\"\
+      , 5, f1, 64);\n  int n2 = frame_encode(\"BETA-GAMMA\", 10, f2, 64);\n  if (n1 < 0 || n2 < 0) {\n\
+      \    printf(\"ENCODE-ERROR\\n\");\n    return 1;\n  }\n\n  /* Push both frames down the channel;\
+      \ messages are NOT merged,\n   * but the channel is a raw byte stream. */\n  if (channel_write(&ch,\
+      \ f1, n1) < 0 ||\n      channel_write(&ch, f2, n2) < 0) {\n    printf(\"CHANNEL-ERROR\\n\");\n \
+      \   return 1;\n  }\n\n  /* Receiver: pulls fixed-size chunks. One chunk may straddle two\n   * adjacent\
+      \ frames, so the FSM must survive partial prefixes. */\n  frame_decoder_t dec;\n  frame_decoder_init(&dec);\n\
+      \  int read_pos = 0;\n  while (read_pos < ch.used) {\n    int take = 5;\n    if (ch.used - read_pos\
+      \ < take) {\n      take = ch.used - read_pos;\n    }\n    char out_msg[FRAME_MAX_PAYLOAD];\n   \
+      \ int got = frame_decoder_feed(&dec, ch.pool + read_pos, take,\n                               \
+      \  out_msg, FRAME_MAX_PAYLOAD);\n    read_pos += take;\n    if (got < 0) {\n      printf(\"FRAMING-ERROR\\\
+      n\");\n    } else if (got == 0) {\n      printf(\"NEED-MORE\\n\");\n    } else {\n      printf(\"\
+      MSG %d: %.*s\\n\", got, got, out_msg);\n    }\n  }\n  return 0;\n}\n"
+  - path: test_runner.c
+    content: "#include <assert.h>\n#include <stdio.h>\n#include <string.h>\n#include \"framing.h\"\n\n\
+      static void test_encode_prefix(void) {\n  unsigned char out[32];\n  int n = frame_encode(\"HI\"\
+      , 2, out, 32);\n  assert(n == 6);\n  assert(out[0] == 0x00);\n  assert(out[1] == 0x00);\n  assert(out[2]\
+      \ == 0x00);\n  assert(out[3] == 0x02);\n  assert(out[4] == 'H');\n  assert(out[5] == 'I');\n}\n\n\
+      static void test_encode_overflow(void) {\n  unsigned char out[8];\n  /* 9 payload bytes + 4 prefix\
+      \ bytes cannot fit in 8 bytes. */\n  assert(frame_encode(\"123456789\", 9, out, 8) == -1);\n}\n\n\
+      static void test_zero_length_frame(void) {\n  unsigned char out[32];\n  int n = frame_encode(\"\"\
+      , 0, out, 32);\n  assert(n == FRAME_PREFIX_BYTES);\n  frame_decoder_t dec;\n  frame_decoder_init(&dec);\n\
+      \  char got[FRAME_MAX_PAYLOAD];\n  assert(frame_decoder_feed(&dec, out, n, got,\n              \
+      \              FRAME_MAX_PAYLOAD) == 0);\n}\n\nstatic void test_roundtrip_split_header(void) {\n\
+      \  const char* msg = \"DADDY\";\n  unsigned char out[32];\n  int n = frame_encode(msg, 5, out, 32);\n\
+      \  frame_decoder_t dec;\n  frame_decoder_init(&dec);\n  char got[FRAME_MAX_PAYLOAD];\n  assert(frame_decoder_feed(&dec,\
+      \ out, 1, got,\n                            FRAME_MAX_PAYLOAD) == 0);\n  assert(frame_decoder_feed(&dec,\
+      \ out + 1, 2, got,\n                            FRAME_MAX_PAYLOAD) == 0);\n  assert(frame_decoder_feed(&dec,\
+      \ out + 3, 4, got,\n                            FRAME_MAX_PAYLOAD) == 0);\n  assert(frame_decoder_feed(&dec,\
+      \ out + 7, n - 7, got,\n                            FRAME_MAX_PAYLOAD) == 5);\n  assert(memcmp(got,\
+      \ \"DADDY\", 5) == 0);\n}\n\nstatic void test_two_frames_back_to_back(void) {\n  unsigned char out[64];\n\
+      \  int n1 = frame_encode(\"A\", 1, out, 64);\n  int n2 = frame_encode(\"BB\", 2, out + n1, 64 -\
+      \ n1);\n  frame_decoder_t dec;\n  frame_decoder_init(&dec);\n  char got[FRAME_MAX_PAYLOAD];\n  /*\
+      \ One completion per call: the first frame pops, the second one\n   * waits inside the FSM until\
+      \ the next feed. */\n  int r = frame_decoder_feed(&dec, out, n1 + n2, got,\n                   \
+      \          FRAME_MAX_PAYLOAD);\n  assert(r == 1);\n  assert(memcmp(got, \"A\", 1) == 0);\n  r =\
+      \ frame_decoder_feed(&dec, out + n1 + n2, 0, got,\n                         FRAME_MAX_PAYLOAD);\n\
+      \  assert(r == 2);\n  assert(memcmp(got, \"BB\", 2) == 0);\n  assert(frame_decoder_feed(&dec, out\
+      \ + n1 + n2, 0, got,\n                            FRAME_MAX_PAYLOAD) == 0);\n}\n\nstatic void test_oversize_claim_is_rejected(void)\
+      \ {\n  /* Prefix announces 0x63 = 99 bytes but FRAME_MAX_PAYLOAD is 48. */\n  unsigned char bad[8]\
+      \ = {0x00, 0x00, 0x00, 0x63,\n                          '!', '!', '!', '!'};\n  frame_decoder_t\
+      \ dec;\n  frame_decoder_init(&dec);\n  char got[FRAME_MAX_PAYLOAD];\n  assert(frame_decoder_feed(&dec,\
+      \ bad, 8, got,\n                            FRAME_MAX_PAYLOAD) == -1);\n}\n\nint main(void) {\n\
+      \  test_encode_prefix();\n  test_encode_overflow();\n  test_zero_length_frame();\n  test_roundtrip_split_header();\n\
+      \  test_two_frames_back_to_back();\n  test_oversize_claim_is_rejected();\n  printf(\"FRAMING TESTS\
+      \ PASSED\\n\");\n  return 0;\n}\n"
+  - path: framing.c
+    content: ''
+  commands:
+    run: gcc -Wall -Wextra -std=c99 framing.c channel.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 framing.c channel.c test_runner.c -o test_runner && ./test_runner
+  hints:
+  - 'Model the decoder as an FSM whose state is exactly the fields framing.h gives it: buf, filled, claimed,
+    plus the ready stash. Paper-sketch state transitions before coding.'
+  - 'In feed(): first absorb raw bytes into dec->buf; once filled == FRAME_PREFIX_BYTES, latch claimed
+    from the big-endian prefix and reject claimed > FRAME_MAX_PAYLOAD with -1.'
+  - 'On a completed frame: if dec->ready already holds an unreported message, stash the new one into dec->ready
+    and return 0; the NEXT feed call (even n == 0) flushes the stash before consuming new bytes.'
+  test_cases:
+  - name: Demo transcript, byte for byte
+    stdin: ''
+    expect: 'NEED-MORE
+
+      MSG 5: ALPHA
+
+      NEED-MORE
+
+      NEED-MORE
+
+      MSG 10: BETA-GAMMA
+
+      '
+- id: lab2
+  title: Engine Room of a POSIX-Style Message Queue
+  instruction_md: "### Pedagogical Mission\nImplement the engine room of a POSIX-style **message queue**\
+    \ with the exact\nsemantics the chapter contrasts against pipes: capacity counted in\n*messages*,\
+    \ a fixed per-message size, preserved message boundaries, and\npriority-based delivery.\n\n### Requirements\
+    \ (implement everything inside `imq.c`)\n1. Keep a static table of `IMQ_MAX_DESCRIPTORS` descriptor\
+    \ slots; every\n   `imq_open` claims one; exhaustion returns `IMQ_ERR_NOSLOT`.\n2. `imq_open(flags,\
+    \ perms, attr)` creates a fresh queue object. With `attr`\n   equal to `NULL` use the defaults: `IMQ_QUEUE_CAP`\
+    \ messages of\n   `IMQ_MSGSIZE`-sized bytes; otherwise store the attribute quadruple.\n3. `imq_send(q,\
+    \ msg, len, prio)` stores ONE message cell (payload bytes,\n   length, priority). Reject `len > msgsize`\
+    \ with `IMQ_ERR_SIZE` and reject a\n   full queue (`count == imq_maxmsg`) with `IMQ_ERR_FULL`. Cells\
+    \ are never\n   merged — boundaries survive, unlike a byte pipe.\n4. `imq_receive(q, buf, cap, out_prio)`\
+    \ removes ONE whole message: reject\n   `cap < msgsize` with `IMQ_ERR_SIZE` (partial reads are impossible),\
+    \ reject\n   an empty queue with `IMQ_ERR_EMPTY`, deliver the HIGHEST-priority message,\n   break\
+    \ ties in FIFO send order, copy the payload out, and return its length.\n5. `imq_close(q)` releases\
+    \ ONLY the descriptor — the queue object survives.\n6. `imq_unlink(q)` destroys the queue object AND\
+    \ its descriptor, and needs a\n   live descriptor (close-then-unlink therefore fails with\n   `IMQ_ERR_NOSLOT`).\n\
+    7. Do not edit `imq.h`, `main.c`, or `test_runner.c`.\n\n### Acceptance\n- `test` builds `imq.c` with\
+    \ `test_runner.c` and must print\n  `IMQ TESTS PASSED` (priority/tie FIFO, the 10+20+30-byte boundary\
+    \ demo,\n  fullness and oversize rejections, and the close/unlink descriptor dance\n  are asserted).\n\
+    - `run` performs the demo exchange and must reproduce the expected\n  transcript byte for byte: urgent\
+    \ priority overtakes the queued bulk\n  traffic, ties come out in send order."
+  files:
+  - path: imq.h
+    content: "#ifndef IMQ_H\n#define IMQ_H\n\n/* An in-memory, user-space stand-in for a POSIX message\
+      \ queue.\n * It keeps the *semantics* the chapter teaches: bounded capacity\n * counted in MESSAGES,\
+      \ fixed per-message size, preserved message\n * boundaries, and priority-based delivery order. */\n\
+      \n#define IMQ_MSG_MAX        32  /* bytes per message (mq_msgsize) */\n#define IMQ_QUEUE_CAP   \
+      \    8  /* default messages per queue     */\n#define IMQ_MAX_DESCRIPTORS 4\n\ntypedef struct {\n\
+      \  int imq_flags;    /* reserved */\n  int imq_maxmsg;   /* capacity counted in messages */\n  int\
+      \ imq_msgsize;  /* bytes per message */\n  int imq_curmsgs;  /* messages currently stored */\n}\
+      \ imq_attr_t;\n\ntypedef int imqd_t;\n\n/* Return codes */\n#define IMQ_OK          0\n#define IMQ_ERR_NOSLOT\
+      \  -1  /* no descriptor left / q not open */\n#define IMQ_ERR_FULL    -2  /* imq_maxmsg already\
+      \ reached */\n#define IMQ_ERR_EMPTY   -3  /* nothing to receive */\n#define IMQ_ERR_SIZE    -4 \
+      \ /* cap < msgsize, or len > msgsize */\n\n/* Opens a fresh queue; attr NULL selects defaults\n\
+      \ * (max = IMQ_QUEUE_CAP messages of imq_msgsize bytes). */\nimqd_t imq_open(int flags, unsigned\
+      \ perms, const imq_attr_t* attr);\n\n/* Appends one WHOLE message. A queue is not a byte pipe: the\
+      \ send\n * length and the receive length travel with each message. */\nint imq_send(imqd_t q, const\
+      \ char* msg, int len, unsigned prio);\n\n/* Removes and returns the highest-priority message; equal\n\
+      \ * priorities come out in send order (FIFO). cap must be at least\n * the queue's imq_msgsize —\
+      \ partial reads are impossible. */\nint imq_receive(imqd_t q, char* buf, int cap, unsigned* out_prio);\n\
+      \n/* Releases the descriptor; the queue object survives (like a\n * POSIX mq_close). Errno-style\
+      \ codes are the IMQ_ERR_* values. */\nint imq_close(imqd_t q);\n\n/* Destroys the queue object and\
+      \ releases its descriptor. Call it\n * BEFORE imq_close (the reverse order loses the handle here,\n\
+      \ * just as mq_unlink needs a live name in the mqueue filesystem). */\nint imq_unlink(imqd_t q);\n\
+      \n#endif\n"
+  - path: main.c
+    content: "#include <stdio.h>\n#include \"imq.h\"\n\nint main(void) {\n  imq_attr_t attr;\n  attr.imq_flags\
+      \ = 0;\n  attr.imq_maxmsg = 4;\n  attr.imq_msgsize = IMQ_MSG_MAX;\n  attr.imq_curmsgs = 0;\n\n \
+      \ imqd_t q = imq_open(0, 0644, &attr);\n  if (q < 0) {\n    printf(\"QUEUE-OPEN-ERROR\\n\");\n \
+      \   return 1;\n  }\n\n  /* The child would push here in the book example; priorities\n   * let an\
+      \ urgent notification overtake queued bulk traffic. */\n  imq_send(q, \"Hello Daddy!\", 12, 1);\n\
+      \  imq_send(q, \"URGENT\", 6, 7);\n  imq_send(q, \"bulk\", 4, 1);\n\n  char buf[IMQ_MSG_MAX];\n\
+      \  unsigned prio;\n  for (int i = 0; i < 3; i++) {\n    int n = imq_receive(q, buf, IMQ_MSG_MAX,\
+      \ &prio);\n    if (n < 0) {\n      printf(\"QUEUE-RECV-ERROR\\n\");\n      return 1;\n    }\n  \
+      \  printf(\"PARENT: Received: %.*s (prio %u)\\n\", n, buf, prio);\n  }\n\n  if (imq_unlink(q) !=\
+      \ IMQ_OK) {\n    printf(\"QUEUE-UNLINK-ERROR\\n\");\n    return 1;\n  }\n  /* The queue object (and\
+      \ its descriptor) died with the unlink,\n   * so no close is needed in this stand-in. */\n  return\
+      \ 0;\n}\n\n"
+  - path: test_runner.c
+    content: "#include <assert.h>\n#include <stdio.h>\n#include <string.h>\n#include \"imq.h\"\n\nstatic\
+      \ imq_attr_t basic_attr(int maxmsg) {\n  imq_attr_t a;\n  a.imq_flags = 0;\n  a.imq_maxmsg = maxmsg;\n\
+      \  a.imq_msgsize = IMQ_MSG_MAX;\n  a.imq_curmsgs = 0;\n  return a;\n}\n\nstatic void test_priorities_and_fifo_ties(void)\
+      \ {\n  imq_attr_t a = basic_attr(8);\n  imqd_t q = imq_open(0, 0644, &a);\n  assert(q >= 0);\n \
+      \ assert(imq_send(q, \"low1\", 4, 1) == IMQ_OK);\n  assert(imq_send(q, \"high\", 4, 7) == IMQ_OK);\n\
+      \  assert(imq_send(q, \"low2\", 4, 1) == IMQ_OK);\n  char buf[IMQ_MSG_MAX];\n  unsigned prio = 0;\n\
+      \  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio) == 4);\n  assert(prio == 7);\n  assert(memcmp(buf,\
+      \ \"high\", 4) == 0);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio) == 4);\n  assert(prio ==\
+      \ 1);\n  assert(memcmp(buf, \"low1\", 4) == 0);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio)\
+      \ == 4);\n  assert(prio == 1);\n  assert(memcmp(buf, \"low2\", 4) == 0);\n  assert(imq_receive(q,\
+      \ buf, IMQ_MSG_MAX, &prio) == IMQ_ERR_EMPTY);\n  assert(imq_receive(q, buf, 15, &prio) == IMQ_ERR_SIZE);\n\
+      \  assert(imq_unlink(q) == IMQ_OK);\n}\n\nstatic void test_boundaries_not_bytes(void) {\n  /* The\
+      \ chapter counts 10 + 20 + 30 bytes: a pipe holds 60 raw\n   * bytes and would hand out 15 from\
+      \ the middle; the queue holds\n   * 3 messages and never transfers a fraction of one. */\n  imq_attr_t\
+      \ a = basic_attr(8);\n  imqd_t q = imq_open(0, 0644, &a);\n  assert(q >= 0);\n  char ten[10];\n\
+      \  char twenty[20];\n  char thirty[30];\n  memset(ten, 'a', sizeof(ten));\n  memset(twenty, 'b',\
+      \ sizeof(twenty));\n  memset(thirty, 'c', sizeof(thirty));\n  assert(imq_send(q, ten, 10, 0) ==\
+      \ IMQ_OK);\n  assert(imq_send(q, twenty, 20, 0) == IMQ_OK);\n  assert(imq_send(q, thirty, 30, 0)\
+      \ == IMQ_OK);\n  char buf[IMQ_MSG_MAX];\n  unsigned prio = 0;\n  assert(imq_receive(q, buf, 15,\
+      \ &prio) == IMQ_ERR_SIZE);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio) == 10);\n  assert(memcmp(buf,\
+      \ ten, 10) == 0);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio) == 20);\n  assert(memcmp(buf,\
+      \ twenty, 20) == 0);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio) == 30);\n  assert(memcmp(buf,\
+      \ thirty, 30) == 0);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio) == IMQ_ERR_EMPTY);\n  assert(imq_unlink(q)\
+      \ == IMQ_OK);\n}\n\nstatic void test_full_and_oversize(void) {\n  imq_attr_t a = basic_attr(2);\n\
+      \  imqd_t q = imq_open(0, 0644, &a);\n  assert(q >= 0);\n  char big[40];\n  memset(big, 'x', sizeof(big));\n\
+      \  assert(imq_send(q, \"AA\", 2, 0) == IMQ_OK);\n  assert(imq_send(q, \"BB\", 2, 0) == IMQ_OK);\n\
+      \  assert(imq_send(q, \"CC\", 2, 0) == IMQ_ERR_FULL);\n  assert(imq_send(q, big, 40, 0) == IMQ_ERR_SIZE);\n\
+      \  char buf[IMQ_MSG_MAX];\n  unsigned prio = 0;\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio)\
+      \ == 2);\n  assert(memcmp(buf, \"AA\", 2) == 0);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio)\
+      \ == 2);\n  assert(imq_receive(q, buf, IMQ_MSG_MAX, &prio) == IMQ_ERR_EMPTY);\n  assert(imq_unlink(q)\
+      \ == IMQ_OK);\n}\n\nstatic void test_descriptors_close_and_unlink(void) {\n  imq_attr_t a = basic_attr(8);\n\
+      \  imqd_t q1 = imq_open(0, 0644, &a);\n  imqd_t q2 = imq_open(0, 0644, &a);\n  imqd_t q3 = imq_open(0,\
+      \ 0644, &a);\n  imqd_t q4 = imq_open(0, 0644, &a);\n  assert(q1 >= 0 && q2 >= 0 && q3 >= 0 && q4\
+      \ >= 0);\n  assert(imq_open(0, 0644, &a) == IMQ_ERR_NOSLOT);\n  /* unlink destroys the object AND\
+      \ its descriptor */\n  assert(imq_unlink(q1) == IMQ_OK);\n  assert(imq_send(q1, \"gone\", 4, 0)\
+      \ == IMQ_ERR_NOSLOT);\n  assert(imq_close(q1) == IMQ_ERR_NOSLOT);\n  imqd_t q5 = imq_open(0, 0644,\
+      \ &a);\n  assert(q5 >= 0);\n  /* close releases only the descriptor */\n  assert(imq_close(q2) ==\
+      \ IMQ_OK);\n  assert(imq_send(q2, \"closed\", 6, 0) == IMQ_ERR_NOSLOT);\n  char buf[IMQ_MSG_MAX];\n\
+      \  unsigned prio;\n  assert(imq_receive(q2, buf, IMQ_MSG_MAX, &prio) == IMQ_ERR_NOSLOT);\n  /* unlink\
+      \ needs a live descriptor */\n  assert(imq_close(q3) == IMQ_OK);\n  assert(imq_unlink(q3) == IMQ_ERR_NOSLOT);\n\
+      \  assert(imq_unlink(q4) == IMQ_OK);\n  assert(imq_unlink(q5) == IMQ_OK);\n}\n\nint main(void) {\n\
+      \  test_priorities_and_fifo_ties();\n  test_boundaries_not_bytes();\n  test_full_and_oversize();\n\
+      \  test_descriptors_close_and_unlink();\n  printf(\"IMQ TESTS PASSED\\n\");\n  return 0;\n}\n"
+  - path: imq.c
+    content: ''
+  commands:
+    run: gcc -Wall -Wextra -std=c99 imq.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 imq.c test_runner.c -o test_runner && ./test_runner
+  hints:
+  - 'Sketch the engine room on paper first: one queue-object table (the attribute quadruple) plus per-queue
+    message cells, each cell holding payload bytes, its own length, and its own priority.'
+  - imq_send must reject BOTH oversize (len > msgsize) and fullness (curmsgs == maxmsg); imq_receive must
+    reject cap < msgsize before touching any content - whole messages only.
+  - Scan cells for the highest priority; break ties by the LOWEST cell index (earliest send). Dequeue
+    compacts the cell array; the descriptor slot frees only along close/unlink, exactly as imq.h documents.
+  test_cases:
+  - name: Demo transcript, byte for byte
+    stdin: ''
+    expect: 'PARENT: Received: URGENT (prio 7)
+
+      PARENT: Received: Hello Daddy! (prio 1)
+
+      PARENT: Received: bulk (prio 1)
+
+      '
+- id: lab3
+  title: Listener-Connector Sequences on a Simulated Kernel
+  instruction_md: "### Pedagogical Mission\nDrive a simulated connection-oriented kernel through the chapter's\n\
+    **listener and connector initialization sequences**, including the backlog\nand the dedicated socket\
+    \ per accepted connection.\n\n### Background\n`sim_kernel.c` is complete: it is the kernel half of\
+    \ the transport layer.\n`sim_socket` validates the three attributes; `sim_bind` refuses a bound port\n\
+    and ports outside 0..65535; `sim_listen` enters listening mode with a\nbacklog; `sim_connect` parks\
+    \ the connection in the listener's pending FIFO\n(the kernel dedicates ONE new socket object per accepted\
+    \ connection) and\nreports `SIM_ERR_REFUSED` when no listener exists or the backlog is full;\n`sim_accept`\
+    \ pops the FIFO and hands back the dedicated socket — but only in\nlistening mode and only when a\
+    \ connection is waiting (this sim never\nblocks); the connector learns its handle via `sim_get_connection`.\n\
+    \n### Requirements\n1. In `listener.c`:\n   - `listener_setup(port, backlog)`: `sim_socket(SIM_AF_UNIX,\n\
+    \     SIM_SOCK_STREAM, SIM_PROTO_DEFAULT)` -> `sim_bind` to\n     `{port, SIM_NIC_ALL}` -> `sim_listen(backlog)`;\
+    \ return the first\n     failing step's `SIM_ERR_*` code.\n   - `listener_serve(listener_fd)`: forward\
+    \ `sim_accept(fd)` verbatim.\n2. In `connector.c`:\n   - `connector_setup(port)`: create a socket\
+    \ whose attributes are\n     compatible with the listener's (`SIM_AF_UNIX` + `SIM_SOCK_STREAM`),\n\
+    \     `sim_connect` it to `{port, SIM_NIC_ALL}`, and on success fetch the\n     dedicated connection\
+    \ fd with `sim_get_connection`; return the first\n     failing code otherwise.\n3. Do not edit `socksim.h`,\
+    \ `listener.h`, `connector.h`, `sim_kernel.c`,\n   `main.c`, or `test_runner.c`.\n\n### Acceptance\n\
+    - `test` builds both student files with `test_runner.c` and must print\n  `SOCKSIM TESTS PASSED` (attribute\
+    \ validation, call-order enforcement,\n  port rules, helper flows, and dedicated-socket FIFO behavior\
+    \ are\n  asserted).\n- `run` plays the backlog demo and must reproduce the expected transcript\n \
+    \ byte for byte: connector B refuses while the backlog is full and gets\n  through once an accept\
+    \ frees a slot."
+  files:
+  - path: socksim.h
+    content: "#ifndef SOCKSIM_H\n#define SOCKSIM_H\n\n/* An in-memory stand-in for the KERNEL half of\
+      \ the transport\n * layer: bound endpoints, listening mode, a pending-connection\n * backlog, and\
+      \ one dedicated socket object per accepted\n * connection - exactly the model the chapter lays out.\
+      \ */\n\n#define SIM_PORT_MIN 0\n#define SIM_PORT_MAX 65535\n#define SIM_MAX_FDS  16\n\n/* Return\
+      \ codes */\n#define SIM_OK           0\n#define SIM_ERR_NOSOCKET -1  /* bad fd / table exhausted\
+      \ */\n#define SIM_ERR_INUSE    -2  /* port is already bound    */\n#define SIM_ERR_REFUSED  -3 \
+      \ /* no listener or backlog full */\n#define SIM_ERR_STATE    -4  /* call made in the wrong order\
+      \ */\n\n/* The three socket OBJECT attributes (domain, type, protocol). */\n#define SIM_AF_UNIX\
+      \  1  /* same-host endpoints only */\n#define SIM_AF_INET  2  /* IPv4 endpoints           */\n\n\
+      #define SIM_SOCK_STREAM 1  /* connection-oriented */\n#define SIM_SOCK_DGRAM  2  /* connection-less\
+      \     */\n\n#define SIM_PROTO_DEFAULT 0  /* OS picks when family+type pin it */\n\ntypedef struct\
+      \ {\n  int port;  /* SIM_PORT_MIN..SIM_PORT_MAX */\n  int nic;   /* NIC index, or SIM_NIC_ALL for\
+      \ every NIC */\n} sim_endpoint_t;\n\n#define SIM_NIC_ALL 0\n\ntypedef int sim_fd_t;\n\nvoid sim_kernel_reset(void);\n\
+      \nsim_fd_t sim_socket(int domain, int type, int protocol);\nint sim_bind(sim_fd_t fd, const sim_endpoint_t*\
+      \ ep);\nint sim_listen(sim_fd_t fd, int backlog);\nsim_fd_t sim_accept(sim_fd_t listener_fd);\n\
+      int sim_connect(sim_fd_t fd, const sim_endpoint_t* ep);\n\n/* The kernel dedicates ONE new socket\
+      \ per accepted connection;\n * the connector learns its handle through this call. */\nsim_fd_t sim_get_connection(sim_fd_t\
+      \ connector_fd);\n\n#endif\n"
+  - path: listener.h
+    content: "#ifndef LISTENER_H\n#define LISTENER_H\n\n#include \"socksim.h\"\n\n/* Wires a stream listener\
+      \ socket through the exact chapter order:\n * socket() -> bind() -> listen(). Returns the listener\
+      \ fd, or the\n * SIM_ERR_* code of the first step that failed. */\nsim_fd_t listener_setup(int port,\
+      \ int backlog);\n\n/* One step of the accept loop: picks the next pending connection\n * (FIFO)\
+      \ and returns its dedicated socket fd, or SIM_ERR_STATE\n * when nothing is waiting (this sim never\
+      \ blocks). */\nsim_fd_t listener_serve(sim_fd_t listener_fd);\n\n#endif\n"
+  - path: connector.h
+    content: "#ifndef CONNECTOR_H\n#define CONNECTOR_H\n\n#include \"socksim.h\"\n\n/* Wires a stream\
+      \ connector socket through the chapter order:\n * socket() -> connect(). On success returns the\
+      \ DEDICATED socket\n * fd tracking this connection; on failure a SIM_ERR_* code. */\nsim_fd_t connector_setup(int\
+      \ port);\n\n#endif\n"
+  - path: sim_kernel.c
+    content: "#include <string.h>\n#include \"socksim.h\"\n\n/* The complete \"kernel\": one descriptor\
+      \ table whose entries track\n * the per-socket lifecycle state and a per-listener backlog FIFO\n\
+      \ * of pending connection sockets. */\n\nstruct sim_entry {\n  int used;\n  int bound;      /* has\
+      \ a bound endpoint        */\n  int port;\n  int nic;\n  int listening;  /* in listening mode  \
+      \         */\n  int backlog;    /* pending-connection capacity */\n  int pending[SIM_MAX_FDS];\n\
+      \  int pending_n;\n  int attached;   /* dedicated socket fd (connectors) */\n  int is_connection;\n\
+      };\n\nstatic struct sim_entry objs[SIM_MAX_FDS];\n\nvoid sim_kernel_reset(void) {\n  for (int i\
+      \ = 0; i < SIM_MAX_FDS; i++) {\n    memset(&objs[i], 0, sizeof(objs[i]));\n    objs[i].attached\
+      \ = -1;\n  }\n}\n\nsim_fd_t sim_socket(int domain, int type, int protocol) {\n  (void)protocol;\n\
+      \  if (domain != SIM_AF_UNIX && domain != SIM_AF_INET) {\n    return SIM_ERR_STATE;\n  }\n  if (type\
+      \ != SIM_SOCK_STREAM && type != SIM_SOCK_DGRAM) {\n    return SIM_ERR_STATE;\n  }\n  for (int i\
+      \ = 0; i < SIM_MAX_FDS; i++) {\n    if (!objs[i].used) {\n      memset(&objs[i], 0, sizeof(objs[i]));\n\
+      \      objs[i].used = 1;\n      objs[i].attached = -1;\n      return i;\n    }\n  }\n  return SIM_ERR_NOSOCKET;\n\
+      }\n\nint sim_bind(sim_fd_t fd, const sim_endpoint_t* ep) {\n  if (fd < 0 || fd >= SIM_MAX_FDS ||\
+      \ !objs[fd].used || ep == 0) {\n    return SIM_ERR_NOSOCKET;\n  }\n  struct sim_entry* e = &objs[fd];\n\
+      \  if (e->bound || e->listening || e->is_connection) {\n    return SIM_ERR_STATE;\n  }\n  if (ep->port\
+      \ < SIM_PORT_MIN || ep->port > SIM_PORT_MAX) {\n    return SIM_ERR_STATE;\n  }\n  for (int i = 0;\
+      \ i < SIM_MAX_FDS; i++) {\n    if (objs[i].used && objs[i].bound &&\n        objs[i].port == ep->port)\
+      \ {\n      return SIM_ERR_INUSE;\n    }\n  }\n  e->bound = 1;\n  e->port = ep->port;\n  e->nic =\
+      \ ep->nic;\n  return SIM_OK;\n}\n\nint sim_listen(sim_fd_t fd, int backlog) {\n  if (fd < 0 || fd\
+      \ >= SIM_MAX_FDS || !objs[fd].used) {\n    return SIM_ERR_NOSOCKET;\n  }\n  struct sim_entry* e\
+      \ = &objs[fd];\n  if (!e->bound || e->listening || e->is_connection || backlog < 1) {\n    return\
+      \ SIM_ERR_STATE;\n  }\n  e->listening = 1;\n  e->backlog = backlog;\n  e->pending_n = 0;\n  return\
+      \ SIM_OK;\n}\n\nint sim_connect(sim_fd_t fd, const sim_endpoint_t* ep) {\n  if (fd < 0 || fd >=\
+      \ SIM_MAX_FDS || !objs[fd].used || ep == 0) {\n    return SIM_ERR_NOSOCKET;\n  }\n  struct sim_entry*\
+      \ e = &objs[fd];\n  if (e->listening || e->is_connection || e->attached >= 0) {\n    return SIM_ERR_STATE;\n\
+      \  }\n  struct sim_entry* ls = 0;\n  for (int i = 0; i < SIM_MAX_FDS; i++) {\n    if (objs[i].used\
+      \ && objs[i].listening &&\n        objs[i].port == ep->port) {\n      ls = &objs[i];\n      break;\n\
+      \    }\n  }\n  if (ls == 0 || ls->pending_n >= ls->backlog) {\n    return SIM_ERR_REFUSED;\n  }\n\
+      \  struct sim_entry* c = 0;\n  for (int i = 0; i < SIM_MAX_FDS; i++) {\n    if (!objs[i].used) {\n\
+      \      c = &objs[i];\n      break;\n    }\n  }\n  if (c == 0) {\n    return SIM_ERR_NOSOCKET;\n\
+      \  }\n  memset(c, 0, sizeof(*c));\n  c->used = 1;\n  c->is_connection = 1;\n  c->attached = -1;\n\
+      \  int cfd = (int)(c - objs);\n  ls->pending[ls->pending_n] = cfd;\n  ls->pending_n++;\n  e->attached\
+      \ = cfd;\n  return SIM_OK;\n}\n\nsim_fd_t sim_accept(sim_fd_t listener_fd) {\n  if (listener_fd\
+      \ < 0 || listener_fd >= SIM_MAX_FDS ||\n      !objs[listener_fd].used) {\n    return SIM_ERR_NOSOCKET;\n\
+      \  }\n  struct sim_entry* ls = &objs[listener_fd];\n  if (!ls->listening) {\n    return SIM_ERR_STATE;\
+      \  /* accept() before listen() */\n  }\n  if (ls->pending_n == 0) {\n    return SIM_ERR_STATE; \
+      \ /* would block: backlog empty */\n  }\n  int cfd = ls->pending[0];\n  for (int i = 1; i < ls->pending_n;\
+      \ i++) {\n    ls->pending[i - 1] = ls->pending[i];\n  }\n  ls->pending_n--;\n  return cfd;\n}\n\n\
+      sim_fd_t sim_get_connection(sim_fd_t connector_fd) {\n  if (connector_fd < 0 || connector_fd >=\
+      \ SIM_MAX_FDS ||\n      !objs[connector_fd].used) {\n    return SIM_ERR_NOSOCKET;\n  }\n  if (objs[connector_fd].attached\
+      \ < 0) {\n    return SIM_ERR_NOSOCKET;\n  }\n  return objs[connector_fd].attached;\n}\n"
+  - path: main.c
+    content: "#include <stdio.h>\n#include \"listener.h\"\n#include \"connector.h\"\n\nint main(void)\
+      \ {\n  sim_kernel_reset();\n\n  sim_fd_t ls = listener_setup(5000, 1);\n  if (ls < 0) {\n    printf(\"\
+      LISTENER: setup failed (%d)\\n\", ls);\n    return 1;\n  }\n  printf(\"LISTENER: bound port 5000\
+      \ (backlog 1)\\n\");\n\n  sim_fd_t a = connector_setup(5000);\n  if (a < 0) {\n    printf(\"CONN-A:\
+      \ refused (%d)\\n\", a);\n    return 1;\n  }\n  printf(\"CONN-A: connected through the backlog\\\
+      n\");\n\n  /* The backlog is full now, so connector B bounces right away. */\n  sim_fd_t b = connector_setup(5000);\n\
+      \  if (b < 0) {\n    printf(\"CONN-B: refused (backlog full)\\n\");\n  } else {\n    printf(\"CONN-B:\
+      \ connected\\n\");\n  }\n\n  /* Accepting frees a backlog slot; B gets through on retry. */\n  sim_fd_t\
+      \ served = listener_serve(ls);\n  if (served < 0) {\n    printf(\"LISTENER: accept failed (%d)\\\
+      n\", served);\n    return 1;\n  }\n  printf(\"LISTENER: accepted one connection\\n\");\n\n  sim_fd_t\
+      \ b2 = connector_setup(5000);\n  if (b2 < 0) {\n    printf(\"CONN-B: refused again (%d)\\n\", b2);\n\
+      \    return 1;\n  }\n  printf(\"CONN-B: connected after a slot opened\\n\");\n  return 0;\n}\n"
+  - path: test_runner.c
+    content: "#include <assert.h>\n#include <stdio.h>\n#include \"socksim.h\"\n#include \"listener.h\"\
+      \n#include \"connector.h\"\n\nstatic sim_endpoint_t ep_for(int port) {\n  sim_endpoint_t ep;\n \
+      \ ep.port = port;\n  ep.nic = SIM_NIC_ALL;\n  return ep;\n}\n\nstatic void test_socket_attributes_are_validated(void)\
+      \ {\n  sim_kernel_reset();\n  assert(sim_socket(3, SIM_SOCK_STREAM, 0) == SIM_ERR_STATE);\n  assert(sim_socket(SIM_AF_INET,\
+      \ 9, 0) == SIM_ERR_STATE);\n  assert(sim_socket(SIM_AF_UNIX, SIM_SOCK_STREAM,\n                \
+      \    SIM_PROTO_DEFAULT) >= 0);\n}\n\nstatic void test_call_order_is_enforced(void) {\n  sim_kernel_reset();\n\
+      \  sim_fd_t s = sim_socket(SIM_AF_UNIX, SIM_SOCK_STREAM,\n                          SIM_PROTO_DEFAULT);\n\
+      \  assert(s >= 0);\n  /* accept() before listen() */\n  assert(sim_accept(s) == SIM_ERR_STATE);\n\
+      \  /* listen() before bind() */\n  assert(sim_listen(s, 1) == SIM_ERR_STATE);\n\n  sim_endpoint_t\
+      \ ep = ep_for(5000);\n  assert(sim_bind(s, &ep) == SIM_OK);\n\n  sim_fd_t other = sim_socket(SIM_AF_UNIX,\
+      \ SIM_SOCK_STREAM,\n                              SIM_PROTO_DEFAULT);\n  assert(other >= 0);\n \
+      \ /* the 2-byte port must stay inside 0..65535 */\n  sim_endpoint_t over = ep_for(65536);\n  assert(sim_bind(other,\
+      \ &over) == SIM_ERR_STATE);\n  /* a port cannot be bound twice */\n  sim_endpoint_t dup = ep_for(5000);\n\
+      \  assert(sim_bind(other, &dup) == SIM_ERR_INUSE);\n  sim_endpoint_t ep2 = ep_for(5001);\n  assert(sim_bind(other,\
+      \ &ep2) == SIM_OK);\n\n  /* the backlog must hold at least one slot */\n  assert(sim_listen(s, 0)\
+      \ == SIM_ERR_STATE);\n  assert(sim_listen(s, 2) == SIM_OK);\n  assert(sim_listen(other, 1) == SIM_OK);\n\
+      \n  /* accept() on an empty backlog would block */\n  assert(sim_accept(s) == SIM_ERR_STATE);\n\
+      \  /* a listening socket never connects outward */\n  sim_endpoint_t nobody = ep_for(7000);\n  assert(sim_connect(other,\
+      \ &nobody) == SIM_ERR_STATE);\n  /* a plain connector reaching a port with no listener: REFUSED\
+      \ */\n  sim_fd_t wanderer = sim_socket(SIM_AF_UNIX, SIM_SOCK_STREAM,\n                         \
+      \        SIM_PROTO_DEFAULT);\n  assert(wanderer >= 0);\n  assert(sim_connect(wanderer, &nobody)\
+      \ == SIM_ERR_REFUSED);\n  /* port 5001 IS listening */\n  sim_fd_t c0 = sim_socket(SIM_AF_UNIX,\
+      \ SIM_SOCK_STREAM,\n                           SIM_PROTO_DEFAULT);\n  assert(c0 >= 0);\n  assert(sim_connect(c0,\
+      \ &ep2) == SIM_OK);\n  /* a socket that is already attached cannot reconnect */\n  assert(sim_connect(c0,\
+      \ &ep2) == SIM_ERR_STATE);\n  /* a listening socket never connects outward */\n  assert(sim_connect(s,\
+      \ &ep2) == SIM_ERR_STATE);\n}\n\nstatic void test_helper_flows(void) {\n  sim_kernel_reset();\n\
+      \  sim_fd_t ils = listener_setup(6000, 1);\n  assert(ils >= 0);\n  sim_fd_t ic1 = connector_setup(6000);\n\
+      \  assert(ic1 >= 0);\n  sim_fd_t svc = listener_serve(ils);\n  assert(svc >= 0);\n  /* serving again\
+      \ on an empty backlog reports the block case */\n  assert(listener_serve(ils) == SIM_ERR_STATE);\n\
+      \  /* refused: nothing listens on this port */\n  assert(connector_setup(7777) == SIM_ERR_REFUSED);\n\
+      \  /* refused: the port is already bound */\n  assert(listener_setup(6000, 1) == SIM_ERR_INUSE);\n\
+      }\n\nstatic void test_dedicated_sockets_per_connection(void) {\n  sim_kernel_reset();\n  sim_fd_t\
+      \ ils = listener_setup(7001, 2);\n  assert(ils >= 0);\n  sim_fd_t ic1 = connector_setup(7001);\n\
+      \  sim_fd_t ic2 = connector_setup(7001);\n  assert(ic1 >= 0 && ic2 >= 0);\n  assert(ic1 != ic2);\n\
+      \  /* backlog 2 is now full */\n  assert(connector_setup(7001) == SIM_ERR_REFUSED);\n  /* the kernel\
+      \ dedicates ONE socket per accepted connection */\n  sim_fd_t svc1 = listener_serve(ils);\n  sim_fd_t\
+      \ svc2 = listener_serve(ils);\n  assert(svc1 >= 0 && svc2 >= 0 && svc1 != svc2);\n  /* FIFO: the\
+      \ first connector served first */\n  assert(svc1 == ic1);\n  assert(svc2 == ic2);\n  assert(sim_get_connection(svc1)\
+      \ == SIM_ERR_NOSOCKET);\n  /* a dedicated socket never carries a further attachment */\n  assert(sim_get_connection(ic1)\
+      \ == SIM_ERR_NOSOCKET);\n  /* accepting freed a slot, so the retry connects */\n  assert(connector_setup(7001)\
+      \ >= 0);\n}\n\nint main(void) {\n  test_socket_attributes_are_validated();\n  test_call_order_is_enforced();\n\
+      \  test_helper_flows();\n  test_dedicated_sockets_per_connection();\n  printf(\"SOCKSIM TESTS PASSED\\\
+      n\");\n  return 0;\n}\n"
+  - path: listener.c
+    content: ''
+  - path: connector.c
+    content: ''
+  commands:
+    run: gcc -Wall -Wextra -std=c99 listener.c connector.c sim_kernel.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 listener.c connector.c sim_kernel.c test_runner.c -o test_runner
+      && ./test_runner
+  hints:
+  - 'Read sim_kernel.c''s error ladders first: each call tells you the exact invoke order the helpers
+    must follow and which code to return when a step fails.'
+  - listener_setup = sim_socket(SIM_AF_UNIX, SIM_SOCK_STREAM, SIM_PROTO_DEFAULT) -> sim_bind({port, SIM_NIC_ALL})
+    -> sim_listen(backlog). connector_setup = the same attribute trio -> sim_connect -> sim_get_connection.
+  - 'Short-circuit errno-style: return the first failing step''s code. The connector must fetch the dedicated
+    fd only AFTER a successful connect, or main() cannot count the served connections.'
+  test_cases:
+  - name: Demo transcript, byte for byte
+    stdin: ''
+    expect: 'LISTENER: bound port 5000 (backlog 1)
+
+      CONN-A: connected through the backlog
+
+      CONN-B: refused (backlog full)
+
+      LISTENER: accepted one connection
+
+      CONN-B: connected after a slot opened
+
+      '

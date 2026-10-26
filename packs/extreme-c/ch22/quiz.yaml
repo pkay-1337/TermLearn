@@ -1,0 +1,1125 @@
+quiz:
+- kind: mcq
+  level: intro
+  q: A teammate argues that all single-host IPC techniques push messages through a channel. Which technique
+    from the chapter refutes that claim?
+  choices:
+  - POSIX message queues
+  - Unix domain sockets
+  - The filesystem as a shared medium
+  - Internet sockets
+  answer: 2
+  why: 'The filesystem (like shared memory) is pull-based: messages are stored
+
+    in a shared medium and stay there until a process fetches them, with no
+
+    channel pushing anything to the reader. Everything else in the option
+
+    list is push-based.
+
+    Option A, B, and D are all channel-based push techniques.
+
+    '
+  concept: pull-based-membership
+- kind: predict
+  level: core
+  q: A producer pushes a job into a Unix domain socket queue while the consumer process is still booting
+    (not yet running). Predict the fate of the job.
+  choices:
+  - It waits in an intermediate storage medium until the consumer boots
+  - It is mirrored to the filesystem by the kernel
+  - It is retried automatically by the kernel after the consumer appears
+  - 'It may be lost: push-based delivery needs both processes up and running at the same time'
+  answer: 3
+  why: 'Push-based techniques carry messages through a channel without an
+
+    intermediate medium; if the receiver is not running at delivery time,
+
+    the incoming message may be lost. Nothing refiles or retries it.
+
+    A describes the pull-based world; Options C and D invent
+
+    mechanisms the chapter never grants.
+
+    '
+  concept: push-vs-pull-failure-mode
+- kind: why-fails
+  level: advanced
+  q: A service writes its outgoing queue messages into a pipe's kernel buffer and reads them back a day
+    later after its own restart. Why does this fail?
+  choices:
+  - Because pipes serialize only one message per read attempt
+  - Because days-long waits exceed the pipe descriptor's counter
+  - Because pipes drain their buffer into the filesystem at each write
+  - Because push-based buffers live only as long as the process runs — exiting destroys them, unlike pull-based
+    media that outlive the process
+  answer: 3
+  why: 'The push-based message buffer is a temporary per-process kernel
+
+    structure: it exists exactly as long as the process runs, and it is
+
+    destroyed when the process quits. Pull-based media — files, shared
+
+    memories — are the ones that persist independently and serve later
+
+    fetches.
+
+    A invents a read-limit rule. C invents a drain-to-disk
+
+    mechanism. B invents a time limit on descriptors.
+
+    '
+  concept: kernel-buffer-lifetime
+- kind: mcq
+  level: core
+  q: Which pair correctly describes the two sides of the byte-translation layer?
+  choices:
+  - Marshalling serializes an object into bytes before transmission; unmarshaling deserializes received
+    bytes back into the object
+  - Marshalling compresses bytes; unmarshaling encrypts them
+  - Marshalling splits messages into packets; unmarshaling reassembles packets
+  - Marshalling serializes at the receiver; unmarshaling serializes at the sender
+  answer: 0
+  why: 'Marshalling (serialization) translates an object into a well-ordered
+
+    byte series before sending or storing; unmarshaling (deserialization)
+
+    performs the inverse resurrection at the receiving end.
+
+    Option B swaps in unrelated content-level steps. Option C describes
+
+    network-layer packetization. Option D reverses the sender/receiver
+
+    roles.
+
+    '
+  concept: serialization-definition
+- kind: fillblank
+  level: intro
+  q: 'Complete the chapter''s constraint: ''In fact, processes can only transmit a series of ___.'''
+  code: "IPC wire reality:\n  objects -> [ ___ ] -> wire -> [ ___ ] -> object\n"
+  answer_text: bytes
+  why: 'The chapter''s foundational sentence: processes can transmit only
+
+    series of bytes, which is why serialization exists at all — every
+
+    object, text or binary, must first become an ordered byte series.
+
+    '
+  concept: bytes-only-token
+- kind: eipe
+  level: advanced
+  q: What is the purpose of calling both operations by the same protocol's rules, rather than letting
+    each end pick its own byte order?
+  choices:
+  - It lets either end flip its rules at runtime for speed
+  - It guarantees both ends run compiled with the same compiler version
+  - It removes the need for a channel between the processes
+  - 'It guarantees the received byte series is interpretable, because a protocol implicitly dictates the
+    serialization: obeying the same rules on both sides is what makes resurrection possible'
+  answer: 3
+  why: 'The protocol defines the byte order very carefully, and choosing it
+
+    implicitly dictates serialization on both sides; incompatible
+
+    serializer/deserializer rule sets mean the transmitted object cannot
+
+    be reconstructed — effectively no communication.
+
+    A invents runtime flipping. C erases the channel.
+
+    B invents a compiler-version rule.
+
+    '
+  concept: protocol-dictates-serialization
+- kind: mcq
+  level: core
+  q: Which content type is the good compression candidate, and why?
+  choices:
+  - Binary content, because its 0..255 range packs densely
+  - 'Neither: IPC channels drop compressed bytes'
+  - Mixed content, because halves compress independently
+  - Textual content, because textual messages compress well, while binary messages suffer a poor compression
+    ratio (actual size divided by compressed size)
+  answer: 3
+  why: 'The chapter''s compression paragraph: textual messages are good
+
+    candidates for compression before being sent, whereas binary messages
+
+    show a poor ratio between actual size and compressed size — the reason
+
+    the textual/binary split is preserved at all.
+
+    A and C invert or invent. B invents channel behavior.
+
+    '
+  concept: compression-ratio-definition
+- kind: predict
+  level: core
+  q: A purely textual JSON protocol must carry a JPEG image. The team says 'paste the bytes straight in'.
+    Predict the outcome of the message exchange.
+  choices:
+  - It works as-is, because text is a superset of binary
+  - It works only if the JSON payload is under 255 bytes
+  - It breaks at the channel level because pipes reject JFIF headers
+  - 'It breaks: textual content allows only characters used in text, so the bytes must first be encoded
+    — Base64-style — into textual characters'
+  answer: 3
+  why: 'Textual content admits only the characters used in text; arbitrary
+
+    byte values 0..255 violate the contract. Binary-to-text encodings
+
+    such as Base64 exist exactly for this: they represent binary content
+
+    using textual characters, widely used with purely textual protocols
+
+    such as JSON.
+
+    A states the opposite relationship. C invents channel
+
+    filtering. B invents a size-based rule.
+
+    '
+  concept: base64-purpose
+- kind: trace
+  level: core
+  q: Trace a variable-length read loop fed a straddling chunk. What does the target cell conclude?
+  trace:
+    headers:
+    - Feed
+    - Bytes offered
+    - Decoder verdict
+    rows:
+    - - feed 1
+      - prefix of msg A (2 of 4 bytes)
+      - keep buffering; no verdict yet
+    - - feed 2
+      - rest of A's prefix + first payload byte
+      - claim latched; payload incomplete
+    - - feed 3
+      - rest of A's payload + full msg B
+      - one verdict per call; B waits
+    - - feed 4
+      - no new bytes (n == 0)
+      - the hold row above resolves
+  target:
+    row: 2
+    col: 2
+  answer_text: one verdict per call; B waits
+  why: 'With variable-length messages a chunk boundary rarely coincides with a
+
+    message boundary. The receiver may read multiple chunks before a
+
+    complete message arrives, and one chunk itself can carry data from two
+
+    adjacent messages. The framer therefore reports at most one completion
+
+    per call and defers the message that completed later inside the same
+
+    call to the next call.
+
+    '
+  concept: framing-straddle-trace
+- kind: order
+  level: core
+  q: 'Arrange the serialize-and-send pipeline into its correct order:'
+  lines:
+  - serialize the object into a byte array (per the protocol's rules)
+  - prefix the byte array with its length (variable-length framing)
+  - push the framed bytes into the channel
+  - receiver consumes bytes and rebuilds the object
+  answer_order:
+  - 0
+  - 1
+  - 2
+  - 3
+  why: 'Serialization happens first, at the sending process, before any framing
+
+    or pushing; the length announcement travels with the bytes; the channel
+
+    transports the framed stream; and deserialization at the far end closes
+
+    the loop. Reordering these steps would send objects or unannounceable
+
+    bytes down the wire.
+
+    Every line participates; the pipeline is linear.
+
+    '
+  concept: pipeline-order
+- kind: mcq
+  level: intro
+  q: The third variable-length partitioning method is named after which theoretical model?
+  choices:
+  - Pushdown automata stack discipline
+  - A hash-map keyed by message length
+  - Turing-tape cursor arithmetic
+  - A finite-state machine walking a regular grammar, used by an FSM-based deserializer
+  answer: 3
+  why: 'The chapter''s third partitioning method models the protocol as a
+
+    finite-state machine: protocols following a regular grammar let the
+
+    receiver run a proper FSM-based deserializer that knows if a complete
+
+    message has arrived.
+
+    A mentions a different automaton class. C invents tape
+
+    arithmetic. B invents a keyed table.
+
+    '
+  concept: fsm-method-definition
+- kind: why-fails
+  level: advanced
+  q: A TLV-style receiver reads its length prefix in host byte order while the sender wrote it big-endian,
+    so the framing collapses. Which explanation matches the chapter's language about variable-length receiving?
+  choices:
+  - The receiver cannot know upfront whether it read a complete message — it relies entirely on the announced
+    content length, so misreading that announcement wrecks the whole framing
+  - TLV protocols forbid big-endian prefixes; the sender ignored the standard
+  - The kernel converted the prefix in transit, flipping the bytes
+  - Length prefixes are only for fixed-length messages; using one with variable-length messages is an
+    error
+  answer: 0
+  why: 'Variable-length receiving is hard exactly because the receiver must
+
+    decide — from the transmitted bytes alone — whether it holds a complete
+
+    message or must read more. The announced length inside the prefix is
+
+    that decision''s input; decoding it wrongly means every subsequent byte
+
+    boundary is a guess.
+
+    Option B invents a compel rule against big-endian. Option C invents
+
+    in-transit rewriting. Option D reverses the assignment: length prefixes
+
+    are precisely the variable-length technique.
+
+    '
+  concept: length-prefix-interpretation
+- kind: mcq
+  level: core
+  q: Which scenario best matches a synchronous (sequential) protocol conversation?
+  choices:
+  - The client fires the request, then attends to other work while waiting for a callback
+  - The two ends exchange datagrams with no established channel
+  - The server regularly contacts the client for pending results
+  - The client sends the request and stays blocked until the listener replies
+  answer: 3
+  why: 'Sequential, synchronous means the sender waits for the listener to
+
+    complete the request and send back the reply — the sender remains in a
+
+    blocking state throughout.
+
+    A and the server-initiated polling in C describe
+
+    asynchronous schemes; B is a transport-style confusion.
+
+    '
+  concept: synchronous-blocking-definition
+- kind: predict
+  level: advanced
+  q: A pulling-based async client polls its listener every second over a busy day while waiting for a
+    long result. Predict the correct characterization of its main loop.
+  choices:
+  - The loop blocks on the listener socket between polls
+  - The loop keeps running all day and simply asks the listener about the result at each poll — responsiveness
+    is preserved but polling traffic is paid
+  - The listener pushes the result, so no loop can be written
+  - The loop must terminate while the result is pending
+  answer: 1
+  why: 'Pulling means the sender regularly asks the listener about the result;
+
+    the sender is not blocked and stays responsive between ask attempts.
+
+    The cost is the polling traffic itself.
+
+    Option A reintroduces the synchronous block. Option C confuses pulling
+
+    with its sibling mechanism. Option D invents a termination rule.
+
+    '
+  concept: pulling-behavior-predict
+- kind: fillblank
+  level: core
+  q: 'Complete the async mechanism: ''In an asynchronous protocol, there should be a ___ mechanism allowing
+    the sender to check for the reply whether the result is ready.'''
+  answer_text: pulling
+  why: 'The chapter names pulling and pushing as the two reply mechanisms
+
+    available to a non-blocked asynchronous sender — pulling is the
+
+    regular-asking one.
+
+    '
+  concept: pulling-token
+- kind: choose-better
+  level: advanced
+  q: A nightly batch gateway accepts heavy jobs where each job minutes to finish. For the submitter process
+    the design must keep it responsive. Which scheme fits the chapter's sequentiality model best?
+  choices:
+  - Synchronous request-response, so the submitter's socket stays simple
+  - Asynchronous with pushing of the reply through a different communication channel, so the submitter
+    keeps working and receives the result when ready
+  - Synchronous with a hard 5-minute block, since batch jobs expect waiting
+  - Asynchronous with shared-memory polling, since queues forbid async
+  answer: 1
+  why: 'Long jobs punish the blocking sender of a synchronous scheme. The
+
+    asynchronous model frees the sender to continue with another task and
+
+    delivers the reply when ready — pushed back either through the same or
+
+    a different communication channel.
+
+    Option A and C accept the downtime the requirement forbids. Option D
+
+    invents a queue ban and repurposes the previous chapter''s medium.
+
+    '
+  concept: async-choice-batch
+- kind: mcq
+  level: intro
+  q: When is overlaying channel bytes directly with a C structure the chapter's recommended move?
+  choices:
+  - Always, for any byte stream
+  - When messages are fixed-length and usually share one structure, so predefined fields can map the bytes
+  - Only for textual protocols
+  - Never — structures must never touch channels
+  answer: 1
+  why: 'Fixed-length messages whose sizes are known upfront open the
+
+    opportunity — ''a nice one'', per the chapter — to overlay a C structure
+
+    with those bytes, mirroring how objects were placed into shared
+
+    memories in the earlier chapter.
+
+    Option A overreaches to arbitrary streams. Option C and D invent
+
+    textual/never rules.
+
+    '
+  concept: fixed-length-design-decision
+- kind: why-fails
+  level: core
+  q: A team points a previously-working struct-overlay pipeline at a channel whose messages vary from
+    12 to 200 bytes. Rows of garbage appear. Why?
+  choices:
+  - Because struct overlays corrode when channels vary speed
+  - Because with variable-length messages the receiver has no upfront byte count, so the overlay's field
+    boundaries are meaningless
+  - Because structures only work on fixed-length pipes of exactly 200 bytes
+  - Because struct overlays need the filesystem behind the channel
+  answer: 1
+  why: 'The overlay trick depends on knowing — before reading — how many bytes
+
+    belong to the message. Variable-length channels provide no such number,
+
+    so the predefined field offsets no longer frame the actual content and
+
+    every field reads shifted garbage; the receiver must switch to an
+
+    explicit partitioning method.
+
+    Option A invents speed corrosion. Option C invents a magic size.
+
+    Option D invents a filesystem dependency.
+
+    '
+  concept: variable-length-struct-break
+- kind: mcq
+  level: advanced
+  q: The chapter hedges one word when relating message size to message structure. Which hedge is it?
+  choices:
+  - Fixed-length messages are 'usually (not always)' also same-structured, so verify the structure before
+    overlaying a struct
+  - Fixed-length messages are 'never' structured alike
+  - Variable-length messages are 'always' structured alike
+  - Message size and message structure are unrelated
+  answer: 0
+  why: 'The chapter''s exact words: messages with the same size usually — but
+
+    not always — have the same structure. The hedge is the caveat that
+
+    licenses struct overlays after a check, not blindly.
+
+    Option B and C contradict the hedge; Option D denies the documented
+
+    relationship.
+
+    '
+  concept: same-size-structure-hedge
+- kind: mcq
+  level: intro
+  q: Which statement about file descriptors is FALSE, per the chapter?
+  choices:
+  - A file descriptor can represent a push-based IPC channel
+  - A file descriptor can refer to a regular file located on a hard disk or in memory
+  - A file descriptor can only refer to files opened by its own process from the disk
+  - A file descriptor can refer to device files, usually found in the /dev directory
+  answer: 2
+  why: 'The chapter extends the reach of file descriptors beyond open disk
+
+    files: regular files (disk or in-memory filesystems), device files
+
+    (typically under /dev), and — key for this chapter — the descriptors
+
+    can represent push-based IPC channels themselves for read/write.
+
+    Option A, B, and D are the chapter''s true statements; only Option C
+
+    invents a disk-only, own-open restriction.
+
+    '
+  concept: fd-reach
+- kind: trace
+  level: core
+  q: Trace a channel setup's descriptor table from boot to first byte. What belongs in the target cell?
+  trace:
+    headers:
+    - Stage
+    - Descriptor event
+    - Table state
+    rows:
+    - - boot
+      - standard handles inherited
+      - fds 0/1/2 present
+    - - setup
+      - IPC channel opens its descriptors
+      - new fds join the table for the channel's ends
+    - - traffic
+      - read/write through those fds
+      - byte flow on the channel
+  target:
+    row: 1
+    col: 2
+  answer_text: new fds join the table for the channel's ends
+  why: 'Setting up a push-based IPC channel starts with defining a number of
+
+    file descriptors — the fresh handles beyond the inherited standard set
+
+    become the channel''s read and write ends and carry all subsequent
+
+    traffic.
+
+    '
+  concept: fd-lifecycle-trace
+- kind: mcq
+  level: advanced
+  q: What distinguishes a socket descriptor from the file descriptors seen so far in this course?
+  choices:
+  - Nothing — the two names alias the same integer namespace with identical meaning
+  - File descriptors refer to regular or device files; socket descriptors refer to socket objects created
+    by socket(), accept(), and connect()
+  - Socket descriptors are strings; file descriptors remain integers
+  - Socket descriptors exist only when the endpoint is remote
+  answer: 1
+  why: 'Both are integers, but they refer to different object kinds: fd targets
+
+    files (regular or device), while a socket descriptor identifies a
+
+    socket object born from socket, accept, or connect. Notably the same
+
+    read/write and non-blocking API persists over both.
+
+    Option A erases the distinction. Option C invents strings. Option D
+
+    invents a locality rule.
+
+    '
+  concept: socket-descriptor-distinction
+- kind: mcq
+  level: intro
+  q: What makes SIGKILL special among the signals of the chapter's example?
+  choices:
+  - It is the only signal a thread can send to itself
+  - It is the only signal the shell command kill cannot transmit
+  - It cannot be handled by any process — the registration line in the example is futile
+  - It is the only signal with a default action of stopping the program
+  answer: 2
+  why: 'SIGKILL''s sole job is to kill the process, and the chapter states
+
+    plainly that it cannot be handled by any process; installing a handler
+
+    for it (as the example does) changes nothing — the shell demo shows the
+
+    process dying with no handler output.
+
+    Option A describes raise, not SIGKILL. Option B invents a shell
+
+    restriction. Option D misnames the default-action class.
+
+    '
+  concept: sigkill-uncatchable
+- kind: predict
+  level: core
+  q: A program registers one handler for SIGUSR1 and SIGUSR2 and another for SIGINT. The shell then performs
+    kill -SIGUSR1 followed by kill -SIGINT. Predict what prints.
+  choices:
+  - The SIGINT line, then the SIGUSR1 line — signals queue strictly
+  - 'Only the SIGUSR1 line: SIGINT kills the program before delivery'
+  - The registered handler prints its user-signal line for the first kill; the SIGINT handler prints its
+    line for the second; the program stays alive between them
+  - Nothing — external kill signals bypass user handlers
+  answer: 2
+  why: 'Each registered signal routes to its registered handler: the user
+
+    signal finds the switch-based handler, the interrupt finds its own —
+
+    and a handled signal replaces its default stop, so the program remains
+
+    alive in its busy loop between deliveries. Signal delivery happens
+
+    asynchronously to that loop.
+
+    Option A invents queue ordering of handler lines; Option B misstates
+
+    SIGINT''s default; Option D denies handler routing.
+
+    '
+  concept: signal-routing-predict
+- kind: spot-bug
+  level: advanced
+  q: A worker wants to interrupt itself politely. It compiles and runs, but the expectation about who
+    receives the signal is wrong. Which line carries the bug?
+  code: "void handler(int signal) {\n  printf(\"caught %d\\n\", signal);\n}\nint worker_main(void) {\n\
+    \  signal(SIGUSR1, handler);      /* line 4  */\n  kill(worker_pid, SIGUSR1);     /* line 5  */\n\
+    \  ...\n}\n"
+  diagnostic_log: 'Runtime behavior: the signal is delivered to the process identified by
+
+    worker_pid — but the author assumed raise() semantics and expected
+
+    delivery restricted to the CALLING THREAD.
+
+    '
+  target_line: 5
+  choices:
+  - 'Line 5: kill(worker_pid, SIGUSR1) targets the process owning that PID; if the author wanted self-delivery
+    to the current THREAD, the call should be raise(SIGUSR1)'
+  - 'Line 4: the handler must be registered AFTER the send'
+  - 'Line 5: kill needs the signal number first, PID second'
+  - 'Line 4: SIGUSR1 requires a thread-specific registration API'
+  answer: 0
+  why: 'The chapter''s pair of senders: kill takes the target PID and signals
+
+    that process; a process or thread may signal itself too — and raise
+
+    sends the signal to the current thread. Using kill with a process PID
+
+    while reasoning about per-thread delivery is the confusion flagged in
+
+    the log.
+
+    Option B invents an ordering rule. Option C swaps the parameters.
+
+    Option D invents a thread-specific API.
+
+    '
+  concept: kill-vs-raise-bug
+- kind: fillblank
+  level: core
+  q: 'Complete the library call that mirrors the shell''s kill command for a target process: kill(___,
+    SIGUSR2).'
+  answer_text: target_PID
+  why: 'kill accepts two parameters — the first is the target PID, the second
+
+    the signal number; when a process knows another process''s PID, it can
+
+    signal it directly from user code.
+
+    '
+  concept: kill-parameter-token
+- kind: order
+  level: core
+  q: 'Arrange the signal-handling setup into the safe program order:'
+  lines:
+  - '#include <signal.h>'
+  - void handler(int signal) { ... }
+  - signal(SIGUSR1, handler);
+  - while (1) { /* work */ }
+  answer_order:
+  - 0
+  - 1
+  - 2
+  - 3
+  why: 'The include must precede the constant use; the handler definition must
+
+    precede its registration (the name must exist); registration must
+
+    precede any signal delivery the loop attracts — otherwise early
+
+    signals default. The busy loop then runs, and asynchronous delivery
+
+    interrupts it.
+
+    Each line participates exactly once.
+
+    '
+  concept: signal-setup-order
+- kind: predict
+  level: core
+  q: 'A child process, fresh after fork, still holds both pipe ends. Predict which of the following calls
+    fails outright:'
+  choices:
+  - write(fds[1], bytes, n) — writing the pipe's write end
+  - read(fds[0], buf, n) — reading the pipe's read end
+  - write(fds[0], bytes, n) — writing what is actually the pipe's read end
+  - close(fds[1]) — closing the write end this process will not use
+  answer: 2
+  why: 'fds[0] is used for reading and fds[1] for writing — the roles
+
+    are fixed at pipe creation and never swap after fork. Writing
+
+    to the read end addresses the wrong descriptor role and fails,
+
+    as the reversed-wiring demonstration shows.
+
+    Options A, B, and D are all legal moves when roles are assigned:
+
+    the child writes its write end, the parent reads its read end,
+
+    and each side closes the end it will never use.'
+  concept: pipe-end-role-predict
+- kind: predict
+  level: core
+  q: A writer pushes data into a pipe whose kernel buffer is already full while the reader is stuck in
+    a sleep loop. Predict the writer's fate.
+  choices:
+  - The write returns a short count and the excess buffers in user space
+  - The write's operations remain blocked until a consumer reads bytes from the pipe
+  - The pipe grows its kernel buffer until RAM runs out
+  - The write corrupts the oldest buffered bytes
+  answer: 1
+  why: 'Both pipes and message queues hold a limited kernel buffer: writing
+
+    without a consumer leads to all write operations being blocked until
+
+    someone reads from the pipe. Buffer growth and corruption are not in
+
+    the contract.
+
+    Option A invents user-space spillover; Option C invents dynamic growth;
+
+    Option D invents overwrite semantics.
+
+    '
+  concept: pipe-full-block-predict
+- kind: why-fails
+  level: advanced
+  q: 10-, 20-, and 30-byte messages were written into a POSIX pipe and later into a message queue. A consumer
+    requests 15 bytes. Both sides then behave differently. Which explanation is the chapter's?
+  choices:
+  - The pipe only knows it holds 60 bytes, so it happily serves a 15-byte chunk cutting across its message
+    boundaries; the queue holds 3 messages and refuses — no message is 15 bytes
+  - The pipe recompresses and delivers 15 bytes; the queue cannot
+  - The queue performs a partial read but logs a warning
+  - Both refuse; only fixed-length channels allow 15-byte reads
+  answer: 0
+  why: 'The chapter''s concrete demo: inside a pipe, elements are bytes — the
+
+    pipe ''only knows that it has 60 bytes inside'' and does not care about
+
+    boundaries, so a 15-byte read works. Message queues preserve the
+
+    boundaries between written messages, and since none of the three has
+
+    15 bytes, such a read is not allowed.
+
+    Option B and C invent behavior the chapter denies; Option D invents a
+
+    fixed-length-only rule.
+
+    '
+  concept: mq-boundary-contrast
+- kind: mcq
+  level: intro
+  q: For a named pipe shared by two separately-started processes, how is the one-way channel established?
+  choices:
+  - Both processes open the queue file read-write and flip roles
+  - One process creates it with mkfifo and opens write-only; the other opens the same path read-only
+  - The second process forks from the first to inherit the ends
+  - Both processes attach before creation; the kernel merges them
+  answer: 1
+  why: 'mkfifo creates a queue file by path; other processes use that path to
+
+    open the already-created pipe instance. Since the channel stays
+
+    unidirectional, the roles split by open mode: read-only for the
+
+    consumer, write-only for the producer.
+
+    Option A invents flipping legal modes; Option C describes the
+
+    unrelated-process inheritance that does not exist; Option D invents
+
+    pre-attach merging.
+
+    '
+  concept: fifo-open-modes
+- kind: trace
+  level: advanced
+  q: Trace the named-pipe rendezvous. What is the target cell's state at t1?
+  trace:
+    headers:
+    - t
+    - Process X
+    - Process Y
+    rows:
+    - - t0
+      - calls mkfifo and creates the queue file by path
+      - not started yet
+    - - t1
+      - opens the file write-only and starts writing
+      - starts later, finds the queue file by its path
+    - - t2
+      - keeps writing
+      - opens read-only and consumes
+  target:
+    row: 1
+    col: 2
+  answer_text: starts later, finds the queue file by its path
+  why: 'The queue file is the rendezvous point: the creator''s mkfifo makes the
+
+    name discoverable, and the second process — started entirely
+
+    independently — reaches the same pipe instance through the path, which
+
+    is why the inheritance requirement of anonymous pipes disappears.
+
+    '
+  concept: fifo-rendezvous-trace
+- kind: why-fails
+  level: core
+  q: A developer sizes a queue by treating mq_maxmsg as a total-byte budget — '10 messages means my queue
+    is full at 10 bytes'. The queue instead overflows far past 10 bytes. Why does the reasoning fail?
+  choices:
+  - Because mq_maxmsg counts capacity in number of messages, while mq_msgsize caps each message's byte
+    size — the example sets 10 messages with a per-message cap of 32 bytes
+  - Because mq_maxmsg counts bytes but compresses them before storing
+  - Because the kernel ignores mq_maxmsg unless mq_flags enables it
+  - Because message queues have no capacity concept at all
+  answer: 0
+  why: 'The attribute quadruple is explicit: mq_maxmsg bounds the NUMBER
+
+    of messages inside the queue, and a second attribute, mq_msgsize,
+
+    bounds each message''s bytes (the example''s 32). Counting the
+
+    queue by total bytes misreads both unit families — exactly the
+
+    pipe-versus-queue capacity contrast the chapter draws.
+
+    Option B invents compression. Option C invents a flags gate.
+
+    Option D erases the capacity limits the chapter documents.'
+  concept: mq-capacity-unit-why
+- kind: predict
+  level: advanced
+  q: A queue holds nothing when three sends land with priorities 2, 5, and 3 (in that order). A consumer
+    then calls the receive function repeatedly. Predict the dequeue order.
+  choices:
+  - 2, 5, 3 — sends dequeue strictly in arrival order
+  - 5, 3, 2 — the highest priority leaves first, then the remaining in FIFO send order
+  - 3, 5, 2 — priorities compare by send slot parity
+  - The order is unspecified and may differ at each run
+  answer: 1
+  why: 'Message queues can be prioritized: the receive operation pulls the
+
+    highest-priority message first; among equals the send order holds.
+
+    Priority 5 overtakes, then the two lower ones ride out in FIFO order
+
+    (3 was sent before 2).
+
+    Option A ignores priorities; Option C invents slot arithmetic;
+
+    Option D denies the queue''s deterministic scheduling.
+
+    '
+  concept: mq-priority-order-predict
+- kind: fillblank
+  level: intro
+  q: 'Complete the cleanup pair from the example: after the descriptor is closed, ___ removes the queue
+    object itself so that future open() calls by path cannot find it.'
+  answer_text: mq_unlink
+  why: 'The parent''s exit path closes with mq_close and then calls mq_unlink
+
+    on the queue name — without the unlink, the backing object would keep
+
+    answering later opens.
+
+    '
+  concept: mq-unlink-token
+- kind: eipe
+  level: core
+  q: What is the purpose of making a Unix domain socket bidirectional, from a process's point of view?
+  choices:
+  - It halves the number of kernel buffers per socket
+  - 'It lets one socket object both read from and write to the same
+
+    underlying channel — no second instance in the opposite direction is
+
+    needed, unlike pipes and message queues'
+  - It lets the process skip synchronization on writes
+  - It converts the channel into a pull-based storage medium
+  answer: 1
+  why: 'Bidirectionality — full-duplex operation — is the chapter''s
+
+    headline UDS property: reads and writes travel through the
+
+    single socket object, so conversations avoid the two-instance
+
+    cost that pipes and queues pay per direction. It rides with
+
+    session- and message-awareness among the UDS advantages.
+
+    Option A invents buffer economics. Option C invents a
+
+    synchronization waiver. Option D misfiles UDS into the
+
+    pull-based family.'
+  concept: uds-duplex-purpose
+- kind: mcq
+  level: intro
+  q: Which ordering of the network stack's layers is correct, from the most basic upward?
+  choices:
+  - Transport -> network -> link -> physical -> application
+  - Physical -> link -> network -> transport -> application
+  - Application -> transport -> network -> link -> physical
+  - Link -> physical -> transport -> application -> network
+  answer: 1
+  why: 'The chapter walks the layers in exactly this order: physical (the
+
+    wires), link (Ethernet and friends governing transmission), network
+
+    (IP connecting LANs), transport (ports reaching processes), and
+
+    application (the protocols processes speak).
+
+    The other options shuffle the established hierarchy.
+
+    '
+  concept: layer-order
+- kind: why-fails
+  level: core
+  q: A designer proposes sending a 1 km stream down the LAN as a single unit. Why does the link layer
+    forbid it?
+  choices:
+  - Because MAC addresses exceed four segments
+  - Because link protocols enforce frames — the road-rule analogy caps vehicle length, so long data must
+    break into multiple frames traveling freely and independently
+  - Because IP timestamps reject oversized payloads
+  - Because wireless media only admit 1500-byte units
+  answer: 1
+  why: 'The link layer''s regulations break messages into pieces called frames,
+
+    like a road system that defines a maximum vehicle length: long data
+
+    becomes multiple frames, each traveling freely and independently of
+
+    the others.
+
+    Option A and D invent numeric limits from wrong layers; Option C
+
+    invents an IP-side rule.
+
+    '
+  concept: frame-break-why
+- kind: mcq
+  level: core
+  q: What IS a router, in the chapter's rendering of inter-LAN connectivity?
+  choices:
+  - A workstation with three NICs attached to the same LAN
+  - Simply another node that resides in both networks by having two NICs — one per LAN — plus a routing
+    algorithm deciding which packets transfer
+  - The kernel's networking unit inside every host
+  - The ISP's dedicated hardware box invisible to the model
+  answer: 1
+  why: 'The chapter deliberately deflates the term: a router is just another
+
+    node placed at the junction — one NIC in LAN1, one in LAN2 — whose
+
+    routing algorithm moves packets between them; joining across tens of
+
+    LANs just repeats the pattern.
+
+    Option A describes a same-LAN multi-NIC host; Option C names the
+
+    kernel unit instead; Option D invents an ISP-specific box.
+
+    '
+  concept: router-dual-nic
+- kind: choose-better
+  level: advanced
+  q: 'A host has two NICs: one rides an internal LAN, the other faces the internet. A service must accept
+    traffic on the facing NIC only. Which bind decision fits?'
+  choices:
+  - Bind the port on the internal NIC and hope the traffic finds it
+  - 'Bind with a specific NIC rather than all: the default binding reaches
+
+    every NIC, while naming the facing NIC redirects incoming data
+
+    targeted at the port through that listener alone'
+  - Skip binding entirely; listen() binds the port automatically
+  - Bind two ports on one NIC instead
+  answer: 1
+  why: 'Binding connects the port — on all NICs by default — and the
+
+    host OS redirects incoming data targeted at that port to the
+
+    bound listener process; binding a specific NIC instead
+
+    restricts the path, which is exactly what the facing-only
+
+    requirement wants.
+
+    Option A points the listener the wrong way. Option C invents
+
+    listen-time auto-binding. Option D inverts the requirement.'
+  concept: bind-nic-choice
+- kind: predict
+  level: core
+  q: A connector targets port 5555 while no process on that host has bound and is listening on 5555. Predict
+    the outcome of the connection attempt.
+  choices:
+  - The connection parks indefinitely in the kernel's backlog
+  - The host's kernel refuses the connection — no listener endpoint matches
+  - The connector binds 5555 for itself and self-connects
+  - The port silently rebinds to the connector
+  answer: 1
+  why: 'The connector must reach a listener that has already bound the port
+
+    and sits listening; when the target endpoint is unavailable, the
+
+    connection fails — the connector''s kernel gets the refusal (as the
+
+    listener-connector sequences specify).
+
+    Option A invents a parking rule for failed targets; Option C and D
+
+    invent stealing semantics.
+
+    '
+  concept: connect-refused-predict
+- kind: mcq
+  level: advanced
+  q: What separates SOCK_RAW from the stream and datagram socket types?
+  choices:
+  - Raw sockets connect only through physical layers
+  - Raw sockets cannot be closed by normal API calls
+  - With SOCK_RAW the kernel does not parse packets — the program itself extracts and understands the
+    packet structure, and over a stream channel it must also handle lost-packet recovery and reordering
+    itself
+  - Raw sockets always pick TCP as the protocol
+  answer: 2
+  why: 'The chapter''s raw-socket paragraph: for the standard types the kernel
+
+    knows the transport protocol and hands parsed header and content over;
+
+    with SOCK_RAW, packet parsing is the program''s job — and on a stream
+
+    channel, recovery and reorder duties also fall to the program (the
+
+    implication being the kernel performs them for TCP).
+
+    Options A, B, and D each invent restrictions or defaults.
+
+    '
+  concept: raw-socket-parse
+- kind: trace
+  level: advanced
+  q: Trace a server's socket census. What does the target cell log after the twentieth accept?
+  trace:
+    headers:
+    - Event
+    - Sockets alive
+    - Note
+    rows:
+    - - socket created for listening
+      - '1'
+      - the listener socket itself
+    - - 20 connectors accepted in the loop
+      - '21'
+      - each accept returned a NEW dedicated socket object
+    - - 100 clients accepted
+      - at least 101
+      - the chapter's census for a real server
+  target:
+    row: 1
+    col: 1
+  answer_text: '21'
+  why: 'The kernel dedicates one new unique socket to every accepted
+
+    connection; the listener itself remains. Twenty accepted connections
+
+    therefore leave the listener plus twenty dedicated sockets — the
+
+    general counting rule behind the chapter''s 101-socket figure.
+
+    '
+  concept: accept-census-trace
+- kind: fillblank
+  level: core
+  q: 'Complete the sequence: a connection-oriented listener creates the socket, binds the endpoint, configures
+    the backlog with listen, and then ___ each incoming connection before any data flows.'
+  answer_text: accepts
+  why: 'In connection-oriented communication, accepting the incoming
+
+    connection is the essential listener step after configuring the
+
+    backlog — only accepted connections receive their dedicated sockets
+
+    and carry traffic.
+
+    '
+  concept: accept-token
+- kind: mcq
+  level: intro
+  q: In the Internet Protocol Suite, which renaming applies?
+  choices:
+  - The link layer is renamed the internet layer
+  - The transport layer is renamed the application layer
+  - The network layer is renamed the internet layer — where IPv4 and IPv6 dominate
+  - Nothing is renamed; IPS renames OSI itself
+  answer: 2
+  why: 'IPS''s layer list matches the discussed stack except that the network
+
+    layer becomes the internet layer, because the prominent protocols
+
+    there are IPv4, IPv6, and ICMP.
+
+    Option A and B aim at the wrong layers; Option D denies the documented
+
+    renaming.
+
+    '
+  concept: ips-renaming
+- kind: eipe
+  level: core
+  q: What is the purpose of an application protocol, once the transport channel between two processes
+    exists?
+  choices:
+  - To reroute packets when transport paths break
+  - To define what the transmitted series of bytes must mean, so that both ends understand one another
+  - To choose between TCP and UDP at every message
+  - To bind the process to its fixed port
+  answer: 1
+  why: 'Talking means transmitting a series of bytes both ends can understand,
+
+    and a communication protocol residing in the application layer defines
+
+    exactly that meaning — which is why every application process needs
+
+    one.
+
+    Option A invents rerouting; Option C confuses transport-layer choice
+
+    with application semantics; Option D folds port binding in.
+
+    '
+  concept: application-protocol-purpose

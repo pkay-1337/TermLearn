@@ -434,7 +434,23 @@ class QuestionWidget(Static):
 
         tr = check.get("trace", {})
         self._trace_step = 1
-        self._max_trace_step = max((r.get("step", 1) for r in tr.get("rows", [])), default=1)
+        self._norm_trace_rows()
+
+    def _norm_trace_rows(self) -> None:
+        """Trace rows come in two shapes: legacy dicts ({step, cells}) and
+        plain header-aligned cell lists; normalize to (step, cells) pairs."""
+        tr = self.check.get("trace", {})
+        norm: list[tuple[int, list[str]]] = []
+        for i, r in enumerate(tr.get("rows", [])):
+            if isinstance(r, dict):
+                norm.append((int(r.get("step", i + 1)) or i + 1,
+                             [str(c) for c in r.get("cells", [])]))
+            elif isinstance(r, list):
+                norm.append((i + 1, [str(c) for c in r]))
+            else:
+                norm.append((i + 1, [str(r)]))
+        self._trace_rows = norm
+        self._max_trace_step = max((s for s, _ in norm), default=1)
 
     def compose(self) -> ComposeResult:
         ck = self.check
@@ -466,9 +482,7 @@ class QuestionWidget(Static):
         elif kind == "fillblank":
             yield Input(placeholder="type the missing token", id="fill-in", classes="question-input")
         elif kind == "trace":
-            tr = ck.get("trace", {})
             self._trace_step = 1
-            self._max_trace_step = max((r.get("step", 1) for r in tr.get("rows", [])), default=1)
             yield Static(self._render_trace_table(), id="trace-table-view", classes="trace-table-box")
             with Horizontal(classes="trace-nav-bar"):
                 yield Button("◀ Prev Step (p)", id="btn-trace-prev")
@@ -487,14 +501,13 @@ class QuestionWidget(Static):
         ck = self.check
         tr = ck.get("trace", {})
         headers = tr.get("headers", ["Step", "Variable", "Address", "Value"])
-        rows = tr.get("rows", [])
         tgt = ck.get("target", {})
         lines = []
         lines.append(" | ".join(headers))
         lines.append("-|-".join(["---" * max(3, len(h)) for h in headers]))
-        for r_idx, r in enumerate(rows):
-            if r.get("step", 1) <= getattr(self, "_trace_step", 1):
-                cells = list(r.get("cells", []))
+        for r_idx, (step, cells) in enumerate(getattr(self, "_trace_rows", [])):
+            if step <= getattr(self, "_trace_step", 1):
+                cells = list(cells)
                 if r_idx == tgt.get("row") and 0 <= tgt.get("col", -1) < len(cells):
                     cells[tgt["col"]] = "[ ??? ]"
                 lines.append(" | ".join(str(c) for c in cells))

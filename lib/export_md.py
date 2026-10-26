@@ -16,6 +16,24 @@ def build_markdown(data: dict) -> str:
             L.append(ex["code"])
             L.append("```")
             L.append("")
+            # SPEC-EXPL-003 F1 (FR-EXPL-003): explanation follows the code
+            emd = ex.get("explain_md")
+            if isinstance(emd, str) and emd.strip():
+                L.append(emd)
+                L.append("")
+        # SPEC-EXPL-003 F2 (FR-DIAG-005): diagram as fenced block (final step)
+        diag = b.get("diagram") or {}
+        if isinstance(diag, dict) and diag.get("kind"):
+            from lib.diagram import render as _diagram_render
+            darts = _diagram_render(diag)
+            if darts:
+                if diag.get("caption"):
+                    L.append(f"*{diag['caption']}*")
+                    L.append("")
+                L.append("```text")
+                L.append(darts[-1])
+                L.append("```")
+                L.append("")
         L.append(f"*source: {data.get('meta', {}).get('source_ref', '')} / block {b.get('id')}*")
         L.append("")
     lab = data.get("lab") or {}

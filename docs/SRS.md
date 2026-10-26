@@ -1,12 +1,14 @@
 # Software Requirements Specification — termlearn
 **Terminal Interactive Learning from Technical Books**
 
-- Version: 0.6.0 (Textual TUI: tui/ package with Home/Chapters/Menu/Study/
-  Quiz/Cards/Lab/Stats + ? overlay + hint-bar Footer; CLI run-loops stay
-  Rich, TUI interactions are Textual-native over shared lib data/scoring/
-  persistence; VR-009 pilot tests)
-- Previous: 0.5.3, 0.5.2, 0.5.1, 0.5.0, 0.4.1, 0.4.0, 0.3.1, 0.3.0, 0.2.0, 0.1.0
-- Date: 2026-10-13
+- Version: 0.7.0 (Code explain + diagram: `example.explain_md` rendered after
+  code in study/revise/TUI/export; optional block-level `diagram:` stanza
+  (`kind: flow|art`) with stepped reveal via `lib/diagram.py`; validator codes
+  EXPL-* / DIAGRAM-*; lab file-tab refresh fix. Implements SPEC-EXPL-003.
+  Change note: also corrected Appendix B index typo `FR-REL-001..003` →
+  `NFR-REL-001..003` (aligns with §7 and §9; no ID semantics change).)
+- Previous: 0.6.0, 0.5.3, 0.5.2, 0.5.1, 0.5.0, 0.4.1, 0.4.0, 0.3.1, 0.3.0, 0.2.0, 0.1.0
+- Date: 2026-10-26
 - Standards: IEEE Std 29148-2018 (SRS structure and content), RFC 2119 (requirement levels)
 - Project root: `~/Apps/termlearn/`
 - Stack decision (locked): Python 3.11+, Rich CLI first → Textual TUI later; external extractor + manual AI-chat pack generation; project lives in `~/Apps/termlearn/`
@@ -341,6 +343,7 @@ The following interaction `kind`s **MUST** be supported by v0.3 unless marked OP
 | `spot-bug` | Pinpoint buggy line and patch given compiler/sanitizer diagnostic log. | `model`, `syntax` — authentic debugging. | **REQUIRED** (v0.8+) |
 | `micro-lab` | Edit ≤15 lines in `$EDITOR` or inline, `r=run`, `t=test`. | Any type where execution cements the idea. | **REQUIRED** via `lab.py` |
 | `ascii-viz` | Stepwise `stack/heap/pointer` diagram rendered as text; `n=next` steps. | `model` — dual coding in terminal. | **REQUIRED** renderer; per-block diagrams **SHOULD** exist for `model` blocks |
+| `diagram` | Block-level structure picture (`kind: flow` = box-and-arrow with stepped reveal, `kind: art` = verbatim ASCII); `n=next` steps like viz. | `model`, `design` — relation structure (call graph, data flow), NOT memory state. | **OPTIONAL** (SPEC-EXPL-003 F2) |
 | `dialog-ask` | Constrained Q&A: tutor answers only from current + prerequisite blocks, then redirects to a check. | Remediation inside `study`. | **OPTIONAL** in v0.3 (stub allowed); **SHOULD** be a later enhancement |
 
 Mapping rules:
@@ -399,8 +402,22 @@ blocks:                        # REQUIRED, >=1
       code: "..."              # verbatim or adapted:true
       adapted: false
       run_expected: "..."
+      explain_md: "..."        # OPTIONAL (SPEC-EXPL-003 F1): 2-6 lines Markdown,
+                               # rendered DIRECTLY under the code (study/revise/
+                               # TUI/export). whitespace-only == absent
       subgoals:                # OPTIONAL, cognitive chunking for complex examples
         - {label: "...", lines: [1,2]}
+    diagram:                   # OPTIONAL (SPEC-EXPL-003 F2): structure picture,
+      kind: flow               #   kind: flow|art; use for RELATION structure
+      caption: "..."           #   (call graph, data flow), not memory state
+      nodes:                   # REQUIRED iff kind==flow, 2-14; id unique,
+        - {id: A, label: "..."}#   label <=32 chars; shapes: box|round|diamond
+      edges:                   # REQUIRED iff kind==flow; from/to MUST be node ids
+        - {from: A, to: B, label: "..."}  # label OPTIONAL
+      steps:                   # OPTIONAL <=6; focus: node ids; stepped reveal
+        - {focus: [A, B], note: "..."}   # note OPTIONAL string
+      art: |                   # REQUIRED iff kind==art: verbatim ASCII, no ANSI
+        ...
     viz:                       # SHOULD for model; otherwise OPTIONAL
       kind: ascii-memory
       steps: ["...","..."]
@@ -735,6 +752,7 @@ Each requirement **SHALL** be verified by one or more of: Inspection (I), Demons
 | Extraction | FR-EXT-001..006 | VR-004 | `lib/epub_extract.py` |
 | AI prompt/contract | FR-GEN-001..003, FR-AI-001..007, FR-ASK-001..003 | VR-005, VR-006 | `lib/ai_prompt.py`, `prompts/*` |
 | Pack schema/validation | FR-PACK-001..006, FR-VAL-001..004 | VR-001, VR-006 | `lib/pack.py` |
+| Code explain / diagram | FR-EXPL-001..004, FR-DIAG-001..006 | VR-EXPL-001..006 | `lib/diagram.py`, `lib/pack.py`, `lib/study.py`, `lib/revise.py`, `lib/export_md.py`, `tui/` |
 | Study/learn-first | FR-STUDY-001..006 | VR-004 | `lib/study.py`, `lib/lab.py` |
 | Revise/quiz/parsons | FR-REV-001..002, FR-QUIZ-001..003, FR-PAR-001..003 | VR-004 | `lib/revise.py`, `lib/quiz.py`, `lib/parsons.py` |
 | Lab/test (AI-made, verifiable) | FR-LAB-001..004, FR-TEST-001..004 | VR-003, VR-004, VR-008 | `lib/lab.py` |
@@ -753,13 +771,13 @@ New requirements added later **MUST** extend this table. Requirements removed **
 - `concept`: telemetry tag shared across checks/cards to compute weak spots.
 - `gen_notes.md`: optional human record of AI interrogation answers.
 
-## Appendix B — Requirement ID index (v0.3.1)
+## Appendix B — Requirement ID index (v0.7.0)
 
-Functional: FR-TREE-001, FR-BOOK-001..005, FR-CHAP-001..004, FR-EXT-001..006, FR-GEN-001..003, FR-AI-001..007, FR-ASK-001..003, FR-VAL-001..004, FR-TEST-001..004, FR-PACK-001..006, FR-STUDY-001..006, FR-REV-001..002, FR-QUIZ-001..003, FR-PAR-001..003, FR-LAB-001..004, FR-SRS-001..004, FR-STAT-001..003, FR-EXP-001..002.
+Functional: FR-TREE-001, FR-BOOK-001..005, FR-CHAP-001..004, FR-EXT-001..006, FR-GEN-001..003, FR-AI-001..007, FR-ASK-001..003, FR-VAL-001..004, FR-TEST-001..004, FR-PACK-001..006, FR-STUDY-001..006, FR-REV-001..002, FR-QUIZ-001..003, FR-PAR-001..003, FR-LAB-001..004, FR-SRS-001..004, FR-STAT-001..003, FR-EXP-001..002, FR-EXPL-001..004, FR-DIAG-001..006, LAB-TAB-001..002.
 Mapping: MAP-001..005 (normative selection rules in §4.7).
 Interfaces: IF-CLI-001..008, IF-TUI-001..006, IF-SW-001..004, IF-HW-001, IF-COM-001.
-Nonfunctional/constraints: NFR-PERF-001..004, NFR-REL-001..003, NFR-USE-001..004, NFR-MAIN-001..003, NFR-SEC-001..004, CR-ENV-001..004, CR-DES-001..005, CR-GEN-001..003, AS-001..004 (assumptions, non-verifiable).
-Verification: VR-001..009.
+Nonfunctional/constraints: NFR-PERF-001..004, NFR-REL-001..003, NFR-USE-001..004, NFR-MAIN-001..003, NFR-SEC-001..004, CR-ENV-001..004, CR-DES-001..005, CR-GEN-001..003, CR-EXPL-001..004, AS-001..004 (assumptions, non-verifiable).
+Verification: VR-001..009, VR-EXPL-001..006.
 
 ## Appendix C — Pilot suggestion (non-normative)
 

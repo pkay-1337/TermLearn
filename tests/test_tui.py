@@ -683,8 +683,41 @@ async def test_study_option_selection_via_digits(tmp_path, monkeypatch):
         assert study._check_answered
 
 
+CAR_SOLUTION = """#include <stdlib.h>
+#include "car.h"
+#include "engine.h"
+
+struct car_t {
+  engine_t* engine;
+};
+
+car_t* car_new(void) {
+  car_t* car = (car_t*)malloc(sizeof(car_t));
+  if (!car) return NULL;
+  car->engine = engine_new();
+  if (!car->engine) { free(car); return NULL; }
+  return car;
+}
+
+void car_free(car_t* car) {
+  if (!car) return;
+  engine_free(car->engine);
+  free(car);
+}
+
+void car_start(car_t* car) { if (car) engine_turn_on(car->engine); }
+void car_stop(car_t* car) { if (car) engine_turn_off(car->engine); }
+double car_get_engine_temperature(const car_t* car) {
+  return car ? engine_get_temperature(car->engine) : 0.0;
+}
+"""
+
+
 async def test_multi_lab_workspace_tui(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from lib import lab_workspace as lw
+    # Hermetic: provision workspaces under tmp_path, not the developer's labs/.
+    monkeypatch.setattr(lw, "PROJECT_ROOT", tmp_path)
     app = LearnApp()
     async with app.run_test() as pilot:
         lab_screen = LabScreen("extreme-c", "ch10")
@@ -699,9 +732,10 @@ async def test_multi_lab_workspace_tui(tmp_path, monkeypatch):
         title_lbl = app.screen.query_one("#lab-title-label")
         assert "[1/3]" in str(title_lbl.render())
 
-        # File tabs are present
+        # File tabs are present and show lab1's files (4 files)
         tabs = app.screen.query(".lab-file-tab-btn")
-        assert len(tabs) >= 4
+        assert len(tabs) == 4
+        assert str(app.screen.query(".lab-file-tab-btn")[2].label) == "main.c"
 
         # Switch to Next Lab (lab2) via 'n'
         await pilot.press("n")
@@ -711,7 +745,25 @@ async def test_multi_lab_workspace_tui(tmp_path, monkeypatch):
         title_lbl2 = app.screen.query_one("#lab-title-label")
         assert "[2/3]" in str(title_lbl2.render())
 
-        # Run test verification via 't'
+        # Tab bar rebuilt for lab2's 6 files — labels refreshed (LAB-TAB-001)
+        assert len(app.screen.query(".lab-file-tab-btn")) == 6
+        assert str(app.screen.query(".lab-file-tab-btn")[2].label) == "car.h"
+        assert str(app.screen.query(".lab-file-tab-btn")[3].label) == "car.c"
+
+        # Back to lab1 via 'p' — labels return to lab1's files
+        await pilot.press("p")
+        await pilot.pause()
+        await pilot.pause()
+        assert lab_screen.lab_idx == 0
+        assert len(app.screen.query(".lab-file-tab-btn")) == 4
+        assert str(app.screen.query(".lab-file-tab-btn")[2].label) == "main.c"
+
+        # Run test verification via 't': solve car.c first (fresh workspace
+        # starts blank per FR-AI-006), then hidden tests must pass.
+        await pilot.press("n")
+        await pilot.pause()
+        await pilot.pause()
+        lw.write_workspace_file(lab_screen.workspace_dir, "car.c", CAR_SOLUTION)
         await pilot.press("t")
         await pilot.pause()
         await pilot.pause()

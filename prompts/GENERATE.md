@@ -223,14 +223,19 @@ learning science, cognitive psychology, and computing education research (CER):
 
 - Split the chapter into concept-dependency order: each block teaches exactly
   ONE new falsifiable skill (e.g. `& takes an address`, not `pointers`).
-- Block shape: `id, type, title, explain_md, example?, viz?, checks[>=1], common_bugs?`.
+- Block shape: `id, type, title, explain_md, example?, diagram?, viz?, checks[>=1], common_bugs?`.
   - `explain_md`: Typically 10–25 lines of crystal-clear, comprehensible Markdown (≤120 cols).
     MUST thoroughly unpack the concept, bridge technical jargon with intuitive mental models,
     and walk through the example code and Notional Machine state changes. Never abbreviate or
     cut short to save space; depth and conceptual clarity are paramount.
   - `example`: Verified code snippet; no line-count or column caps — include exactly as much code as the concept needs, runnable where applicable.
     Every code example MUST have an accompanying breakdown of its lines, memory mutations,
-    and design rationale in `explain_md` or check `why`.
+    and design rationale in `example.explain_md` (SPEC-EXPL-003 FR-EXPL-001..002) or check `why`.
+    - `explain_md` (example-level, OPTIONAL but REQUIRED whenever the code is non-trivial
+      or `example.run_expected` is set — SPEC-EXPL-003 F1): 2–6 lines of Markdown rendered
+      DIRECTLY under the code in study/revise/export. Keep it self-contained (the app does
+      not re-print the block prose around it) and explain the code's mechanics, memory
+      effect, or design rationale — not a restatement of the block prose.
     - `subgoals` (OPTIONAL but HIGHLY RECOMMENDED for complex multi-step examples):
       Break code into purposeful functional steps:
       ```yaml
@@ -438,6 +443,34 @@ learning science, cognitive psychology, and computing education research (CER):
   targets, null-ness), 2–6 steps, aligned with the block's `example` line
   order. A viz that merely restates prose MUST be cut.
 
+### 3.8b `diagram` — structure pictures, stepped (OPTIONAL; SHOULD for model/design blocks with non-memory structure)
+
+- [Research: same dual-coding grounding as `viz` (Paivio; Mayer 2009). Use a
+  diagram when the concept's structure is RELATION (call graph, data-flow,
+  layering, protocol exchange), not MEMORY state — `viz` owns memory.]
+- Schema (docs/SRS.md §4.8, SPEC-EXPL-003 F2 — exact vocabularies, validator
+  rejects anything else):
+  ```yaml
+  diagram:
+    kind: flow            # flow = nodes+edges · art = verbatim ASCII
+    caption: "Request path through the proxy stack"   # OPTIONAL
+    nodes:                # REQUIRED for kind: flow, 2–14; id unique, label ≤32 chars
+      - {id: A, label: "client"}
+      - {id: B, label: "proxy"}
+      - {id: C, label: "server"}
+    edges:                # REQUIRED for kind: flow; from/to MUST name existing ids
+      - {from: A, to: B, label: "http"}   # label OPTIONAL
+    steps:                # OPTIONAL, ≤6; each adds focus ids → stepped reveal in study
+      - {focus: [A], note: "the client only knows the proxy address"}
+      - {focus: [A, B], note: "proxy accepts and forwards"}
+      - {focus: [A, B, C], note: "full request path"}
+  ```
+- `kind: art` takes a single `art: |` string (verbatim ASCII, `Diagram-RENDER`
+  check bans ANSI escapes). Author art when box-and-arrow cannot express the
+  picture (protocol timelines, pin maps).
+- Step reveals like `viz` — each step ADDS nodes, building the picture
+  progressively. Keep node labels noun-phrases; the story goes in step `note`s.
+
 ### 3.9 `cards` — atomic retrieval units (SHOULD ≥3 per fact-dense chapter)
 
 - [Research: retrieval practice beats elaborative studying for meaningful
@@ -616,6 +649,8 @@ learning science, cognitive psychology, and computing education research (CER):
 6. Choice counts 2–4 (3 preferred), stems positive, answers in any position?
 7. Block arc intact → completion → independent present where a lab exists?
 8. Model blocks have stepwise `viz`? Design blocks have `eipe`/`choose-better`?
+   Every non-trivial `example.code` has `explain_md`? `diagram` stanzas (if any)
+   use exact vocabularies (`kind: flow|art`, valid node/edge refs, ≤6 steps)?
 9. ≥2 interleaved checks with valid `from_chapter`? Cards atomic with why/when mix?
 10. Lab runs mentally under the declared toolchain (pilot example flags:
    `-Wall -std=c99`)? Hints general → specific? No destructive commands?
@@ -660,6 +695,8 @@ After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or mo
 ### 4. Runnable Code (All Packs / `study.yaml`)
 - **Compilation**: Every `blocks[].example.code` compiles cleanly under `book.yaml: toolchain:`.
 - **Expected Output**: If `run_expected` is declared, it matches actual stdout byte-for-byte for a correct execution.
+- **Explanation**: Every non-trivial `example.code` carries `explain_md` (2–6 lines, self-contained; renders under the code).
+- **Diagrams**: `diagram` stanzas valid (`kind: flow` = nodes+edges with resolvable refs; `kind: art` = ANSI-free verbatim; steps ≤6, refs resolvable).
 - **Pedagogical Archetypes**: Model blocks have `viz`; design blocks have `eipe` or `choose-better`; syntax/algorithm blocks have `order`.
 
 ### 5. Cannot Be Fully Automated (Need a Solution Trace)

@@ -105,7 +105,11 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"#    - 'title': functional, action-oriented concept title\n"
             f"#    - 'explain_md': rich, intuitive Markdown explanation (5–20 lines) breaking down\n"
             f"#      syntax, Notional Machine state transitions, and memory lifecycle.\n"
-            f"#    - 'example': runnable code snippet with 'run_expected' stdout, and optional 'subgoals'\n"
+            f"#    - 'example': runnable code snippet with 'run_expected' stdout; non-trivial code MUST also\n"
+            f"#      carry 'explain_md' (2–6 lines of Markdown rendered right under the code); optional 'subgoals'\n"
+            f"#    - 'diagram': OPTIONAL block-level structure picture for model/design blocks with non-memory\n"
+            f"#      structure (call graph, data flow, layering) — kind: flow (nodes/edges, ids unique, refs\n"
+            f"#      resolvable, ≤14 nodes) or kind: art (verbatim ASCII, no ANSI); optional caption + steps ≤6\n"
             f"#    - 'viz': stepped ASCII memory diagrams for every 'model' block (2–6 steps).\n"
             f"#    - 'checks': 5 to 10 scaffolded micro-checks per block ('predict', 'why-fails',\n"
             f"#      'mcq', 'fillblank', 'order' with 'faded: true', 'eipe', 'choose-better', 'trace', 'spot-bug').\n"
@@ -116,6 +120,7 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# - Runnable code: every blocks[].example.code compiles under {book_config}: toolchain.\n"
             f"# - If run_expected is declared, it matches actual output for a correct solution.\n"
             f"# - Model blocks have viz; design blocks have eipe/choose-better; syntax/algorithm blocks have order.\n"
+            f"# - Every non-trivial example.code has explain_md; diagram stanzas (if any) use exact vocabularies.\n"
             f"# - Each check carries rules 1.1–1.10 (positively-worded, randomized answers, embedded code, elaborated why).\n"
         )
     elif mode == "quiz":
@@ -240,6 +245,8 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# 4. Runnable code (all packs / study.yaml):\n"
             f"#    - Every blocks[].example.code compiles under {book_config}: toolchain.\n"
             f"#    - If run_expected is declared, it matches actual output for a correct solution.\n"
+            f"#    - Every non-trivial example.code has explain_md (2–6 lines rendered under the code).\n"
+            f"#    - diagram stanzas (if any) valid: kind flow|art; refs resolvable; steps ≤6; art ANSI-free.\n"
             f"#    - Model blocks have viz; design blocks have eipe/choose-better; syntax/algorithm blocks have order.\n"
             f"# 5. Cannot be fully automated (need a solution trace):\n"
             f"#    - commands.run output byte-matches test_cases[].expect for a reference solution.\n"
@@ -258,7 +265,7 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"# 1. Block checks & questions: each item carries 1.1–1.10.\n"
             f"# 2. Quiz stanza: Count 30–50; intro+core+advanced; no duplicates; mixed; concept coverage.\n"
             f"# 3. Labs: Contract; blank starters; fail-first; safe commands; hints general->specific->operation; no code-length caps.\n"
-            f"# 4. Runnable code: compiles under toolchain; run_expected matches stdout; model has viz, design has eipe, syntax has order.\n"
+            f"# 4. Runnable code: compiles under toolchain; run_expected matches stdout; non-trivial examples carry explain_md; diagram stanzas valid; model has viz, design has eipe, syntax has order.\n"
             f"# 5. Cannot be fully automated: commands.run matches test_cases[].expect; fail->pass verified with reference solution.\n"
             f"# 6. Run: python main.py validate --book {book} --chapter {chapter} --strict\n"
         )

@@ -584,6 +584,33 @@ blocks:
     \   grammar and uses a proper FSM-based deserializer to read a complete\n   message.\n\nThe difference to fixed-length\
     \ receiving: with fixed-length messages the\nreceiver *already knows upfront* how many bytes to read, which reduces\n\
     the parsing burden — and when all messages share one structure, a C\nstructure can even overlay those bytes directly.\n"
+  diagram:
+    kind: flow
+    caption: "Receiver's loop for variable-length messages"
+    nodes:
+    - {id: CHUNK, label: "read(fd, chunk)", shape: io}
+    - {id: ACC, label: "accumulate bytes"}
+    - {id: DEL, label: "delimiter", shape: decision}
+    - {id: PFX, label: "length prefix", shape: decision}
+    - {id: FSM, label: "FSM grammar", shape: decision}
+    - {id: END, label: "message end?", shape: decision}
+    - {id: EMIT, label: "complete message", shape: io}
+    edges:
+    - {from: CHUNK, to: ACC}
+    - {from: ACC, to: DEL, label: "method 1"}
+    - {from: ACC, to: PFX, label: "method 2"}
+    - {from: ACC, to: FSM, label: "method 3"}
+    - {from: DEL, to: END}
+    - {from: PFX, to: END}
+    - {from: FSM, to: END}
+    - {from: END, to: EMIT, label: "mark found"}
+    - {from: END, to: CHUNK, label: "read more"}
+    steps:
+    - {focus: [CHUNK], note: "one read may return a chunk holding the end of one message and the start of the next"}
+    - {focus: [CHUNK, ACC], note: "the receiver accumulates bytes - it cannot know upfront whether a message is complete"}
+    - {focus: [CHUNK, ACC, DEL, PFX, FSM], note: "the protocol marks the end: delimiter (chosen from the content), length prefix (TLV/ASN), or an FSM over a regular grammar"}
+    - {focus: [CHUNK, ACC, DEL, PFX, FSM, END], note: "the deserializer asks after every chunk: is the end marked yet?"}
+    - {focus: [CHUNK, ACC, DEL, PFX, FSM, END, EMIT], note: "mark found -> emit the message and keep parsing the rest of the chunk; otherwise read more bytes"}
   viz:
     kind: ascii-memory
     steps:
@@ -960,6 +987,26 @@ blocks:
     pay for an explicit end-of-message mechanism.
 
     '
+  diagram:
+    kind: flow
+    caption: "The framing design decision"
+    nodes:
+    - {id: Q, label: "all messages same length?", shape: decision}
+    - {id: FIX, label: "read exactly N bytes", shape: io}
+    - {id: OVL, label: "overlay a C struct", shape: io}
+    - {id: VAR, label: "varying lengths", shape: io}
+    - {id: PART, label: "pay for an end-mark", shape: io}
+    edges:
+    - {from: Q, to: FIX, label: "yes - same shape"}
+    - {from: FIX, to: OVL}
+    - {from: Q, to: VAR, label: "no"}
+    - {from: VAR, to: PART}
+    steps:
+    - {focus: [Q], note: "the design weighs structure against need"}
+    - {focus: [Q, FIX], note: "fixed length: the receiver knows upfront how many bytes to read"}
+    - {focus: [Q, FIX, OVL], note: "same shape usually holds, so a C structure can overlay those bytes directly"}
+    - {focus: [Q, FIX, OVL, VAR], note: "variable length: finding where a message ends is not that easy"}
+    - {focus: [Q, FIX, OVL, VAR, PART], note: "most protocols are variable-length, so they pay for delimiter / length-prefix / FSM partitioning"}
   viz:
     kind: ascii-memory
     steps:
@@ -1873,6 +1920,31 @@ blocks:
       - 30
       - 31
       - 32
+  diagram:
+    kind: flow
+    caption: "Pipe wiring: one channel, two descriptors, two roles"
+    nodes:
+    - {id: PIPE, label: "pipe(fds)", shape: io}
+    - {id: FORK, label: "fork()", shape: decision}
+    - {id: CRD, label: "child: close(fds[0])"}
+    - {id: CWR, label: "child: write(fds[1])"}
+    - {id: PWR, label: "parent: close(fds[1])"}
+    - {id: PRD, label: "parent: read(fds[0])"}
+    - {id: KBUF, label: "kernel buffer"}
+    edges:
+    - {from: PIPE, to: FORK}
+    - {from: FORK, to: CRD, label: "child"}
+    - {from: FORK, to: PWR, label: "parent"}
+    - {from: CRD, to: CWR, label: "sleep 2s"}
+    - {from: PWR, to: PRD}
+    - {from: CWR, to: KBUF, label: "write end"}
+    - {from: PRD, to: KBUF, label: "read end"}
+    steps:
+    - {focus: [PIPE], note: "pipe(fds) opens two descriptors: fds[0] = read end, fds[1] = write end"}
+    - {focus: [PIPE, FORK], note: "fork() clones the parent; the child inherits BOTH open descriptors"}
+    - {focus: [PIPE, FORK, CRD, PWR], note: "each side closes the end it does not use - roles are fixed, the pipe is unidirectional"}
+    - {focus: [PIPE, FORK, CRD, CWR, PWR, PRD], note: "child delays 2s then writes; parent blocks in read() while the pipe is empty"}
+    - {focus: [PIPE, FORK, CRD, CWR, PWR, PRD, KBUF], note: "the write lands in the kernel buffer and unblocks the blocked read"}
   viz:
     kind: ascii-memory
     steps:
@@ -2096,6 +2168,33 @@ blocks:
     \   the already created file. The channel is still unidirectional, so\n   one of the processes opens the file\
     \ in **read-only mode** while the\n   other opens it in **write-only mode**.\n\nThe named-pipe route is the promising\
     \ one: no pre-existing channel is\nneeded, and the API cost is paid where it is unavoidable.\n"
+  diagram:
+    kind: flow
+    caption: "Sharing a pipe without a parent-child lineage"
+    nodes:
+    - {id: LIN, label: "common lineage?", shape: decision}
+    - {id: INH, label: "fork inherits both ends", shape: io}
+    - {id: TR1, label: "option 1: pipe + fd transfer"}
+    - {id: UDS, label: "needs a UDS channel"}
+    - {id: WHY, label: "then why not use it?", shape: decision}
+    - {id: MKF, label: "option 2: mkfifo(path)", shape: io}
+    - {id: RDR, label: "open read-only", shape: io}
+    - {id: WRR, label: "open write-only", shape: io}
+    edges:
+    - {from: LIN, to: INH, label: "yes"}
+    - {from: LIN, to: TR1, label: "no"}
+    - {from: LIN, to: MKF, label: "no"}
+    - {from: TR1, to: UDS}
+    - {from: UDS, to: WHY}
+    - {from: MKF, to: RDR, label: "one side"}
+    - {from: MKF, to: WRR, label: "other side"}
+    steps:
+    - {focus: [LIN], note: "the chapter poses the shared-pipe problem for separately spawned processes"}
+    - {focus: [LIN, INH], note: "with a lineage, fork() makes the child inherit the open descriptors - the pipe just works"}
+    - {focus: [LIN, INH, TR1], note: "option 1: set up the pipe and transfer the descriptors - the transfer itself needs a UDS channel"}
+    - {focus: [LIN, INH, TR1, UDS], note: "but such a channel already lets the processes communicate directly"}
+    - {focus: [LIN, INH, TR1, UDS, WHY], note: "the chapter's puncture: there would be no need for the less friendly pipe at all"}
+    - {focus: [LIN, INH, TR1, UDS, WHY, MKF, RDR, WRR], note: "the promising route: one process mkfifos the queue file; the other opens it by path - reader read-only, writer write-only, still unidirectional"}
   viz:
     kind: ascii-memory
     steps:
@@ -3900,6 +3999,31 @@ blocks:
     \ to read and write back — reads may still use `read`, but\nwriting responses cannot be done with a simple `write`\
     \ call alone.\n\n**Datagram connector**: same as the stream connector except type\n`SOCK_DGRAM`; special case\
     \ — a datagram UDS connector must **bind to a\nUnix domain socket file** to receive responses from the server.\n"
+  diagram:
+    kind: flow
+    caption: "Stream listener and connector init sequences"
+    nodes:
+    - {id: LSK, label: "listener: socket(SOCK_STREAM)", shape: io}
+    - {id: BND, label: "bind(reachable endpoint)"}
+    - {id: LSN, label: "listen(backlog)"}
+    - {id: ACC, label: "accept() loop", shape: decision}
+    - {id: CSK, label: "new socket per connection", shape: io}
+    - {id: RSK, label: "connector: socket(SOCK_STREAM)", shape: io}
+    - {id: CNT, label: "connect(listener endpoint)"}
+    - {id: CLSK, label: "connector's socket object", shape: io}
+    edges:
+    - {from: LSK, to: BND}
+    - {from: BND, to: LSN, label: "listening mode"}
+    - {from: LSN, to: ACC}
+    - {from: ACC, to: CSK, label: "per client"}
+    - {from: RSK, to: CNT}
+    - {from: CNT, to: CLSK}
+    steps:
+    - {focus: [LSK, RSK], note: "both ends create a socket object with the same family and SOCK_STREAM"}
+    - {focus: [LSK, RSK, BND], note: "the listener always binds an endpoint: IP+port for internet channels, a socket-file path for UDS"}
+    - {focus: [LSK, RSK, BND, LSN], note: "listen() sizes the backlog of pending connections and enters listening mode"}
+    - {focus: [LSK, RSK, BND, LSN, CNT, CLSK], note: "connect() targets the listener endpoint - refused by the kernel if the listener is not listening yet; it also returns a socket object"}
+    - {focus: [LSK, RSK, BND, LSN, ACC, CSK, CNT, CLSK], note: "accept() blocks on an empty backlog and returns a NEW dedicated socket per client: N clients = N+1 sockets; both sides then read/write the same way"}
   checks:
   - kind: order
     level: core

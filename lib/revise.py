@@ -20,6 +20,19 @@ def run(book: str, chapter: str):
         ex = b.get("example") or {}
         if ex.get("code"):
             console.print(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai"))
+            # SPEC-EXPL-003 F1: explanation right after the code (no scoring)
+            emd = ex.get("explain_md")
+            if isinstance(emd, str) and emd.strip() and not _pager.show(console, emd):
+                return
+        # SPEC-EXPL-003 F2: diagram, final step only, unstepped/unscored
+        diag = b.get("diagram") or {}
+        if isinstance(diag, dict) and diag.get("kind"):
+            from lib.diagram import render as _diagram_render
+            darts = _diagram_render(diag)
+            if darts:
+                if diag.get("caption"):
+                    console.print(f"[dim]{diag['caption']}[/dim]")
+                console.print(darts[-1])
         bugs = b.get("common_bugs", [])
         if bugs:
             console.print("[yellow]common bugs:[/yellow] " + "; ".join(bugs))

@@ -49,6 +49,25 @@ def run(book: str, chapter: str):
                             console.print("[red]timeout[/red]")
                         else:
                             console.print(f"[green]output:[/green]\n{r['output'][:2000]}")
+            # SPEC-EXPL-003 F1: authored code explanation right after the code
+            emd = ex.get("explain_md")
+            if isinstance(emd, str) and emd.strip() and not _pager.show(console, emd):
+                break
+            # SPEC-EXPL-003 F2: diagram stepper (same n/s vocabulary as viz)
+            diag = b.get("diagram") or {}
+            if isinstance(diag, dict) and diag.get("kind"):
+                from lib.diagram import render as _diagram_render
+                darts = _diagram_render(diag)
+                if darts:
+                    console.print(f"[dim]diagram ({diag.get('kind', 'flow')}): n step · s skip · ? help[/dim]")
+                    for da in darts:
+                        console.print(da)
+                        k = _k.ask(console, "  [n/s/q/?]: ", "study").lower()
+                        if k == "q":
+                            con.close()
+                            return
+                        if k == "s":
+                            break
             viz = b.get("viz") or {}
             steps = viz.get("steps", [])
             if steps:

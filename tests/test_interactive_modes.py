@@ -255,6 +255,56 @@ async def test_tui_trace_check_interaction():
         assert done_results == [True]
 
 
+async def test_tui_trace_check_list_rows():
+    """Trace rows may be plain header-aligned lists (ch22/ch23 packs), not
+    only legacy dicts — QuestionWidget must handle both without crashing."""
+    done_results = []
+    trace_check = {
+        "kind": "trace",
+        "q": "Trace lifecycle",
+        "trace": {
+            "headers": ["Step", "Side", "State"],
+            "rows": [
+                ["1", "sender", "serialize the object into a byte array"],
+                ["2", "channel", "byte array goes through unchanged"],
+                ["3", "receiver", "deserialize incoming bytes"]
+            ]
+        },
+        "target": {"row": 1, "col": 2},
+        "answer_text": "byte array goes through unchanged",
+        "why": "the channel only carries bytes"
+    }
+
+    app = QuestionHostApp(trace_check, lambda ok: done_results.append(ok))
+    async with app.run_test() as pilot:
+        qw = app.query_one(QuestionWidget)
+        tv = qw.query_one("#trace-table-view", Static)
+
+        assert qw._max_trace_step == 3
+        assert qw._trace_rows == [
+            (1, ["1", "sender", "serialize the object into a byte array"]),
+            (2, ["2", "channel", "byte array goes through unchanged"]),
+            (3, ["3", "receiver", "deserialize incoming bytes"]),
+        ]
+        # step 1: only the first row is revealed
+        table = str(tv.render())
+        assert "sender" in table and "channel" not in table
+
+        # step forward to the target row; its cell is masked
+        await pilot.click("#btn-trace-next")
+        table = str(tv.render())
+        assert "???" in table
+
+        # submit answer for the masked cell
+        inp = qw.query_one("#trace-in", Input)
+        inp.value = "byte array goes through unchanged"
+        inp.focus()
+        await pilot.press("enter")
+        await pilot.pause()
+
+        assert done_results == [True]
+
+
 async def test_tui_spot_bug_interaction():
     done_results = []
     bug_check = {

@@ -261,6 +261,27 @@ blocks:
     line, because it is part of the **common code written for all clients**:
     the client receives commands, turns them into requests per the application
     protocol, sends them, waits for the response, and prints the result.
+  diagram:
+    kind: flow
+    caption: "Calculator project: thin skins over shared cores"
+    nodes:
+    - {id: SRVM, label: "4 server mains (skins)"}
+    - {id: CLIM, label: "4 client mains (skins)"}
+    - {id: SRVC, label: "libsrvcore.a (server core)"}
+    - {id: CLIC, label: "libclicore.a (client core)"}
+    - {id: CSER, label: "libcalcser.a (protocol)"}
+    - {id: SVC, label: "libcalcsvc.a (service)"}
+    edges:
+    - {from: SRVM, to: SRVC}
+    - {from: CLIM, to: CLIC}
+    - {from: SRVC, to: CSER}
+    - {from: SRVC, to: SVC}
+    - {from: CLIC, to: CSER}
+    steps:
+    - {focus: [SRVM, CLIM], note: "eight executables, but every main is a thin transport-specific skin (family, type, address)"}
+    - {focus: [SRVM, CLIM, SRVC, CLIC], note: "the machinery lives in common static libraries: server cores share libsrvcore.a, client cores libclicore.a"}
+    - {focus: [SRVM, CLIM, SRVC, CLIC, CSER], note: "both cores sit on the serializer - libcalcser.a dictates the application protocol between client and server"}
+    - {focus: [SRVM, CLIM, SRVC, CLIC, CSER, SVC], note: "libcalcsvc.a holds the standalone stateful calculation logic, different from the server process, linked by every server"}
   viz:
     kind: ascii-memory
     steps:
@@ -717,6 +738,37 @@ blocks:
     resurrect the request object", then **notifies the registered observer**
     (the server waiting through the callback). Without a `$`, bytes simply
     accumulate for the next chunk.
+  diagram:
+    kind: flow
+    caption: "One class, two sides: the request/response journey"
+    nodes:
+    - {id: REQ, label: "request object", shape: io}
+    - {id: CSER, label: "client_serialize"}
+    - {id: W1, label: "bytes on the channel", shape: io}
+    - {id: SDES, label: "server_deserialize"}
+    - {id: RCB, label: "req_cb -> service"}
+    - {id: SRES, label: "response object", shape: io}
+    - {id: SSER, label: "server_serialize"}
+    - {id: W2, label: "bytes on the channel", shape: io}
+    - {id: CDES, label: "client_deserialize"}
+    - {id: CCB, label: "resp_cb", shape: io}
+    edges:
+    - {from: REQ, to: CSER}
+    - {from: CSER, to: W1, label: "buffer_t"}
+    - {from: W1, to: SDES}
+    - {from: SDES, to: RCB, label: "fires req_cb"}
+    - {from: RCB, to: SRES, label: "computed"}
+    - {from: SRES, to: SSER}
+    - {from: SSER, to: W2, label: "buffer_t"}
+    - {from: W2, to: CDES}
+    - {from: CDES, to: CCB, label: "fires resp_cb"}
+    steps:
+    - {focus: [REQ], note: "the client builds a request object per the # / $ grammar"}
+    - {focus: [REQ, CSER], note: "orientation rule: on the CLIENT side we serialize REQUESTS"}
+    - {focus: [REQ, CSER, W1], note: "the packed bytes travel in buffer_t{data, len} across the channel"}
+    - {focus: [REQ, CSER, W1, SDES, RCB], note: "on the SERVER side we deserialize requests; req_cb fires with the parsed request"}
+    - {focus: [REQ, CSER, W1, SDES, RCB, SRES, SSER], note: "the service computes; on the server side we serialize RESPONSES"}
+    - {focus: [REQ, CSER, W1, SDES, RCB, SRES, SSER, W2, CDES, CCB], note: "bytes cross back; on the client side we deserialize responses and resp_cb reports the result"}
   viz:
     kind: ascii-memory
     steps:
@@ -950,6 +1002,23 @@ blocks:
     `double*` parameter. The server's request callback maps a failed
     division to the protocol's `STATUS_DIV_BY_ZERO` (4) response status,
     keeping service errors and wire statuses in separate namespaces.
+  diagram:
+    kind: flow
+    caption: "Stateless singleton or per-client service objects"
+    nodes:
+    - {id: ST, label: "per-client state needed?", shape: decision}
+    - {id: SGL, label: "one singleton object", shape: io}
+    - {id: OBJ, label: "one object per client", shape: io}
+    - {id: MEM, label: "calculator memory", shape: io}
+    edges:
+    - {from: ST, to: SGL, label: "stateless"}
+    - {from: ST, to: OBJ, label: "stateful"}
+    - {from: OBJ, to: MEM}
+    steps:
+    - {focus: [ST], note: "the interface carries the stateless-vs-stateful doctrine"}
+    - {focus: [ST, SGL], note: "no state to remember between a client's requests -> a singleton service object is enough"}
+    - {focus: [ST, SGL, OBJ], note: "the calculator remembers memory values per client -> a dedicated object for every client"}
+    - {focus: [ST, SGL, OBJ, MEM], note: "that is why the stream thread and the datagram loop each build a fresh calc_service_t; note div returns int + double* (its error channel), unlike add/sub/mul"}
   viz:
     kind: ascii-memory
     steps:
@@ -1194,6 +1263,30 @@ blocks:
     Error discipline in the book's code: every call is checked, and a
     failure closes `server_sd`, reports `strerror(errno)`, and exits the
     process.
+  diagram:
+    kind: flow
+    caption: "Stream-listener bring-up: bare socket object to per-client channels"
+    nodes:
+    - {id: SOCK, label: "socket(AF_UNIX, SOCK_STREAM, 0)", shape: io}
+    - {id: UNLK, label: "unlink(stale socket file)", shape: io}
+    - {id: BIND, label: "bind(server_sd, sockaddr_un)"}
+    - {id: LSTN, label: "listen(server_sd, 10)"}
+    - {id: ACC, label: "accept(server_sd) loop", shape: decision}
+    - {id: CLI, label: "client_sd per client"}
+    edges:
+    - {from: SOCK, to: UNLK}
+    - {from: UNLK, to: BIND, label: "path free"}
+    - {from: BIND, to: LSTN, label: "exclusive bind"}
+    - {from: LSTN, to: ACC, label: "backlog 10"}
+    - {from: ACC, to: CLI, label: "queue non-empty"}
+    - {from: CLI, to: ACC, label: "again"}
+    steps:
+    - {focus: [SOCK], note: "socket() creates a bare socket object - role still undetermined (client or server)"}
+    - {focus: [SOCK, UNLK], note: "unlink() deletes a stale socket file so bind() does not meet an occupied path"}
+    - {focus: [SOCK, UNLK, BIND], note: "bind() ties server_sd to the socket file; two sockets cannot share one file"}
+    - {focus: [SOCK, UNLK, BIND, LSTN], note: "listen() configures the backlog (10) - listener mode reached, not yet serving"}
+    - {focus: [SOCK, UNLK, BIND, LSTN, ACC], note: "accept() blocks while the backlog queue is empty"}
+    - {focus: [SOCK, UNLK, BIND, LSTN, ACC, CLI], note: "each success returns a NEW client_sd (own stream channel per client); the loop accepts again"}
   viz:
     kind: ascii-memory
     steps:
@@ -1449,6 +1542,34 @@ blocks:
       `ret < buf.len` ("WARN: Less bytes were written!") also aborts with exit(1):
       stream writes are not assumed complete until the full buffer is
       reported written.
+  diagram:
+    kind: flow
+    caption: "srvcore stream core: accept once, delegate per client"
+    nodes:
+    - {id: ACC, label: "accept_forever(server_sd)", shape: decision}
+    - {id: THR, label: "pthread_create(handler)"}
+    - {id: CTX, label: "client_context_t"}
+    - {id: RDL, label: "read(sd, buffer, 128)", shape: decision}
+    - {id: DES, label: "deserialize bytes"}
+    - {id: CLN, label: "teardown context"}
+    - {id: REQ, label: "req_cb -> service"}
+    - {id: WRT, label: "stream_write_resp(sd)"}
+    edges:
+    - {from: ACC, to: THR, label: "per client"}
+    - {from: THR, to: CTX}
+    - {from: CTX, to: RDL}
+    - {from: RDL, to: DES, label: "ret > 0"}
+    - {from: RDL, to: CLN, label: "ret 0 / -1"}
+    - {from: DES, to: REQ}
+    - {from: REQ, to: WRT}
+    - {from: WRT, to: RDL, label: "next chunk"}
+    steps:
+    - {focus: [ACC], note: "accept_forever lives in srvcore - its definition stays the same for TCP stream sockets"}
+    - {focus: [ACC, THR], note: "per accepted client the loop mallocs the sd and spawns a dedicated handler thread - the usual pattern for blocking stream channels"}
+    - {focus: [ACC, THR, CTX], note: "the handler builds its context: serializer (ring buffer 256) with request + error callbacks, and a dedicated stateful service object"}
+    - {focus: [ACC, THR, CTX, RDL], note: "then the read loop: read(context.addr->sd, buffer, 128)"}
+    - {focus: [ACC, THR, CTX, RDL, DES, CLN, REQ, WRT], note: "ret > 0: bytes feed the deserializer, req_cb runs the service, stream_write_resp writes the response back; ret 0 / -1: break and tear down"}
+    - {focus: [ACC, THR, CTX, RDL, DES, CLN, REQ, WRT], note: "after writing the response, the thread loops back to read the client's next chunk"}
   viz:
     kind: ascii-memory
     steps:
@@ -3080,6 +3201,38 @@ blocks:
     thread patterns, byte order) landed with a concrete place to live, and
     each varietal switch showed which boundaries were common and which were
     truly transport-bound.
+  diagram:
+    kind: flow
+    caption: "One protocol, four skins: who calls what"
+    nodes:
+    - {id: SCM, label: "stream client"}
+    - {id: SSM, label: "stream server"}
+    - {id: DSM, label: "datagram server"}
+    - {id: DCM, label: "datagram client"}
+    - {id: SCL, label: "stream_client_loop"}
+    - {id: AF, label: "accept_forever"}
+    - {id: SF, label: "serve_forever"}
+    - {id: DCL, label: "datagram_client_loop"}
+    - {id: CSER, label: "libcalcser.a (protocol)"}
+    - {id: SVC, label: "libcalcsvc.a (service)"}
+    edges:
+    - {from: SCM, to: SCL}
+    - {from: SSM, to: AF}
+    - {from: DSM, to: SF}
+    - {from: DCM, to: DCL}
+    - {from: SCL, to: CSER}
+    - {from: AF, to: CSER}
+    - {from: SF, to: CSER}
+    - {from: DCL, to: CSER}
+    - {from: AF, to: SVC}
+    - {from: SF, to: SVC}
+    steps:
+    - {focus: [SCM, SSM, DSM, DCM], note: "eight executables; each main carries only its skin: AF_UNIX/AF_INET, SOCK_STREAM/SOCK_DGRAM, sun_path or INADDR_ANY + ports 6666/9999"}
+    - {focus: [SCM, SSM, DSM, DCM, SCL], note: "both stream clients (UDS and TCP) call the shared stream_client_loop"}
+    - {focus: [SCM, SSM, DSM, DCM, SCL, AF], note: "both stream servers run srvcore's accept_forever with client_handler and stream_write_resp"}
+    - {focus: [SCM, SSM, DSM, DCM, SCL, AF, SF], note: "both datagram servers run serve_forever with datagram_write_resp - no listen, no accept"}
+    - {focus: [SCM, SSM, DSM, DCM, SCL, AF, SF, DCL], note: "both datagram clients call datagram_client_loop; the UDS one adds only the self-bind step"}
+    - {focus: [SCM, SSM, DSM, DCM, SCL, AF, SF, DCL, CSER, SVC], note: "above all transport code: libcalcser.a dictates the application protocol; libcalcsvc.a is the stateful service every server core links"}
   viz:
     kind: ascii-memory
     steps:

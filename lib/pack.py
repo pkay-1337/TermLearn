@@ -286,6 +286,102 @@ def _validate_check_item(ck: dict, cloc: str,
     return errors, is_conceptual, has_why
 
 
+DIAGRAM_KINDS = ("flow", "art")
+_ANSI = ("\x1b",)
+
+
+def _validate_diagram(d, loc: str) -> tuple[list[str], list[str]]:
+    """SPEC-EXPL-003 F2 (FR-DIAG-001..002, FR-PACK-003): shape/vocab/refs."""
+    errors: list[str] = []
+    warnings: list[str] = []
+    if not isinstance(d, dict):
+        errors.append(_err("DIAGRAM-SHAPE", f"{loc} must be a mapping"))
+        return errors, warnings
+    kind = d.get("kind")
+    if not isinstance(kind, str) or not kind:
+        errors.append(_err("DIAGRAM-SHAPE", f"{loc} missing valid 'kind' (flow|art)"))
+        return errors, warnings
+    if kind not in DIAGRAM_KINDS:
+        errors.append(_err("DIAGRAM-VOCAB", f"{loc} unknown diagram kind {kind!r}, want {list(DIAGRAM_KINDS)}"))
+        return errors, warnings
+    if kind == "art":
+        art = d.get("art")
+        if not isinstance(art, str) or not art.strip():
+            errors.append(_err("DIAGRAM-SHAPE", f"{loc} kind 'art' needs non-empty 'art'"))
+        elif not _rich_renders(art) or any(c in art for c in _ANSI):
+            errors.append(_err("DIAGRAM-RENDER", f"{loc} diagram art crashes Rich or contains ANSI escapes"))
+        return errors, warnings
+    nodes = d.get("nodes")
+    if not isinstance(nodes, list) or len(nodes) < 2:
+        errors.append(_err("DIAGRAM-SHAPE", f"{loc} kind 'flow' needs nodes: list of >=2"))
+        nodes = []
+    node_ids: set[str] = set()
+    for ni, n in enumerate(nodes):
+        if not isinstance(n, dict) or not isinstance(n.get("id"), str) or not n.get("id"):
+            errors.append(_err("DIAGRAM-SHAPE", f"{loc} nodes[{ni}] needs non-empty string id"))
+            continue
+        if not isinstance(n.get("label"), str) or not n.get("label", "").strip():
+            errors.append(_err("DIAGRAM-SHAPE", f"{loc} nodes[{ni}] needs non-empty string label"))
+        if "shape" in n and str(n["shape"]).lower() not in _diagram_shapes():
+            errors.append(_err("DIAGRAM-VOCAB", f"{loc} nodes[{ni}] unknown shape {n['shape']!r}, want {list(_diagram_shapes())}"))
+        node_ids.add(n["id"])
+        for field in ("label",):
+            v = n.get(field, "")
+            if isinstance(v, str) and any(c in v for c in _ANSI):
+                errors.append(_err("DIAGRAM-RENDER", f"{loc} nodes[{ni}] {field} contains ANSI escapes"))
+    edges = d.get("edges")
+    if not isinstance(edges, list) or not edges:
+        errors.append(_err("DIAGRAM-SHAPE", f"{loc} kind 'flow' needs edges: non-empty list"))
+    else:
+        for ei, e in enumerate(edges):
+            if not isinstance(e, dict) or not e.get("from") or not e.get("to"):
+                errors.append(_err("DIAGRAM-SHAPE", f"{loc} edges[{ei}] needs 'from' and 'to'"))
+                continue
+            for endpoint in (e["from"], e["to"]):
+                if endpoint not in node_ids:
+                    errors.append(_err("DIAGRAM-REF", f"{loc} edges[{ei}] endpoint {endpoint!r} not in nodes"))
+    if "steps" in d:
+        steps = d.get("steps")
+        if not isinstance(steps, list) or not steps:
+            errors.append(_err("DIAGRAM-SHAPE", f"{loc} steps must be a non-empty list when present"))
+        else:
+            for si, st in enumerate(steps):
+                if not isinstance(st, dict):
+                    errors.append(_err("DIAGRAM-SHAPE", f"{loc} steps[{si}] must be a mapping"))
+                    continue
+                focus = st.get("focus")
+                if focus is not None and (not isinstance(focus, list)):
+                    errors.append(_err("DIAGRAM-SHAPE", f"{loc} steps[{si}] focus must be a list of node ids"))
+                elif isinstance(focus, list):
+                    for fid in focus:
+                        if fid not in node_ids:
+                            errors.append(_err("DIAGRAM-REF", f"{loc} steps[{si}] focus id {fid!r} not in nodes"))
+                note = st.get("note", "")
+                if not isinstance(note, str):
+                    errors.append(_err("DIAGRAM-SHAPE", f"{loc} steps[{si}] note must be a string"))
+    caption = d.get("caption", "")
+    if caption is not None and (not isinstance(caption, str)):
+        errors.append(_err("DIAGRAM-SHAPE", f"{loc} caption must be a string"))
+    return errors, warnings
+
+
+def _diagram_shapes() -> tuple:
+    from lib.diagram import SHAPES
+    return SHAPES
+
+
+def _diagram_width_warn(d, loc: str) -> str | None:
+    """DIAGRAM-WIDE (WARN): rendered step wider than MAX_COLS. Never raises."""
+    try:
+        from lib.diagram import MAX_COLS, render
+        if any(max((len(l) for l in art.splitlines()), default=0) > MAX_COLS
+               for art in render(d)):
+            return _err("DIAGRAM-WIDE", f"{loc} rendered diagram exceeds {MAX_COLS} columns")
+    except Exception:
+        pass
+    return None
+
+
 def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = False,
                           known_chapters: set | None = None,
                           chapter_blocks: dict[str, set | None] | None = None) -> tuple[list[str], list[str]]:
@@ -347,6 +443,16 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
             continue
         ex = b.get("example")
         if isinstance(ex, dict):
+            # SPEC-EXPL-003 F1: code explain block (FR-EXPL-001..002)
+            if "explain_md" in ex:
+                emd = ex.get("explain_md")
+                if not isinstance(emd, str):
+                    errors.append(_err("EXPL-SHAPE", f"{loc} example explain_md must be a non-empty string"))
+                elif emd.strip() and not _rich_renders(emd):
+                    errors.append(_err("EXPL-RENDER", f"{loc} example explain_md crashes Rich renderer"))
+                # whitespace-only is treated as absent (FR-EXPL-004)
+            elif ex.get("code"):
+                warnings.append(_err("EXPL-MISSING", f"{loc} example.code without explain_md; SHOULD explain the code (FR-EXPL-002)"))
             if "subgoals" in ex:
                 sgs = ex.get("subgoals")
                 if not isinstance(sgs, list) or not sgs:
@@ -360,6 +466,13 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
                             errors.append(_err("SUBGOAL-SPAN", f"{loc} example subgoals[{sgi}] lines out of bounds (1..{code_len})"))
         if b.get("type") == "model" and "viz" not in b:
             warnings.append(_err("MODEL-NOVIZ", f"{loc} model block without viz; SHOULD add ascii-memory (MAP-001)"))
+        if "diagram" in b:
+            derrs, dwarns = _validate_diagram(b["diagram"], f"{loc}:diagram")
+            errors.extend(derrs)
+            warnings.extend(dwarns)
+            wide = _diagram_width_warn(b["diagram"], f"{loc}:diagram")
+            if wide:
+                warnings.append(wide)
         for ci, ck in enumerate(b["checks"]):
             cloc = f"{loc}:checks[{ci}]"
             errs, is_conc, has_why = _validate_check_item(ck, cloc, known_chapters, chapter_blocks)
@@ -469,8 +582,10 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
 
     if strict:
         # Informational notes MUST NOT fail strict validation: LANG-NOPROBE
-        # (no local probe exists) and GUI-NOTE (hosts vary by design).
-        keep_prefixes = ("LANG-NOPROBE", "GUI-NOTE")
+        # (no local probe exists), GUI-NOTE (hosts vary by design), and
+        # EXPL-MISSING (legacy packs predate the F1 explain contract; new
+        # packs are bound via GENERATE.md — Appendix D ledger entry).
+        keep_prefixes = ("LANG-NOPROBE", "GUI-NOTE", "EXPL-MISSING")
         keep = [w for w in warnings if w.startswith(keep_prefixes)]
         errors.extend(w for w in warnings if not w.startswith(keep_prefixes))
         warnings = keep

@@ -76,6 +76,94 @@ def _ch(**kw):
     base.update(kw)
     return base
 
+
+# --- SPEC-EXPL-003 F1: example.explain_md (VR-EXPL-002) ---
+
+def test_expl_missing_is_warn_not_error():
+    ch = _ch()
+    ch["blocks"][0]["example"] = {"lang": "c", "code": "int x;\n"}
+    errs, warns = pack.validate_chapter_data(ch)
+    assert not any("EXPL" in x for x in errs)
+    assert any("EXPL-MISSING" in x for x in warns)
+    errs_s, warns_s = pack.validate_chapter_data(ch, strict=True)
+    assert not any("EXPL-MISSING" in x for x in errs_s)  # informational in strict
+
+
+def test_expl_shape_and_render():
+    ch = _ch()
+    ch["blocks"][0]["example"] = {"lang": "c", "code": "int x;\n", "explain_md": 5}
+    assert any("EXPL-SHAPE" in x for x in pack.validate_chapter_data(ch)[0])
+    ch["blocks"][0]["example"]["explain_md"] = "  "  # empty/whitespace = absent
+    e2, _ = pack.validate_chapter_data(ch)
+    assert not any("EXPL-SHAPE" in x for x in e2)
+    ch["blocks"][0]["example"]["explain_md"] = "[bold]unclosed"
+    e3, _ = pack.validate_chapter_data(ch)
+    assert not any("EXPL-RENDER" in x for x in e3)  # plain markup renders fine
+    ch["blocks"][0]["example"]["explain_md"] = "ok"
+    assert pack.validate_chapter_data(ch)[0] == []  # valid explain, no errors
+
+
+# --- SPEC-EXPL-003 F2: diagram stanza (VR-EXPL-005) ---
+
+def _diag(**over):
+    d = {"kind": "flow",
+         "nodes": [{"id": "A", "label": "start"}, {"id": "B", "label": "end"}],
+         "edges": [{"from": "A", "to": "B"}]}
+    d.update(over)
+    return d
+
+
+def test_diagram_valid_no_errors():
+    ch = _ch()
+    ch["blocks"][0]["diagram"] = _diag()
+    errs, warns = pack.validate_chapter_data(ch)
+    assert errs == [], errs
+    assert not any("DIAGRAM" in x for x in warns)
+
+
+def test_diagram_shape_codes():
+    ch = _ch()
+    ch["blocks"][0]["diagram"] = "nope"  # not a mapping
+    assert any("DIAGRAM-SHAPE" in x for x in pack.validate_chapter_data(ch)[0])
+    ch["blocks"][0]["diagram"] = {"kind": "flow", "nodes": [{"id": "A"}]}
+    e2, _ = pack.validate_chapter_data(ch)  # <2 nodes, label missing
+    assert any("DIAGRAM-SHAPE" in x for x in e2)
+    ch["blocks"][0]["diagram"] = _diag(nodes=[{"id": "A", "label": "a"},
+                                              {"id": "A", "label": "dup"}],
+                                       edges=[])
+    e3, _ = pack.validate_chapter_data(ch)
+    assert any("DIAGRAM-SHAPE" in x for x in e3)  # dup ids + empty edges
+    ch["blocks"][0]["diagram"] = _diag(kind="art")
+    assert any("DIAGRAM-SHAPE" in x for x in pack.validate_chapter_data(ch)[0])
+
+
+def test_diagram_vocab_codes():
+    ch = _ch()
+    ch["blocks"][0]["diagram"] = _diag(kind="gantt")
+    assert any("DIAGRAM-VOCAB" in x for x in pack.validate_chapter_data(ch)[0])
+    ch["blocks"][0]["diagram"] = _diag(
+        nodes=[{"id": "A", "label": "a", "shape": "cloud"},
+               {"id": "B", "label": "b"}])
+    assert any("DIAGRAM-VOCAB" in x for x in pack.validate_chapter_data(ch)[0])
+
+
+def test_diagram_ref_codes():
+    ch = _ch()
+    ch["blocks"][0]["diagram"] = _diag(edges=[{"from": "A", "to": "ghost"}])
+    assert any("DIAGRAM-REF" in x for x in pack.validate_chapter_data(ch)[0])
+    ch["blocks"][0]["diagram"] = _diag(steps=[{"focus": ["A", "ghost"]}])
+    e2, _ = pack.validate_chapter_data(ch)
+    assert any("DIAGRAM-REF" in x for x in e2)
+    ch["blocks"][0]["diagram"] = _diag(steps=[{"focus": ["A"], "note": "n"},
+                                              {"focus": ["A", "B"]}])
+    assert pack.validate_chapter_data(ch)[0] == []
+
+
+def test_diagram_render_and_ansi():
+    ch = _ch()
+    ch["blocks"][0]["diagram"] = _diag(kind="art", art="\x1b[31mred\x1b[0m")
+    assert any("DIAGRAM-RENDER" in x for x in pack.validate_chapter_data(ch)[0])
+
 def test_branch_shapes():
     assert pack.validate_book_data("nope")[0]  # non-dict book
     assert pack.validate_book_data({})[0]  # missing keys

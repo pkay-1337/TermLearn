@@ -63,8 +63,9 @@ class StudyScreen(VimScrollMixin, _Base):
         self.book = book
         self.chapter = chapter
         self.bi = max(0, start_block)
-        self.stage = "explain"  # explain | viz | check-i | done
+        self.stage = "explain"  # explain | diagram | viz | check-i | done
         self.vi = 0
+        self.di = 0
         self._check_answered = False
 
     def _screen_title_text(self) -> str:
@@ -105,6 +106,16 @@ class StudyScreen(VimScrollMixin, _Base):
     def _block(self):
         return self.blocks[self.bi]
 
+    def _diagram_arts(self):
+        # SPEC-EXPL-003 F2 (FR-DIAG-003): renderer errors are fatal-invalid at
+        # pack time, so render() can only fail on malformed runtime data —
+        # degrade to no diagram rather than crash the screen.
+        try:
+            from lib.diagram import render as _diagram_render
+            return _diagram_render(self._block().get("diagram") or {})
+        except Exception:
+            return []
+
     def _show_body(self) -> None:
         try:
             self.query_one(".study-container", ScrollableContainer).scroll_to(y=0, animate=False)
@@ -133,12 +144,25 @@ class StudyScreen(VimScrollMixin, _Base):
                         body.mount(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai", classes="study-example-box"))
                     except Exception:
                         body.mount(Static(ex["code"], classes="study-example-box"))
-            if (b.get("viz") or {}).get("steps"):
+                # SPEC-EXPL-003 F1 (FR-EXPL-003): authored explanation right
+                # after the code
+                emd = ex.get("explain_md")
+                if isinstance(emd, str) and emd.strip():
+                    body.mount(Markdown(emd, classes="study-block-card"))
+            if (b.get("diagram") or {}).get("kind"):
+                body.mount(Static("👉 Press [bold cyan]n[/] to step through the flow diagram · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
+            elif (b.get("viz") or {}).get("steps"):
                 body.mount(Static("👉 Press [bold cyan]n[/] to step through memory visualization · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
             elif (b.get("checks") or []):
                 body.mount(Static("👉 Press [bold cyan]n[/] to answer the checks · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
             else:
                 body.mount(Static("👉 Press [bold cyan]n[/] to proceed to next block · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
+        elif self.stage == "diagram":
+            # SPEC-EXPL-003 F2 (FR-DIAG-004): stepped reveal, same keys as viz
+            darts = self._diagram_arts() or []
+            body.mount(Static("\n\n".join(darts[:self.di + 1]), classes="study-viz-box"))
+            dots = "● " * (self.di + 1) + "○ " * max(0, len(darts) - self.di - 1)
+            body.mount(Static(f"Diagram step {self.di + 1} of {len(darts)}  ({dots.strip()})  —  Press [bold cyan]n[/] to advance · [bold cyan]s[/] skip", classes="study-nav-box"))
         elif self.stage == "viz":
             steps = (b.get("viz") or {}).get("steps", [])
             body.mount(Static("\n".join(steps[:self.vi + 1]), classes="study-viz-box"))
@@ -187,14 +211,27 @@ class StudyScreen(VimScrollMixin, _Base):
         b = self._block()
         checks = b.get("checks", []) or []
         steps = (b.get("viz") or {}).get("steps", []) or []
+        darts = self._diagram_arts() or []
         if self.stage == "explain":
-            if steps:
+            if darts:
+                self.stage, self.di = "diagram", 0
+            elif steps:
                 self.stage, self.vi = "viz", 0
             elif checks:
                 self.stage = "check-0"
             else:
                 self._mark_current_block_done()
                 self._advance_block()
+        elif self.stage == "diagram":
+            self.di += 1
+            if self.di >= len(darts):
+                if steps:
+                    self.stage, self.vi = "viz", 0
+                elif checks:
+                    self.stage = "check-0"
+                else:
+                    self.stage = "done"
+                    self._mark_current_block_done()
         elif self.stage == "viz":
             self.vi += 1
             if self.vi >= len(steps):
@@ -222,6 +259,19 @@ class StudyScreen(VimScrollMixin, _Base):
         self._show_body()
 
     def action_skip_check(self) -> None:
+        if self.stage == "diagram":
+            # SPEC-EXPL-003 F2: s skips the remaining diagram steps
+            b = self._block()
+            steps = (b.get("viz") or {}).get("steps", []) or []
+            if steps:
+                self.stage, self.vi = "viz", 0
+            elif b.get("checks"):
+                self.stage = "check-0"
+            else:
+                self.stage = "done"
+                self._mark_current_block_done()
+            self._show_body()
+            return
         if self.stage.startswith("check"):
             self._check_answered = True
             b = self._block()
@@ -240,6 +290,7 @@ class StudyScreen(VimScrollMixin, _Base):
             self.bi += 1
             self.stage = "explain"
             self.vi = 0
+            self.di = 0
         else:
             self.app.pop_screen()
             self.app.notify("Chapter pass complete — try quiz, lab, then test.")
@@ -248,12 +299,16 @@ class StudyScreen(VimScrollMixin, _Base):
         b = self._block()
         checks = b.get("checks", []) or []
         steps = (b.get("viz") or {}).get("steps", []) or []
+        darts = self._diagram_arts() or []
         if self.stage == "done":
             if checks:
                 self.stage = f"check-{len(checks) - 1}"
             elif steps:
                 self.stage = "viz"
                 self.vi = max(0, len(steps) - 1)
+            elif darts:
+                self.stage = "diagram"
+                self.di = max(0, len(darts) - 1)
             else:
                 self.stage = "explain"
         elif self.stage.startswith("check"):
@@ -268,11 +323,22 @@ class StudyScreen(VimScrollMixin, _Base):
                 if steps:
                     self.stage = "viz"
                     self.vi = max(0, len(steps) - 1)
+                elif darts:
+                    self.stage = "diagram"
+                    self.di = max(0, len(darts) - 1)
                 else:
                     self.stage = "explain"
         elif self.stage == "viz":
             if self.vi > 0:
                 self.vi -= 1
+            elif darts:
+                self.stage = "diagram"
+                self.di = max(0, len(darts) - 1)
+            else:
+                self.stage = "explain"
+        elif self.stage == "diagram":
+            if self.di > 0:
+                self.di -= 1
             else:
                 self.stage = "explain"
         elif self.stage == "explain":
@@ -991,12 +1057,35 @@ class LabScreen(_Base):
             pass
 
     def _update_tab_buttons(self) -> None:
-        for idx in range(len(self.files)):
-            try:
-                btn = self.query_one(f"#tab-file-{idx}", Button)
+        try:
+            bar = self.query_one("#lab-file-tabs", Horizontal)
+        except Exception:
+            return
+        for idx, btn in enumerate(bar.children):
+            if isinstance(btn, Button):
                 btn.variant = "primary" if idx == self.active_file_idx else "default"
-            except Exception:
-                pass
+
+    def _rebuild_file_tabs(self) -> None:
+        """Rebuild #lab-file-tabs children from self.files so labels always
+        reflect the CURRENT lab (LAB-TAB-001, SPEC-EXPL-003). Buttons are
+        identified positionally (no ids) to avoid DuplicateIds races with
+        Textual's asynchronous removal."""
+        try:
+            bar = self.query_one("#lab-file-tabs", Horizontal)
+        except Exception:
+            return
+        old = list(bar.children)
+        overlap = min(len(old), len(self.files))
+        for idx in range(overlap):
+            btn = old[idx]
+            if isinstance(btn, Button):
+                btn.label = str(self.files[idx])
+                btn.variant = "primary" if idx == self.active_file_idx else "default"
+        for btn in old[len(self.files):]:
+            btn.remove()
+        for idx in range(overlap, len(self.files)):
+            bar.mount(Button(str(self.files[idx]), classes="lab-file-tab-btn",
+                             variant="primary" if idx == self.active_file_idx else "default"))
 
     def _rebuild_screen(self) -> None:
         self._setup_workspace()
@@ -1008,6 +1097,7 @@ class LabScreen(_Base):
             self.query_one("#lab-instructions", Markdown).update(str(inst))
             self.query_one("#lab-hint-out", Static).update("")
             self._load_active_file_into_editor()
+            self._rebuild_file_tabs()
             self._update_tab_buttons()
         except Exception:
             # Fallback: re-mount screen
@@ -1142,14 +1232,13 @@ class LabScreen(_Base):
     @on(Button.Pressed, ".lab-file-tab-btn")
     def _file_tab_pressed(self, event: Button.Pressed) -> None:
         try:
-            btn_id = event.button.id or ""
-            if btn_id.startswith("tab-file-"):
-                new_idx = int(btn_id.split("-")[-1])
-                if new_idx != self.active_file_idx:
-                    self._save_active_file()
-                    self.active_file_idx = new_idx
-                    self._load_active_file_into_editor()
-                    self._update_tab_buttons()
+            bar = self.query_one("#lab-file-tabs", Horizontal)
+            new_idx = list(bar.children).index(event.button)
+            if 0 <= new_idx < len(self.files) and new_idx != self.active_file_idx:
+                self._save_active_file()
+                self.active_file_idx = new_idx
+                self._load_active_file_into_editor()
+                self._update_tab_buttons()
         except Exception:
             pass
 

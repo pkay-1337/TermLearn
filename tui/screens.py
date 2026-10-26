@@ -724,6 +724,10 @@ class StudyBlockListScreen(_Base):
         viz_steps = viz.get("steps", [])
         viz_info = f"{len(viz_steps)} steps" if viz_steps else "None"
 
+        # SPEC-EXPL-003 F2: diagram presence in the dossier
+        diag = b.get("diagram") or {}
+        diag_info = diag.get("kind") if isinstance(diag, dict) and diag.get("kind") else "None"
+
         explain = str(b.get("explain_md", "")).strip()
         lines = explain.splitlines()
         preview_text = "\n".join(lines[:8]) + ("\n\n*(...more in study mode)*" if len(lines) > 8 else "")
@@ -741,7 +745,7 @@ class StudyBlockListScreen(_Base):
             f"- **Status:** **{status_desc}**\n"
             f"- **Checks:** **{tot}** total\n"
             f"- **Key Concepts:** `{concepts_str}`\n"
-            f"- **Visualizer:** {viz_info}\n\n"
+            f"- **Visualizer:** {viz_info} · **Diagram:** {diag_info}\n\n"
             f"### Summary\n{preview_text}"
             f"{code_preview}\n\n"
             f"---\n"
@@ -1053,6 +1057,22 @@ class ReviseScreen(VimScrollMixin, _Base):
                             yield Syntax(ex["code"], ex.get("lang", "c"), theme="monokai")
                         except Exception:
                             yield Static(ex["code"])
+                        # SPEC-EXPL-003 F1 (FR-EXPL-003): explanation after code
+                        emd = ex.get("explain_md")
+                        if isinstance(emd, str) and emd.strip():
+                            yield Markdown(emd)
+                    # SPEC-EXPL-003 F2 (FR-DIAG-003/004): diagram, final step
+                    diag = b.get("diagram") or {}
+                    if isinstance(diag, dict) and diag.get("kind"):
+                        try:
+                            from lib.diagram import render as _diagram_render
+                            darts = _diagram_render(diag)
+                        except Exception:
+                            darts = []
+                        if darts:
+                            if diag.get("caption"):
+                                yield Static(f"[dim]{diag['caption']}[/dim]")
+                            yield Static(darts[-1], classes="study-viz-box")
                     if b.get("common_bugs"):
                         yield Static(f"[bold yellow]Common Pitfalls:[/] " + "; ".join(b["common_bugs"]),
                                      classes="feedback-msg")

@@ -1,0 +1,98 @@
+{
+  "slug": "bgnet",
+  "title": "Beej's Guide to Network Programming",
+  "authors": [
+    "Brian \"Beej Jorgensen\" Hall"
+  ],
+  "language": "en",
+  "source_file": "source.epub",
+  "spine_count": 13,
+  "chapters": [
+    {
+      "id": "ch01",
+      "spine_id": "chapter_0",
+      "file": "title.xhtml",
+      "title": "Beej's Guide to Network Programming",
+      "chars": 116
+    },
+    {
+      "id": "ch02",
+      "spine_id": "chapter_1",
+      "file": "intro.xhtml",
+      "title": "1 Intro",
+      "chars": 12757
+    },
+    {
+      "id": "ch03",
+      "spine_id": "chapter_2",
+      "file": "what-is-a-socket.xhtml",
+      "title": "2 What is a socket?",
+      "chars": 10415
+    },
+    {
+      "id": "ch04",
+      "spine_id": "chapter_3",
+      "file": "ip-addresses-structs-and-data-munging.xhtml",
+      "title": "3 IP Addresses, struct s, and Data Munging",
+      "chars": 24478
+    },
+    {
+      "id": "ch05",
+      "spine_id": "chapter_4",
+      "file": "jumping-from-ipv4-to-ipv6.xhtml",
+      "title": "4 Jumping from IPv4 to IPv6",
+      "chars": 2244
+    },
+    {
+      "id": "ch06",
+      "spine_id": "chapter_5",
+      "file": "system-calls-or-bust.xhtml",
+      "title": "5 System Calls or Bust",
+      "chars": 33228
+    },
+    {
+      "id": "ch07",
+      "spine_id": "chapter_6",
+      "file": "client-server-background.xhtml",
+      "title": "6 Client-Server Background",
+      "chars": 16261
+    },
+    {
+      "id": "ch08",
+      "spine_id": "chapter_7",
+      "file": "slightly-advanced-techniques.xhtml",
+      "title": "7 Slightly Advanced Techniques",
+      "chars": 76353
+    },
+    {
+      "id": "ch09",
+      "spine_id": "chapter_8",
+      "file": "common-questions.xhtml",
+      "title": "8 Common Questions",
+      "chars": 14635
+    },
+    {
+      "id": "ch10",
+      "spine_id": "chapter_9",
+      "file": "man-pages.xhtml",
+      "title": "9 Man Pages",
+      "chars": 73237
+    },
+    {
+      "id": "ch11",
+      "spine_id": "chapter_10",
+      "file": "more-references.xhtml",
+      "title": "10 More References",
+      "chars": 9340
+    },
+    {
+      "id": "ch12",
+      "spine_id": "chapter_11",
+      "file": "appendix.xhtml",
+      "title": "Appendix: Example Source Code",
+      "chars": 59991
+    }
+  ],
+  "warnings": [],
+  "extracted_at": "2026-10-26T22:51:40"
+}

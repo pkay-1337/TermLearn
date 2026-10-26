@@ -1,0 +1,2719 @@
+# Appendix: Example Source Code
+
+<!-- source: appendix.xhtml | spine-id: chapter_11 | chapter: ch12 -->
+
+# Appendix: Example Source Code
+
+Full listings of the C example programs bundled with the guide (from `bgnet_source/examples/`).
+
+## broadcaster.c
+
+```c
+/*
+** broadcaster.c -- a datagram "client" like talker.c, except
+**                  this one can broadcast
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
+#define SERVERPORT 4950	// the port users will be connecting to
+
+int main(int argc, char *argv[])
+{
+	int sockfd;
+	struct sockaddr_in their_addr; // connector's address info
+	struct hostent *he;
+	int numbytes;
+	int broadcast = 1;
+	//char broadcast = '1'; // if that doesn't work, try this
+
+	if (argc != 3) {
+		fprintf(stderr,"usage: broadcaster hostname message\n");
+		exit(1);
+	}
+
+	if ((he=gethostbyname(argv[1])) == NULL) {  // get the host info
+		perror("gethostbyname");
+		exit(1);
+	}
+
+	if ((sockfd = socket(PF_INET, SOCK_DGRAM, 0)) == -1) {
+		perror("socket");
+		exit(1);
+	}
+
+	// this call is what allows broadcast packets to be sent:
+	if (setsockopt(sockfd, SOL_SOCKET, SO_BROADCAST, &broadcast,
+		sizeof broadcast) == -1) {
+		perror("setsockopt (SO_BROADCAST)");
+		exit(1);
+	}
+
+	their_addr.sin_family = AF_INET;	 // host byte order
+	their_addr.sin_port = htons(SERVERPORT); // network byte order
+	their_addr.sin_addr = *((struct in_addr *)he->h_addr);
+	memset(their_addr.sin_zero, '\0', sizeof their_addr.sin_zero);
+
+	numbytes = sendto(sockfd, argv[2], strlen(argv[2]), 0,
+			 (struct sockaddr *)&their_addr, sizeof their_addr);
+
+	if (numbytes == -1) {
+		perror("sendto");
+		exit(1);
+	}
+
+	printf("sent %d bytes to %s\n", numbytes,
+		inet_ntoa(their_addr.sin_addr));
+
+	close(sockfd);
+
+	return 0;
+}
+```
+
+## client.c
+
+```c
+/*
+** client.c -- a stream socket client demo
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
+#include <arpa/inet.h>
+
+#define PORT "3490" // the port client will be connecting to 
+
+#define MAXDATASIZE 100 // max number of bytes we can get at once 
+
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa)
+{
+	if (sa->sa_family == AF_INET) {
+		return &(((struct sockaddr_in*)sa)->sin_addr);
+	}
+
+	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+int main(int argc, char *argv[])
+{
+	int sockfd, numbytes;  
+	char buf[MAXDATASIZE];
+	struct addrinfo hints, *servinfo, *p;
+	int rv;
+	char s[INET6_ADDRSTRLEN];
+
+	if (argc != 2) {
+	    fprintf(stderr,"usage: client hostname\n");
+	    exit(1);
+	}
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ((rv = getaddrinfo(argv[1], PORT, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
+
+	// loop through all the results and connect to the first we can
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sockfd = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol)) == -1) {
+			perror("client: socket");
+			continue;
+		}
+
+        inet_ntop(p->ai_family,
+            get_in_addr((struct sockaddr *)p->ai_addr),
+            s, sizeof s);
+        printf("client: attempting connection to %s\n", s);
+
+		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+			perror("client: connect");
+			close(sockfd);
+			continue;
+		}
+
+		break;
+	}
+
+	if (p == NULL) {
+		fprintf(stderr, "client: failed to connect\n");
+		return 2;
+	}
+
+	inet_ntop(p->ai_family,
+			get_in_addr((struct sockaddr *)p->ai_addr),
+			s, sizeof s);
+	printf("client: connected to %s\n", s);
+
+	freeaddrinfo(servinfo); // all done with this structure
+
+	if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
+	    perror("recv");
+	    exit(1);
+	}
+
+	buf[numbytes] = '\0';
+
+	printf("client: received '%s'\n",buf);
+
+	close(sockfd);
+
+	return 0;
+}
+```
+
+## getip.c
+
+```c
+/*
+** getip.c -- a hostname lookup demo
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int main(int argc, char *argv[])
+{
+	struct hostent *h;
+
+	if (argc != 2) {  // error check the command line
+		fprintf(stderr,"usage: getip address\n");
+		exit(1);
+	}
+
+	if ((h=gethostbyname(argv[1])) == NULL) {  // get the host info
+		herror("gethostbyname");
+		exit(1);
+	}
+
+	printf("Host name  : %s\n", h->h_name);
+	printf("IP Address : %s\n", inet_ntoa(*((struct in_addr *)h->h_addr)));
+   
+   return 0;
+}
+```
+
+## ghbn.c
+
+```c
+/*
+** ghbn.c -- a hostname lookup demo
+**
+** THIS IS A DEPRECATED METHOD OF GETTING HOST NAMES
+** use getaddrinfo() instead.
+*/
+
+#include <stdio.h>
+#include <errno.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+
+int main(int argc, char *argv[])
+{
+	int i;
+	struct hostent *he;
+	struct in_addr **addr_list;
+
+	if (argc != 2) {  // error check the command line
+		fprintf(stderr,"usage: ghbn hostname\n");
+		return 1;
+	}
+
+	if ((he = gethostbyname(argv[1])) == NULL) {  // get the host info
+		herror("gethostbyname");
+		return 2;
+	}
+
+	// print information about this host:
+	printf("Official name is: %s\n", he->h_name);
+	printf("    IP addresses: ");
+	addr_list = (struct in_addr **)he->h_addr_list;
+	for(i = 0; addr_list[i] != NULL; i++) {
+		printf("%s ", inet_ntoa(*addr_list[i]));
+	}
+	printf("\n");
+
+	return 0;
+}
+```
+
+## htonll.c
+
+```c
+#include <stdio.h>
+
+// Only define this if you're on a little-endian system!
+#define LITTLE_ENDIAN
+#define ntohll htonll
+
+unsigned long long htonll(unsigned long long x)
+{
+#ifdef LITTLE_ENDIAN
+    x = ((x & 0x00000000000000ffULL) << 56) |
+        ((x & 0x000000000000ff00ULL) << 40) |
+        ((x & 0x0000000000ff0000ULL) << 24) |
+        ((x & 0x00000000ff000000ULL) << 8)  |
+        ((x & 0x000000ff00000000ULL) >> 8)  |
+        ((x & 0x0000ff0000000000ULL) >> 24) |
+        ((x & 0x00ff000000000000ULL) >> 40) |
+        ((x & 0xff00000000000000ULL) >> 56);
+#endif
+    return x;
+}
+
+int main(void)
+{
+    unsigned long long v[4] = {
+        0x0000000000000000,
+        0x0123456789ABCDEF,
+        0xFEDCBA9876543210,
+        0xFFFFFFFFFFFFFFFF,
+    };
+
+    for (int i = 0; i < 4; i++) {
+        unsigned long long val = v[i];
+        unsigned long long net_val = htonll(val);
+        unsigned long long host_val = ntohll(net_val);
+
+        printf("%016llX -> %016llX -> %016llX\n", val, net_val, host_val);
+    }
+}
+```
+
+## ieee754.c
+
+```c
+#include <stdio.h>
+#include <stdint.h>
+#include <inttypes.h>
+
+#define pack754_32(f) (pack754((f), 32, 8))
+#define pack754_64(f) (pack754((f), 64, 11))
+#define unpack754_32(i) (unpack754((i), 32, 8))
+#define unpack754_64(i) (unpack754((i), 64, 11))
+
+uint64_t pack754(long double f, unsigned bits, unsigned expbits)
+{
+	long double fnorm;
+	int shift;
+	long long sign, exp, significand;
+	unsigned significandbits = bits - expbits - 1; // -1 for sign bit
+
+	if (f == 0.0) return 0; // get this special case out of the way
+
+	// check sign and begin normalization
+	if (f < 0) { sign = 1; fnorm = -f; }
+	else { sign = 0; fnorm = f; }
+
+	// get the normalized form of f and track the exponent
+	shift = 0;
+	while(fnorm >= 2.0) { fnorm /= 2.0; shift++; }
+	while(fnorm < 1.0) { fnorm *= 2.0; shift--; }
+	fnorm = fnorm - 1.0;
+
+	// calculate the binary form (non-float) of the significand data
+	significand = fnorm * ((1LL<<significandbits) + 0.5f);
+
+	// get the biased exponent
+	exp = shift + ((1<<(expbits-1)) - 1); // shift + bias
+
+	// return the final answer
+	return (sign<<(bits-1)) | (exp<<(bits-expbits-1)) | significand;
+}
+
+long double unpack754(uint64_t i, unsigned bits, unsigned expbits)
+{
+	long double result;
+	long long shift;
+	unsigned bias;
+	unsigned significandbits = bits - expbits - 1; // -1 for sign bit
+
+	if (i == 0) return 0.0;
+
+	// pull the significand
+	result = (i&((1LL<<significandbits)-1)); // mask
+	result /= (1LL<<significandbits); // convert back to float
+	result += 1.0f; // add the one back on
+
+	// deal with the exponent
+	bias = (1<<(expbits-1)) - 1;
+	shift = ((i>>significandbits)&((1LL<<expbits)-1)) - bias;
+	while(shift > 0) { result *= 2.0; shift--; }
+	while(shift < 0) { result /= 2.0; shift++; }
+
+	// sign it
+	result *= (i>>(bits-1))&1? -1.0: 1.0;
+
+	return result;
+}
+
+int main(void)
+{
+	float f = 3.1415926, f2;
+	double d = 3.14159265358979323, d2;
+	uint32_t fi;
+	uint64_t di;
+
+	fi = pack754_32(f);
+	f2 = unpack754_32(fi);
+
+	di = pack754_64(d);
+	d2 = unpack754_64(di);
+
+	printf("float before : %.7f\n", f);
+	printf("float encoded: 0x%08" PRIx32 "\n", fi);
+	printf("float after  : %.7f\n\n", f2);
+
+	printf("double before : %.20lf\n", d);
+	printf("double encoded: 0x%016" PRIx64 "\n", di);
+	printf("double after  : %.20lf\n", d2);
+
+	return 0;
+}
+```
+
+## listener.c
+
+```c
+/*
+** listener.c -- a datagram sockets "server" demo
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
+#define MYPORT "4950"	// the port users will be connecting to
+
+#define MAXBUFLEN 100
+
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa)
+{
+	if (sa->sa_family == AF_INET) {
+		return &(((struct sockaddr_in*)sa)->sin_addr);
+	}
+
+	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+int main(void)
+{
+	int sockfd;
+	struct addrinfo hints, *servinfo, *p;
+	int rv;
+	int numbytes;
+	struct sockaddr_storage their_addr;
+	char buf[MAXBUFLEN];
+	socklen_t addr_len;
+	char s[INET6_ADDRSTRLEN];
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET6; // or set to AF_INET to use IPv4
+	hints.ai_socktype = SOCK_DGRAM;
+	hints.ai_flags = AI_PASSIVE; // use my IP
+
+	if ((rv = getaddrinfo(NULL, MYPORT, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
+
+	// loop through all the results and bind to the first we can
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sockfd = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol)) == -1) {
+			perror("listener: socket");
+			continue;
+		}
+
+		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+			close(sockfd);
+			perror("listener: bind");
+			continue;
+		}
+
+		break;
+	}
+
+	if (p == NULL) {
+		fprintf(stderr, "listener: failed to bind socket\n");
+		return 2;
+	}
+
+	freeaddrinfo(servinfo);
+
+	printf("listener: waiting to recvfrom...\n");
+
+	addr_len = sizeof their_addr;
+	if ((numbytes = recvfrom(sockfd, buf, MAXBUFLEN-1 , 0,
+		(struct sockaddr *)&their_addr, &addr_len)) == -1) {
+		perror("recvfrom");
+		exit(1);
+	}
+
+	printf("listener: got packet from %s\n",
+		inet_ntop(their_addr.ss_family,
+			get_in_addr((struct sockaddr *)&their_addr),
+			s, sizeof s));
+	printf("listener: packet is %d bytes long\n", numbytes);
+	buf[numbytes] = '\0';
+	printf("listener: packet contains \"%s\"\n", buf);
+
+	close(sockfd);
+
+	return 0;
+}
+```
+
+## pack.c
+
+```c
+#include <stdio.h>
+#include <stdint.h>
+
+uint32_t htonf(float f)
+{
+	uint32_t p;
+	uint32_t sign;
+
+	if (f < 0) { sign = 1; f = -f; }
+	else { sign = 0; }
+		
+	p = ((((uint32_t)f)&0x7fff)<<16) | (sign<<31); // whole part and sign
+	p |= (uint32_t)(((f - (int)f) * 65536.0f))&0xffff; // fraction
+
+	return p;
+}
+
+float ntohf(uint32_t p)
+{
+	float f = ((p>>16)&0x7fff); // whole part
+	f += (p&0xffff) / 65536.0f; // fraction
+
+	if (((p>>31)&0x1) == 0x1) { f = -f; } // sign bit set
+
+	return f;
+}
+
+int main(void)
+{
+	float f = 3.1415926, f2;
+	uint32_t netf;
+
+	netf = htonf(f);
+	f2 = ntohf(netf);
+
+	printf("Original: %f\n", f);
+	printf(" Network: 0x%08X\n", netf);
+	printf("Unpacked: %f\n", f2);
+
+	return 0;
+}
+```
+
+## pack2.c
+
+```c
+#include <stdio.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <string.h>
+
+// macros for packing floats and doubles:
+#define pack754_16(f) (pack754((f), 16, 5))
+#define pack754_32(f) (pack754((f), 32, 8))
+#define pack754_64(f) (pack754((f), 64, 11))
+#define unpack754_16(i) (unpack754((i), 16, 5))
+#define unpack754_32(i) (unpack754((i), 32, 8))
+#define unpack754_64(i) (unpack754((i), 64, 11))
+
+/*
+** pack754() -- pack a floating point number into IEEE-754 format
+*/ 
+unsigned long long int pack754(long double f, unsigned bits, unsigned expbits)
+{
+	long double fnorm;
+	int shift;
+	long long sign, exp, significand;
+	unsigned significandbits = bits - expbits - 1; // -1 for sign bit
+
+	if (f == 0.0) return 0; // get this special case out of the way
+
+	// check sign and begin normalization
+	if (f < 0) { sign = 1; fnorm = -f; }
+	else { sign = 0; fnorm = f; }
+
+	// get the normalized form of f and track the exponent
+	shift = 0;
+	while(fnorm >= 2.0) { fnorm /= 2.0; shift++; }
+	while(fnorm < 1.0) { fnorm *= 2.0; shift--; }
+	fnorm = fnorm - 1.0;
+
+	// calculate the binary form (non-float) of the significand data
+	significand = fnorm * ((1LL<<significandbits) + 0.5f);
+
+	// get the biased exponent
+	exp = shift + ((1<<(expbits-1)) - 1); // shift + bias
+
+	// return the final answer
+	return (sign<<(bits-1)) | (exp<<(bits-expbits-1)) | significand;
+}
+
+/*
+** unpack754() -- unpack a floating point number from IEEE-754 format
+*/ 
+long double unpack754(unsigned long long int i, unsigned bits, unsigned expbits)
+{
+	long double result;
+	long long shift;
+	unsigned bias;
+	unsigned significandbits = bits - expbits - 1; // -1 for sign bit
+
+	if (i == 0) return 0.0;
+
+	// pull the significand
+	result = (i&((1LL<<significandbits)-1)); // mask
+	result /= (1LL<<significandbits); // convert back to float
+	result += 1.0f; // add the one back on
+
+	// deal with the exponent
+	bias = (1<<(expbits-1)) - 1;
+	shift = ((i>>significandbits)&((1LL<<expbits)-1)) - bias;
+	while(shift > 0) { result *= 2.0; shift--; }
+	while(shift < 0) { result /= 2.0; shift++; }
+
+	// sign it
+	result *= (i>>(bits-1))&1? -1.0: 1.0;
+
+	return result;
+}
+
+/*
+** packi16() -- store a 16-bit int into a char buffer (like htons())
+*/ 
+void packi16(unsigned char *buf, unsigned int i)
+{
+	*buf++ = i>>8; *buf++ = i;
+}
+
+/*
+** packi32() -- store a 32-bit int into a char buffer (like htonl())
+*/ 
+void packi32(unsigned char *buf, unsigned long int i)
+{
+	*buf++ = i>>24; *buf++ = i>>16;
+	*buf++ = i>>8;  *buf++ = i;
+}
+
+/*
+** packi64() -- store a 64-bit int into a char buffer (like htonl())
+*/ 
+void packi64(unsigned char *buf, unsigned long long int i)
+{
+	*buf++ = i>>56; *buf++ = i>>48;
+	*buf++ = i>>40; *buf++ = i>>32;
+	*buf++ = i>>24; *buf++ = i>>16;
+	*buf++ = i>>8;  *buf++ = i;
+}
+
+/*
+** unpacki16() -- unpack a 16-bit int from a char buffer (like
+**                ntohs())
+*/ 
+int unpacki16(unsigned char *buf)
+{
+	unsigned int i2 = ((unsigned int)buf[0]<<8) | buf[1];
+	int i;
+
+	// change unsigned numbers to signed
+	if (i2 <= 0x7fffu) { i = i2; }
+	else { i = -1 - (unsigned int)(0xffffu - i2); }
+
+	return i;
+}
+
+/*
+** unpacku16() -- unpack a 16-bit unsigned from a char buffer (like
+**                ntohs())
+*/ 
+unsigned int unpacku16(unsigned char *buf)
+{
+	return ((unsigned int)buf[0]<<8) | buf[1];
+}
+
+/*
+** unpacki32() -- unpack a 32-bit int from a char buffer (like
+**                ntohl())
+*/ 
+long int unpacki32(unsigned char *buf)
+{
+	unsigned long int i2 = ((unsigned long int)buf[0]<<24) |
+	                       ((unsigned long int)buf[1]<<16) |
+	                       ((unsigned long int)buf[2]<<8)  |
+	                       buf[3];
+	long int i;
+
+	// change unsigned numbers to signed
+	if (i2 <= 0x7fffffffu) { i = i2; }
+	else { i = -1 - (long int)(0xffffffffu - i2); }
+
+	return i;
+}
+
+/*
+** unpacku32() -- unpack a 32-bit unsigned from a char buffer (like
+**                ntohl())
+*/ 
+unsigned long int unpacku32(unsigned char *buf)
+{
+	return ((unsigned long int)buf[0]<<24) |
+	       ((unsigned long int)buf[1]<<16) |
+	       ((unsigned long int)buf[2]<<8)  |
+	       buf[3];
+}
+
+/*
+** unpacki64() -- unpack a 64-bit int from a char buffer (like
+**                ntohl())
+*/ 
+long long int unpacki64(unsigned char *buf)
+{
+	unsigned long long int i2 =
+        ((unsigned long long int)buf[0]<<56) |
+        ((unsigned long long int)buf[1]<<48) |
+        ((unsigned long long int)buf[2]<<40) |
+        ((unsigned long long int)buf[3]<<32) |
+        ((unsigned long long int)buf[4]<<24) |
+        ((unsigned long long int)buf[5]<<16) |
+        ((unsigned long long int)buf[6]<<8)  |
+        buf[7];
+	long long int i;
+
+	// change unsigned numbers to signed
+	if (i2 <= 0x7fffffffffffffffu) { i = i2; }
+	else { i = -1 -(long long int)(0xffffffffffffffffu - i2); }
+
+	return i;
+}
+
+/*
+** unpacku64() -- unpack a 64-bit unsigned from a char buffer (like
+**                ntohl())
+*/ 
+unsigned long long int unpacku64(unsigned char *buf)
+{
+	return ((unsigned long long int)buf[0]<<56) |
+	       ((unsigned long long int)buf[1]<<48) |
+	       ((unsigned long long int)buf[2]<<40) |
+	       ((unsigned long long int)buf[3]<<32) |
+	       ((unsigned long long int)buf[4]<<24) |
+	       ((unsigned long long int)buf[5]<<16) |
+	       ((unsigned long long int)buf[6]<<8)  |
+	       buf[7];
+}
+
+/*
+** pack() -- store data dictated by the format string in the buffer
+**
+**   bits |signed   unsigned   float   string
+**   -----+----------------------------------
+**      8 |   c        C         
+**     16 |   h        H         f
+**     32 |   l        L         d
+**     64 |   q        Q         g
+**      - |                               s
+**
+**  (16-bit unsigned length is automatically prepended to strings)
+*/ 
+
+unsigned int pack(unsigned char *buf, char *format, ...)
+{
+	va_list ap;
+
+	signed char c;              // 8-bit
+	unsigned char C;
+
+	int h;                      // 16-bit
+	unsigned int H;
+
+	long int l;                 // 32-bit
+	unsigned long int L;
+
+	long long int q;            // 64-bit
+	unsigned long long int Q;
+
+	float f;                    // floats
+	double d;
+	long double g;
+	unsigned long long int fhold;
+
+	char *s;                    // strings
+	unsigned int len;
+
+	unsigned int size = 0;
+
+	va_start(ap, format);
+
+	for(; *format != '\0'; format++) {
+		switch(*format) {
+		case 'c': // 8-bit
+			size += 1;
+			c = (signed char)va_arg(ap, int); // promoted
+			*buf++ = c;
+			break;
+
+		case 'C': // 8-bit unsigned
+			size += 1;
+			C = (unsigned char)va_arg(ap, unsigned int); // promoted
+			*buf++ = C;
+			break;
+
+		case 'h': // 16-bit
+			size += 2;
+			h = va_arg(ap, int);
+			packi16(buf, h);
+			buf += 2;
+			break;
+
+		case 'H': // 16-bit unsigned
+			size += 2;
+			H = va_arg(ap, unsigned int);
+			packi16(buf, H);
+			buf += 2;
+			break;
+
+		case 'l': // 32-bit
+			size += 4;
+			l = va_arg(ap, long int);
+			packi32(buf, l);
+			buf += 4;
+			break;
+
+		case 'L': // 32-bit unsigned
+			size += 4;
+			L = va_arg(ap, unsigned long int);
+			packi32(buf, L);
+			buf += 4;
+			break;
+
+		case 'q': // 64-bit
+			size += 8;
+			q = va_arg(ap, long long int);
+			packi64(buf, q);
+			buf += 8;
+			break;
+
+		case 'Q': // 64-bit unsigned
+			size += 8;
+			Q = va_arg(ap, unsigned long long int);
+			packi64(buf, Q);
+			buf += 8;
+			break;
+
+		case 'f': // float-16
+			size += 2;
+			f = (float)va_arg(ap, double); // promoted
+			fhold = pack754_16(f); // convert to IEEE 754
+			packi16(buf, fhold);
+			buf += 2;
+			break;
+
+		case 'd': // float-32
+			size += 4;
+			d = va_arg(ap, double);
+			fhold = pack754_32(d); // convert to IEEE 754
+			packi32(buf, fhold);
+			buf += 4;
+			break;
+
+		case 'g': // float-64
+			size += 8;
+			g = va_arg(ap, long double);
+			fhold = pack754_64(g); // convert to IEEE 754
+			packi64(buf, fhold);
+			buf += 8;
+			break;
+
+		case 's': // string
+			s = va_arg(ap, char*);
+			len = strlen(s);
+			size += len + 2;
+			packi16(buf, len);
+			buf += 2;
+			memcpy(buf, s, len);
+			buf += len;
+			break;
+		}
+	}
+
+	va_end(ap);
+
+	return size;
+}
+
+/*
+** unpack() -- unpack data dictated by the format string into the
+**             buffer
+**
+**   bits |signed   unsigned   float   string
+**   -----+----------------------------------
+**      8 |   c        C         
+**     16 |   h        H         f
+**     32 |   l        L         d
+**     64 |   q        Q         g
+**      - |                               s
+**
+**  (string is extracted based on its stored length, but 's' can be
+**  prepended with a max length)
+*/
+void unpack(unsigned char *buf, char *format, ...)
+{
+	va_list ap;
+
+	signed char *c;              // 8-bit
+	unsigned char *C;
+
+	int *h;                      // 16-bit
+	unsigned int *H;
+
+	long int *l;                 // 32-bit
+	unsigned long int *L;
+
+	long long int *q;            // 64-bit
+	unsigned long long int *Q;
+
+	float *f;                    // floats
+	double *d;
+	long double *g;
+	unsigned long long int fhold;
+
+	char *s;
+	unsigned int len, maxstrlen=0, count;
+
+	va_start(ap, format);
+
+	for(; *format != '\0'; format++) {
+		switch(*format) {
+		case 'c': // 8-bit
+			c = va_arg(ap, signed char*);
+			if (*buf <= 0x7f) { *c = *buf;} // re-sign
+			else { *c = -1 - (unsigned char)(0xffu - *buf); }
+			buf++;
+			break;
+
+		case 'C': // 8-bit unsigned
+			C = va_arg(ap, unsigned char*);
+			*C = *buf++;
+			break;
+
+		case 'h': // 16-bit
+			h = va_arg(ap, int*);
+			*h = unpacki16(buf);
+			buf += 2;
+			break;
+
+		case 'H': // 16-bit unsigned
+			H = va_arg(ap, unsigned int*);
+			*H = unpacku16(buf);
+			buf += 2;
+			break;
+
+		case 'l': // 32-bit
+			l = va_arg(ap, long int*);
+			*l = unpacki32(buf);
+			buf += 4;
+			break;
+
+		case 'L': // 32-bit unsigned
+			L = va_arg(ap, unsigned long int*);
+			*L = unpacku32(buf);
+			buf += 4;
+			break;
+
+		case 'q': // 64-bit
+			q = va_arg(ap, long long int*);
+			*q = unpacki64(buf);
+			buf += 8;
+			break;
+
+		case 'Q': // 64-bit unsigned
+			Q = va_arg(ap, unsigned long long int*);
+			*Q = unpacku64(buf);
+			buf += 8;
+			break;
+
+		case 'f': // float
+			f = va_arg(ap, float*);
+			fhold = unpacku16(buf);
+			*f = unpack754_16(fhold);
+			buf += 2;
+			break;
+
+		case 'd': // float-32
+			d = va_arg(ap, double*);
+			fhold = unpacku32(buf);
+			*d = unpack754_32(fhold);
+			buf += 4;
+			break;
+
+		case 'g': // float-64
+			g = va_arg(ap, long double*);
+			fhold = unpacku64(buf);
+			*g = unpack754_64(fhold);
+			buf += 8;
+			break;
+
+		case 's': // string
+			s = va_arg(ap, char*);
+			len = unpacku16(buf);
+			buf += 2;
+			if (maxstrlen > 0 && len > maxstrlen)
+                count = maxstrlen - 1;
+			else
+                count = len;
+			memcpy(s, buf, count);
+			s[count] = '\0';
+			buf += len;
+			break;
+
+		default:
+			if (isdigit(*format)) { // track max str len
+				maxstrlen = maxstrlen * 10 + (*format-'0');
+			}
+		}
+
+		if (!isdigit(*format)) maxstrlen = 0;
+	}
+
+	va_end(ap);
+}
+
+//#define DEBUG
+#ifdef DEBUG
+#include <limits.h>
+#include <float.h>
+#include <assert.h>
+#endif
+
+int main(void)
+{
+#ifndef DEBUG
+	unsigned char buf[1024];
+	unsigned char magic;
+	int monkeycount;
+	long altitude;
+	double absurdityfactor;
+	char *s = "Great unmitigated Zot!  You've found the Runestaff!";
+	char s2[96];
+	unsigned int packetsize, ps2;
+
+	packetsize = pack(buf, "CHhlsd", 'B', 0, 37, -5, s, -3490.5);
+	packi16(buf+1, packetsize); // store packet size in packet for kicks
+
+	printf("packet is %u bytes\n", packetsize);
+
+	unpack(buf, "CHhl96sd", &magic, &ps2, &monkeycount, &altitude, s2,
+		&absurdityfactor);
+
+	printf("'%c' %hhu %u %ld \"%s\" %f\n", magic, ps2, monkeycount,
+			altitude, s2, absurdityfactor);
+
+#else
+	unsigned char buf[1024];
+
+	int x;
+
+	long long k, k2;
+	long long test64[14] = { 0, -0, 1, 2, -1, -2, 0x7fffffffffffffffll>>1, 0x7ffffffffffffffell, 0x7fffffffffffffffll, -0x7fffffffffffffffll, -0x8000000000000000ll, 9007199254740991ll, 9007199254740992ll, 9007199254740993ll };
+
+	unsigned long long K, K2;
+	unsigned long long testu64[14] = { 0, 0, 1, 2, 0, 0, 0xffffffffffffffffll>>1, 0xfffffffffffffffell, 0xffffffffffffffffll, 0, 0, 9007199254740991ll, 9007199254740992ll, 9007199254740993ll };
+
+	long i, i2;
+	long test32[14] = { 0, -0, 1, 2, -1, -2, 0x7fffffffl>>1, 0x7ffffffel, 0x7fffffffl, -0x7fffffffl, -0x80000000l, 0, 0, 0 };
+
+	unsigned long I, I2;
+	unsigned long testu32[14] = { 0, 0, 1, 2, 0, 0, 0xffffffffl>>1, 0xfffffffel, 0xffffffffl, 0, 0, 0, 0, 0 };
+
+	int j, j2;
+	int test16[14] = { 0, -0, 1, 2, -1, -2, 0x7fff>>1, 0x7ffe, 0x7fff, -0x7fff, -0x8000, 0, 0, 0 };
+
+	printf("char bytes: %zu\n", sizeof(char));
+	printf("int bytes: %zu\n", sizeof(int));
+	printf("long bytes: %zu\n", sizeof(long));
+	printf("long long bytes: %zu\n", sizeof(long long));
+	printf("float bytes: %zu\n", sizeof(float));
+	printf("double bytes: %zu\n", sizeof(double));
+	printf("long double bytes: %zu\n", sizeof(long double));
+
+	for(x = 0; x < 14; x++) {
+		k = test64[x];
+		pack(buf, "q", k);
+		unpack(buf, "q", &k2);
+
+		if (k2 != k) {
+			printf("64: %lld != %lld\n", k, k2);
+			printf("  before: %016llx\n", k);
+			printf("  after:  %016llx\n", k2);
+			printf("  buffer: %02hhx %02hhx %02hhx %02hhx "
+				" %02hhx %02hhx %02hhx %02hhx\n", 
+				buf[0], buf[1], buf[2], buf[3],
+				buf[4], buf[5], buf[6], buf[7]);
+		} else {
+			//printf("64: OK: %lld == %lld\n", k, k2);
+		}
+
+		K = testu64[x];
+		pack(buf, "Q", K);
+		unpack(buf, "Q", &K2);
+
+		if (K2 != K) {
+			printf("64: %llu != %llu\n", K, K2);
+		} else {
+			//printf("64: OK: %llu == %llu\n", K, K2);
+		}
+
+		i = test32[x];
+		pack(buf, "l", i);
+		unpack(buf, "l", &i2);
+
+		if (i2 != i) {
+			printf("32(%d): %ld != %ld\n", x,i, i2);
+			printf("  before: %08lx\n", i);
+			printf("  after:  %08lx\n", i2);
+			printf("  buffer: %02hhx %02hhx %02hhx %02hhx "
+				" %02hhx %02hhx %02hhx %02hhx\n", 
+				buf[0], buf[1], buf[2], buf[3],
+				buf[4], buf[5], buf[6], buf[7]);
+		} else {
+			//printf("32: OK: %ld == %ld\n", i, i2);
+		}
+
+		I = testu32[x];
+		pack(buf, "L", I);
+		unpack(buf, "L", &I2);
+
+		if (I2 != I) {
+			printf("32(%d): %lu != %lu\n", x,I, I2);
+		} else {
+			//printf("32: OK: %lu == %lu\n", I, I2);
+		}
+
+		j = test16[x];
+		pack(buf, "h", j);
+		unpack(buf, "h", &j2);
+
+		if (j2 != j) {
+			printf("16: %d != %d\n", j, j2);
+		} else {
+			//printf("16: OK: %d == %d\n", j, j2);
+		}
+	}
+
+	if (1) {
+		long double testf64[8] = { -3490.6677, 0.0, 1.0, -1.0, DBL_MIN*2, DBL_MAX/2, DBL_MIN, DBL_MAX };
+		long double f,f2;
+
+		for (i = 0; i < 8; i++) {
+			f = testf64[i];
+			pack(buf, "g", f);
+			unpack(buf, "g", &f2);
+
+			if (f2 != f) {
+				printf("f64: %Lf != %Lf\n", f, f2);
+				printf("  before: %016llx\n", *((long long*)&f));
+				printf("  after:  %016llx\n", *((long long*)&f2));
+				printf("  buffer: %02hhx %02hhx %02hhx %02hhx "
+					" %02hhx %02hhx %02hhx %02hhx\n", 
+					buf[0], buf[1], buf[2], buf[3],
+					buf[4], buf[5], buf[6], buf[7]);
+			} else {
+				//printf("f64: OK: %f == %f\n", f, f2);
+			}
+		}
+	}
+	if (1) {
+		double testf32[7] = { 0.0, 1.0, -1.0, 10, -3.6677, 3.1875, -3.1875 };
+		double f,f2;
+
+		for (i = 0; i < 7; i++) {
+			f = testf32[i];
+			pack(buf, "d", f);
+			unpack(buf, "d", &f2);
+
+			if (f2 != f) {
+				printf("f32: %.10f != %.10f\n", f, f2);
+				printf("  before: %016llx\n", *((long long*)&f));
+				printf("  after:  %016llx\n", *((long long*)&f2));
+				printf("  buffer: %02hhx %02hhx %02hhx %02hhx "
+					" %02hhx %02hhx %02hhx %02hhx\n", 
+					buf[0], buf[1], buf[2], buf[3],
+					buf[4], buf[5], buf[6], buf[7]);
+			} else {
+				//printf("f32: OK: %f == %f\n", f, f2);
+			}
+		}
+	}
+	if (1) {
+		float testf16[7] = { 0.0, 1.0, -1.0, 10, -10, 3.1875, -3.1875 };
+		float f,f2;
+
+		for (i = 0; i < 7; i++) {
+			f = testf16[i];
+			pack(buf, "f", f);
+			unpack(buf, "f", &f2);
+
+			if (f2 != f) {
+				printf("f16: %f != %f\n", f, f2);
+				printf("  before: %08x\n", *((int*)&f));
+				printf("  after:  %08x\n", *((int*)&f2));
+				printf("  buffer: %02hhx %02hhx %02hhx %02hhx "
+					" %02hhx %02hhx %02hhx %02hhx\n", 
+					buf[0], buf[1], buf[2], buf[3],
+					buf[4], buf[5], buf[6], buf[7]);
+			} else {
+				//printf("f16: OK: %f == %f\n", f, f2);
+			}
+		}
+	}
+#endif
+
+	return 0;
+}
+```
+
+## pack2b.c
+
+```c
+#include <stdio.h>
+#include <ctype.h>
+#include <stdarg.h>
+#include <string.h>
+#include <stdint.h>
+#include <inttypes.h>
+
+// If you have a compiler that supports them, we can use these exact types:
+#ifdef __STDC_IEC_60559_TYPES__
+typedef _Float32_t float32_t;
+typedef _Float64_t float64_t;
+#else
+// Otherwise let's define our own.
+// Varies for different architectures! But you're probably:
+typedef float float32_t;
+typedef double float64_t;
+#endif
+
+// macros for packing floats and doubles:
+#define pack754_32(f) (pack754((f), 32, 8))
+#define pack754_64(f) (pack754((f), 64, 11))
+#define unpack754_32(i) (unpack754((i), 32, 8))
+#define unpack754_64(i) (unpack754((i), 64, 11))
+
+/*
+** pack754() -- pack a floating point number into IEEE-754 format
+*/ 
+uint64_t pack754(long double f, unsigned bits, unsigned expbits)
+{
+	long double fnorm;
+	int shift;
+	long long sign, exp, significand;
+	unsigned significandbits = bits - expbits - 1; // -1 for sign bit
+
+	if (f == 0.0) return 0; // get this special case out of the way
+
+	// check sign and begin normalization
+	if (f < 0) { sign = 1; fnorm = -f; }
+	else { sign = 0; fnorm = f; }
+
+	// get the normalized form of f and track the exponent
+	shift = 0;
+	while(fnorm >= 2.0) { fnorm /= 2.0; shift++; }
+	while(fnorm < 1.0) { fnorm *= 2.0; shift--; }
+	fnorm = fnorm - 1.0;
+
+	// calculate the binary form (non-float) of the significand data
+	significand = fnorm * ((1LL<<significandbits) + 0.5f);
+
+	// get the biased exponent
+	exp = shift + ((1<<(expbits-1)) - 1); // shift + bias
+
+	// return the final answer
+	return (sign<<(bits-1)) | (exp<<(bits-expbits-1)) | significand;
+}
+
+/*
+** unpack754() -- unpack a floating point number from IEEE-754 format
+*/ 
+long double unpack754(uint64_t i, unsigned bits, unsigned expbits)
+{
+	long double result;
+	long long shift;
+	unsigned bias;
+	unsigned significandbits = bits - expbits - 1; // -1 for sign bit
+
+	if (i == 0) return 0.0;
+
+	// pull the significand
+	result = (i&((1LL<<significandbits)-1)); // mask
+	result /= (1LL<<significandbits); // convert back to float
+	result += 1.0f; // add the one back on
+
+	// deal with the exponent
+	bias = (1<<(expbits-1)) - 1;
+	shift = ((i>>significandbits)&((1LL<<expbits)-1)) - bias;
+	while(shift > 0) { result *= 2.0; shift--; }
+	while(shift < 0) { result /= 2.0; shift++; }
+
+	// sign it
+	result *= (i>>(bits-1))&1? -1.0: 1.0;
+
+	return result;
+}
+
+/*
+** packi16() -- store a 16-bit int into a char buffer (like htons())
+*/ 
+void packi16(uint8_t *buf, int16_t i)
+{
+	uint16_t i2 = i;
+
+	*buf++ = i2>>8; *buf++ = i2;
+}
+
+/*
+** packi32() -- store a 32-bit int into a char buffer (like htonl())
+*/ 
+void packi32(uint8_t *buf, int32_t i)
+{
+	uint32_t i2 = i;
+
+	*buf++ = i2>>24; *buf++ = i2>>16;
+	*buf++ = i2>>8;  *buf++ = i2;
+}
+
+/*
+** packi64() -- store a 64-bit int into a char buffer (like htonl())
+*/ 
+void packi64(uint8_t *buf, int64_t i)
+{
+	uint64_t i2 = i;
+
+	*buf++ = i2>>56; *buf++ = i2>>48;
+	*buf++ = i2>>40; *buf++ = i2>>32;
+	*buf++ = i2>>24; *buf++ = i2>>16;
+	*buf++ = i2>>8;  *buf++ = i2;
+}
+
+/*
+** unpacki16() -- unpack a 16-bit int from a char buffer (like ntohs())
+*/ 
+int16_t unpacki16(uint8_t *buf)
+{
+	uint16_t i2 = ((uint16_t)buf[0]<<8) | buf[1];
+	int16_t i;
+
+	// change unsigned numbers to signed
+	if (i2 <= 0x7fffu) { i = i2; }
+	//else { i = -(int16_t)((uint16_t)0xffff - i2 + (uint16_t)1u); }
+	else { i = -1 - (uint16_t)(0xffffu - i2); }
+
+	return i;
+}
+
+/*
+** unpacki32() -- unpack a 32-bit int from a char buffer (like ntohl())
+*/ 
+int32_t unpacki32(uint8_t *buf)
+{
+	uint32_t i2 = ((uint32_t)buf[0]<<24) | ((uint32_t)buf[1]<<16) |
+	              ((uint32_t)buf[2]<<8)  | buf[3];
+	int32_t i;
+
+	// change unsigned numbers to signed
+	if (i2 <= 0x7fffffffu) { i = i2; }
+	else { i = -1 - (int32_t)(0xffffffffu - i2); }
+
+	return i;
+}
+
+/*
+** unpacki64() -- unpack a 64-bit int from a char buffer (like ntohl())
+*/ 
+int64_t unpacki64(uint8_t *buf)
+{
+	uint64_t i2 = ((uint64_t)buf[0]<<56) | ((uint64_t)buf[1]<<48) |
+	              ((uint64_t)buf[2]<<40) | ((uint64_t)buf[3]<<32) |
+	              ((uint64_t)buf[4]<<24) | ((uint64_t)buf[5]<<16) |
+	              ((uint64_t)buf[6]<<8)  | buf[7];
+	int64_t i;
+
+	// change unsigned numbers to signed
+	if (i2 <= 0x7fffffffffffffffu) { i = i2; }
+	else { i = -1 -(int64_t)(0xffffffffffffffffu - i2); }
+
+	return i;
+}
+
+/*
+** pack() -- store data dictated by the format string in the buffer
+**
+**  c - 8-bit signed int     h - 16-bit signed int
+**  l - 32-bit signed int    f - 32-bit float
+**  L - 64-bit signed int    F - 64-bit float
+**  s - string (16-bit length is automatically prepended)
+*/ 
+int32_t pack(uint8_t *buf, char *format, ...)
+{
+	va_list ap;
+	int16_t h;
+	int32_t l;
+	int64_t L;
+	int8_t c;
+	float32_t f;
+	float64_t F;
+	char *s;
+	int32_t size = 0, len;
+
+	va_start(ap, format);
+
+	for(; *format != '\0'; format++) {
+		switch(*format) {
+		case 'h': // 16-bit
+			size += 2;
+			h = (int16_t)va_arg(ap, int); // promoted
+			packi16(buf, h);
+			buf += 2;
+			break;
+
+		case 'l': // 32-bit
+			size += 4;
+			l = va_arg(ap, int32_t);
+			packi32(buf, l);
+			buf += 4;
+			break;
+
+		case 'L': // 64-bit
+			size += 8;
+			L = va_arg(ap, int64_t);
+			packi64(buf, L);
+			buf += 8;
+			break;
+
+		case 'c': // 8-bit
+			size += 1;
+			c = (int8_t)va_arg(ap, int); // promoted
+			*buf++ = (c>>0)&0xff;
+			break;
+
+		case 'f': // float
+			size += 4;
+			f = (float32_t)va_arg(ap, double); // promoted
+			l = pack754_32(f); // convert to IEEE 754
+			packi32(buf, l);
+			buf += 4;
+			break;
+
+		case 'F': // float-64
+			size += 8;
+			F = (float64_t)va_arg(ap, float64_t);
+			L = pack754_64(F); // convert to IEEE 754
+			packi64(buf, L);
+			buf += 8;
+			break;
+
+		case 's': // string
+			s = va_arg(ap, char*);
+			len = strlen(s);
+			size += len + 2;
+			packi16(buf, len);
+			buf += 2;
+			memcpy(buf, s, len);
+			buf += len;
+			break;
+		}
+	}
+
+	va_end(ap);
+
+	return size;
+}
+
+/*
+** unpack() -- unpack data dictated by the format string into the buffer
+*/
+void unpack(uint8_t *buf, char *format, ...)
+{
+	va_list ap;
+	int16_t *h;
+	int32_t *l;
+	int64_t *L;
+	int32_t pf;
+	int64_t pF;
+	int8_t *c;
+	float32_t *f;
+	float64_t *F;
+	char *s;
+	int32_t len, count, maxstrlen=0;
+
+	va_start(ap, format);
+
+	for(; *format != '\0'; format++) {
+		switch(*format) {
+		case 'h': // 16-bit
+			h = va_arg(ap, int16_t*);
+			*h = unpacki16(buf);
+			buf += 2;
+			break;
+
+		case 'l': // 32-bit
+			l = va_arg(ap, int32_t*);
+			*l = unpacki32(buf);
+			buf += 4;
+			break;
+
+		case 'L': // 64-bit
+			L = va_arg(ap, int64_t*);
+			*L = unpacki64(buf);
+			buf += 8;
+			break;
+
+		case 'c': // 8-bit
+			c = va_arg(ap, int8_t*);
+			if (*buf <= 0x7f) { *c = *buf;}
+			else { *c = -1 - (uint8_t)(0xffu - *buf); }
+			buf++;
+			break;
+
+		case 'f': // float
+			f = va_arg(ap, float32_t*);
+			pf = unpacki32(buf);
+			buf += 4;
+			*f = unpack754_32(pf);
+			break;
+
+		case 'F': // float-64
+			F = va_arg(ap, float64_t*);
+			pF = unpacki64(buf);
+			buf += 8;
+			*F = unpack754_64(pF);
+			break;
+
+		case 's': // string
+			s = va_arg(ap, char*);
+			len = unpacki16(buf);
+			buf += 2;
+			if (maxstrlen > 0 && len > maxstrlen) count = maxstrlen - 1;
+			else count = len;
+			memcpy(s, buf, count);
+			s[count] = '\0';
+			buf += len;
+			break;
+
+		default:
+			if (isdigit(*format)) { // track max str len
+				maxstrlen = maxstrlen * 10 + (*format-'0');
+			}
+		}
+
+		if (!isdigit(*format)) maxstrlen = 0;
+	}
+
+	va_end(ap);
+}
+
+//#define DEBUG
+#ifdef DEBUG
+#include <limits.h>
+#include <float.h>
+#include <assert.h>
+#endif
+
+int main(void)
+{
+#ifndef DEBUG
+	uint8_t buf[1024];
+	int8_t magic;
+	int16_t monkeycount;
+	int32_t altitude;
+	float32_t absurdityfactor;
+	char *s = "Great unmitigated Zot!  You've found the Runestaff!";
+	char s2[96];
+	int16_t packetsize, ps2;
+
+	packetsize = pack(buf, "chhlsf", (int8_t)'B', (int16_t)0,
+            (int16_t)37, (int32_t)-5, s, (float32_t)-3490.6677);
+	packi16(buf+1, packetsize); // store packet size for kicks
+
+	printf("packet is %" PRId32 " bytes\n", packetsize);
+
+	unpack(buf, "chhl96sf", &magic, &ps2, &monkeycount, &altitude,
+            s2, &absurdityfactor);
+
+	printf("'%c' %" PRId32" %" PRId16 " %" PRId32
+			" \"%s\" %f\n", magic, ps2, monkeycount,
+			altitude, s2, absurdityfactor);
+
+#else
+	uint8_t buf[1024];
+
+	int x;
+
+	int64_t k, k2;
+	int64_t test64[14] = { 0, -0, 1, 2, -1, -2, LLONG_MAX>>1, LLONG_MAX-1, LLONG_MAX, LLONG_MIN+1, LLONG_MIN, 9007199254740991, 9007199254740992, 9007199254740993 };
+
+	int32_t i, i2;
+	int32_t test32[14] = { 0, -0, 1, 2, -1, -2, INT_MAX>>1, INT_MAX-1, INT_MAX, INT_MIN+1, INT_MIN, 0, 0, 0 };
+
+	int16_t j, j2;
+	int16_t test16[14] = { 0, -0, 1, 2, -1, -2, SHRT_MAX>>1, SHRT_MAX-1, SHRT_MAX, SHRT_MIN+1, SHRT_MIN, 0, 0, 0 };
+
+	// do a little barebones configuration to make sure floating point
+	// types are right:
+	if (sizeof(float32_t) != 4 || sizeof(float64_t) != 8) {
+		char *f32 = NULL, *f64 = NULL;
+
+		if (sizeof(float) == 4) { f32 = "float"; }
+		else if (sizeof(double) == 4) { f32 = "double"; }
+		else if (sizeof(long double) == 4) { f32 = "long double"; }
+				
+		if (sizeof(float) == 8) { f64 = "float"; }
+		else if (sizeof(double) == 8) { f64 = "double"; }
+		else if (sizeof(long double) == 8) { f64 = "long double"; }
+
+		if (f32 == NULL || f64 == NULL) {
+			printf("I can't find the following size floating point types:%s%s\n\n", f32==NULL?" 32-bit":"", f64==NULL?" 64-bit":"");
+			printf("Change the typedefs at the top of this source to the right types.\n");
+			return 1;
+		}
+
+		printf("Please modify this source so the following typedefs are at the top:\n\n");
+		printf("typedef %s float32_t;\n", f32);
+		printf("typedef %s float64_t;\n", f64);
+
+		return 1;
+	}
+
+	for(x = 0; x < 14; x++) {
+		k = test64[x];
+		pack(buf, "L", k);
+		unpack(buf, "L", &k2);
+
+		if (k2 != k) {
+			printf("64: %" PRId64 " != %" PRId64 "\n", k, k2);
+			printf("  before: %016" PRIx64 "\n", k);
+			printf("  after:  %016" PRIx64 "\n", k2);
+			printf("  buffer: %02hhx %02hhx %02hhx %02hhx "
+				" %02hhx %02hhx %02hhx %02hhx\n", 
+				buf[0], buf[1], buf[2], buf[3],
+				buf[4], buf[5], buf[6], buf[7]);
+		} else {
+			//printf("64: OK: %" PRId64 " == %" PRId64 "\n", k, k2);
+		}
+
+		i = test32[x];
+		pack(buf, "l", i);
+		unpack(buf, "l", &i2);
+
+		if (i2 != i) {
+			printf("32: %" PRId32 " != %" PRId32 "\n", i, i2);
+		} else {
+			//printf("32: OK: %" PRId32 " == %" PRId32 "\n", i, i2);
+		}
+
+		j = test16[x];
+		pack(buf, "h", j);
+		unpack(buf, "h", &j2);
+
+		if (j2 != j) {
+			printf("16: %" PRId16 " != %" PRId16 "\n", j, j2);
+		} else {
+			//printf("16: OK: %" PRId16 " == %" PRId16 "\n", j, j2);
+		}
+	}
+
+	{
+		float64_t testf64[7] = { 0.0, 1.0, -1.0, DBL_MIN*2, DBL_MAX/2, DBL_MIN, DBL_MAX };
+		float64_t f,f2;
+
+		for (i = 0; i < 7; i++) {
+			f = testf64[i];
+			pack(buf, "F", f);
+			unpack(buf, "F", &f2);
+
+			if (f2 != f) {
+				printf("f64: %f != %f\n", f, f2);
+				printf("  before: %016" PRIx64 "\n", *((uint64_t*)&f));
+				printf("  after:  %016" PRIx64 "\n", *((uint64_t*)&f2));
+				printf("  buffer: %02hhx %02hhx %02hhx %02hhx "
+					" %02hhx %02hhx %02hhx %02hhx\n", 
+					buf[0], buf[1], buf[2], buf[3],
+					buf[4], buf[5], buf[6], buf[7]);
+			} else {
+				//printf("f64: OK: %f == %f\n", f, f2);
+			}
+		}
+	}
+#endif
+
+	return 0;
+}
+```
+
+## poll.c
+
+```c
+#include <stdio.h>
+#include <poll.h>
+
+int main(void)
+{
+	struct pollfd pfds[1]; // More if you want to monitor more
+
+	pfds[0].fd = 0;          // Standard input
+	pfds[0].events = POLLIN; // Tell me when ready to read
+
+	// If you needed to monitor other things, as well:
+	//pfds[1].fd = some_socket; // Some socket descriptor
+	//pfds[1].events = POLLIN;  // Tell me when ready to read
+
+	printf("Hit RETURN or wait 2.5 seconds for timeout\n");
+
+	int num_events = poll(pfds, 1, 2500); // 2.5 second timeout
+
+	if (num_events == 0) {
+		printf("Poll timed out!\n");
+	} else {
+		int pollin_happened = pfds[0].revents & POLLIN;
+
+		if (pollin_happened) {
+			printf("File descriptor %d is ready to read\n",
+                    pfds[0].fd);
+		} else {
+			printf("Unexpected event occurred: %d\n",
+                    pfds[0].revents);
+		}
+	}
+
+	return 0;
+}
+```
+
+## pollserver.c
+
+```c
+/*
+** pollserver.c -- a cheezy multiperson chat server
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <poll.h>
+
+#define PORT "9034"   // Port we're listening on
+
+/*
+ * Convert socket to IP address string.
+ * addr: struct sockaddr_in or struct sockaddr_in6
+ */
+const char *inet_ntop2(void *addr, char *buf, size_t size)
+{
+	struct sockaddr_storage *sas = addr;
+	struct sockaddr_in *sa4;
+	struct sockaddr_in6 *sa6;
+	void *src;
+
+	switch (sas->ss_family) {
+		case AF_INET:
+			sa4 = addr;
+			src = &(sa4->sin_addr);
+			break;
+		case AF_INET6:
+			sa6 = addr;
+			src = &(sa6->sin6_addr);
+			break;
+		default:
+			return NULL;
+	}
+
+	return inet_ntop(sas->ss_family, src, buf, size);
+}
+
+/*
+ * Return a listening socket.
+ */
+int get_listener_socket(void)
+{
+	int listener;	 // Listening socket descriptor
+	int yes=1;		// For setsockopt() SO_REUSEADDR, below
+	int rv;
+
+	struct addrinfo hints, *ai, *p;
+
+	// Get us a socket and bind it
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+	if ((rv = getaddrinfo(NULL, PORT, &hints, &ai)) != 0) {
+		fprintf(stderr, "pollserver: %s\n", gai_strerror(rv));
+		exit(1);
+	}
+	
+	for(p = ai; p != NULL; p = p->ai_next) {
+		listener = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol);
+		if (listener < 0) { 
+			continue;
+		}
+		
+		// Lose the pesky "address already in use" error message
+		setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes,
+				sizeof(int));
+
+		if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
+			close(listener);
+			continue;
+		}
+
+		break;
+	}
+
+	// If we got here, it means we didn't get bound
+	if (p == NULL) {
+		return -1;
+	}
+
+	freeaddrinfo(ai); // All done with this
+
+	// Listen
+	if (listen(listener, 10) == -1) {
+		return -1;
+	}
+
+	return listener;
+}
+
+/*
+ * Add a new file descriptor to the set.
+ */
+void add_to_pfds(struct pollfd **pfds, int newfd, int *fd_count,
+		int *fd_size)
+{
+	// If we don't have room, add more space in the pfds array
+	if (*fd_count == *fd_size) {
+		*fd_size *= 2; // Double it
+		*pfds = realloc(*pfds, sizeof(**pfds) * (*fd_size));
+	}
+
+	(*pfds)[*fd_count].fd = newfd;
+	(*pfds)[*fd_count].events = POLLIN; // Check ready-to-read
+	(*pfds)[*fd_count].revents = 0;
+
+	(*fd_count)++;
+}
+
+/*
+ * Remove a file descriptor at a given index from the set.
+ */
+void del_from_pfds(struct pollfd pfds[], int i, int *fd_count)
+{
+	// Copy the one from the end over this one
+	pfds[i] = pfds[*fd_count-1];
+
+	(*fd_count)--;
+}
+
+/*
+ * Handle incoming connections.
+ */
+void handle_new_connection(int listener, int *fd_count,
+		int *fd_size, struct pollfd **pfds)
+{
+	struct sockaddr_storage remoteaddr; // Client address
+	socklen_t addrlen;
+	int newfd;  // Newly accept()ed socket descriptor
+	char remoteIP[INET6_ADDRSTRLEN];
+
+	addrlen = sizeof remoteaddr;
+	newfd = accept(listener, (struct sockaddr *)&remoteaddr,
+			&addrlen);
+
+	if (newfd == -1) {
+		perror("accept");
+	} else {
+		add_to_pfds(pfds, newfd, fd_count, fd_size);
+
+		printf("pollserver: new connection from %s on socket %d\n",
+				inet_ntop2(&remoteaddr, remoteIP, sizeof remoteIP),
+				newfd);
+	}
+}
+
+/*
+ * Handle regular client data or client hangups.
+ */
+void handle_client_data(int listener, int *fd_count,
+		struct pollfd *pfds, int *pfd_i)
+{
+	char buf[256];	// Buffer for client data
+
+	int nbytes = recv(pfds[*pfd_i].fd, buf, sizeof buf, 0);
+
+	int sender_fd = pfds[*pfd_i].fd;
+
+	if (nbytes <= 0) { // Got error or connection closed by client
+		if (nbytes == 0) {
+			// Connection closed
+			printf("pollserver: socket %d hung up\n", sender_fd);
+		} else {
+			perror("recv");
+		}
+
+		close(pfds[*pfd_i].fd); // Bye!
+
+		del_from_pfds(pfds, *pfd_i, fd_count);
+
+		// reexamine the slot we just deleted
+		(*pfd_i)--;
+
+	} else { // We got some good data from a client
+		printf("pollserver: recv from fd %d: %.*s", sender_fd,
+				nbytes, buf);
+		// Send to everyone!
+		for(int j = 0; j < *fd_count; j++) {
+			int dest_fd = pfds[j].fd;
+
+			// Except the listener and ourselves
+			if (dest_fd != listener && dest_fd != sender_fd) {
+				if (send(dest_fd, buf, nbytes, 0) == -1) {
+					perror("send");
+				}
+			}
+		}
+	}
+}
+
+/*
+ * Process all existing connections.
+ */
+void process_connections(int listener, int *fd_count, int *fd_size,
+		struct pollfd **pfds)
+{
+	for(int i = 0; i < *fd_count; i++) {
+
+		// Check if someone's ready to read
+		if ((*pfds)[i].revents & (POLLIN | POLLHUP)) {
+			// We got one!!
+
+			if ((*pfds)[i].fd == listener) {
+				// If we're the listener, it's a new connection
+				handle_new_connection(listener, fd_count, fd_size,
+						pfds);
+			} else {
+				// Otherwise we're just a regular client
+				handle_client_data(listener, fd_count, *pfds, &i);
+			}
+		}
+	}
+}
+
+/*
+ * Main: create a listener and connection set, loop forever
+ * processing connections.
+ */
+int main(void)
+{
+	int listener;	 // Listening socket descriptor
+
+	// Start off with room for 5 connections
+	// (We'll realloc as necessary)
+	int fd_size = 5;
+	int fd_count = 0;
+	struct pollfd *pfds = malloc(sizeof *pfds * fd_size);
+
+	// Set up and get a listening socket
+	listener = get_listener_socket();
+
+	if (listener == -1) {
+		fprintf(stderr, "error getting listening socket\n");
+		exit(1);
+	}
+
+	// Add the listener to set;
+	// Report ready to read on incoming connection
+	pfds[0].fd = listener;
+	pfds[0].events = POLLIN;
+
+	fd_count = 1; // For the listener
+	
+	puts("pollserver: waiting for connections...");
+
+	// Main loop
+	for(;;) {
+		int poll_count = poll(pfds, fd_count, -1);
+
+		if (poll_count == -1) {
+			perror("poll");
+			exit(1);
+		}
+
+		// Run through connections looking for data to read
+		process_connections(listener, &fd_count, &fd_size, &pfds);
+	}
+
+	free(pfds);
+}
+```
+
+## select.c
+
+```c
+/*
+** select.c -- a select() demo
+*/
+
+#include <stdio.h>
+#include <sys/time.h>
+#include <sys/types.h>
+#include <unistd.h>
+
+#define STDIN 0  // file descriptor for standard input
+
+int main(void)
+{
+	struct timeval tv;
+	fd_set readfds;
+
+	tv.tv_sec = 2;
+	tv.tv_usec = 500000;
+
+	FD_ZERO(&readfds);
+	FD_SET(STDIN, &readfds);
+
+	// don't care about writefds and exceptfds:
+	select(STDIN+1, &readfds, NULL, NULL, &tv);
+
+	if (FD_ISSET(STDIN, &readfds))
+		printf("A key was pressed!\n");
+	else
+		printf("Timed out.\n");
+
+	return 0;
+}
+```
+
+## selectserver.c
+
+```c
+/*
+** selectserver.c -- a cheezy multiperson chat server
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
+#define PORT "9034"   // port we're listening on
+
+/*
+ * Convert socket to IP address string.
+ * addr: struct sockaddr_in or struct sockaddr_in6
+ */
+const char *inet_ntop2(void *addr, char *buf, size_t size)
+{
+	struct sockaddr_storage *sas = addr;
+	struct sockaddr_in *sa4;
+	struct sockaddr_in6 *sa6;
+	void *src;
+
+	switch (sas->ss_family) {
+		case AF_INET:
+			sa4 = addr;
+			src = &(sa4->sin_addr);
+			break;
+		case AF_INET6:
+			sa6 = addr;
+			src = &(sa6->sin6_addr);
+			break;
+		default:
+			return NULL;
+	}
+
+	return inet_ntop(sas->ss_family, src, buf, size);
+}
+
+/*
+ * Return a listening socket
+ */
+int get_listener_socket(void)
+{
+	struct addrinfo hints, *ai, *p;
+	int yes=1;    // for setsockopt() SO_REUSEADDR, below
+	int rv;
+	int listener;
+
+	// get us a socket and bind it
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
+	if ((rv = getaddrinfo(NULL, PORT, &hints, &ai)) != 0) {
+		fprintf(stderr, "selectserver: %s\n", gai_strerror(rv));
+		exit(1);
+	}
+	
+	for(p = ai; p != NULL; p = p->ai_next) {
+		listener = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol);
+		if (listener < 0) { 
+			continue;
+		}
+		
+		// lose the pesky "address already in use" error message
+		setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes,
+				sizeof(int));
+
+		if (bind(listener, p->ai_addr, p->ai_addrlen) < 0) {
+			close(listener);
+			continue;
+		}
+
+		break;
+	}
+
+	// if we got here, it means we didn't get bound
+	if (p == NULL) {
+		fprintf(stderr, "selectserver: failed to bind\n");
+		exit(2);
+	}
+
+	freeaddrinfo(ai); // all done with this
+
+	// listen
+	if (listen(listener, 10) == -1) {
+		perror("listen");
+		exit(3);
+	}
+
+	return listener;
+}
+
+/*
+ * Add new incoming connections to the proper sets
+ */
+void handle_new_connection(int listener, fd_set *master, int *fdmax)
+{
+	socklen_t addrlen;
+	int newfd;        // newly accept()ed socket descriptor
+	struct sockaddr_storage remoteaddr; // client address
+	char remoteIP[INET6_ADDRSTRLEN];
+
+	addrlen = sizeof remoteaddr;
+	newfd = accept(listener,
+		(struct sockaddr *)&remoteaddr,
+		&addrlen);
+
+	if (newfd == -1) {
+		perror("accept");
+	} else {
+		FD_SET(newfd, master); // add to master set
+		if (newfd > *fdmax) {  // keep track of the max
+			*fdmax = newfd;
+		}
+		printf("selectserver: new connection from %s on "
+			"socket %d\n",
+			inet_ntop2(&remoteaddr, remoteIP, sizeof remoteIP),
+			newfd);
+	}
+}
+
+/*
+ * Broadcast a message to all clients
+ */
+void broadcast(char *buf, int nbytes, int listener, int s,
+               fd_set *master, int fdmax)
+{
+	for(int j = 0; j <= fdmax; j++) {
+		// send to everyone!
+		if (FD_ISSET(j, master)) {
+			// except the listener and ourselves
+			if (j != listener && j != s) {
+				if (send(j, buf, nbytes, 0) == -1) {
+					perror("send");
+				}
+			}
+		}
+	}
+}
+
+/*
+ * Handle client data and hangups
+ */
+void handle_client_data(int s, int listener, fd_set *master,
+                        int fdmax)
+{
+	char buf[256];    // buffer for client data
+	int nbytes;
+
+	// handle data from a client
+	if ((nbytes = recv(s, buf, sizeof buf, 0)) <= 0) {
+		// got error or connection closed by client
+		if (nbytes == 0) {
+			// connection closed
+			printf("selectserver: socket %d hung up\n", s);
+		} else {
+			perror("recv");
+		}
+		close(s); // bye!
+		FD_CLR(s, master); // remove from master set
+	} else {
+		// we got some data from a client
+		broadcast(buf, nbytes, listener, s, master, fdmax);
+	}
+}
+
+/*
+ * Main
+ */
+int main(void)
+{
+	fd_set master;    // master file descriptor list
+	fd_set read_fds;  // temp file descriptor list for select()
+	int fdmax;        // maximum file descriptor number
+
+	int listener;     // listening socket descriptor
+
+	FD_ZERO(&master);    // clear the master and temp sets
+	FD_ZERO(&read_fds);
+
+	listener = get_listener_socket();
+
+	// add the listener to the master set
+	FD_SET(listener, &master);
+
+	// keep track of the biggest file descriptor
+	fdmax = listener; // so far, it's this one
+
+	// main loop
+	for(;;) {
+		read_fds = master; // copy it
+		if (select(fdmax+1, &read_fds, NULL, NULL, NULL) == -1) {
+			perror("select");
+			exit(4);
+		}
+
+		// run through the existing connections looking for data
+		// to read
+		for(int i = 0; i <= fdmax; i++) {
+			if (FD_ISSET(i, &read_fds)) { // we got one!!
+				if (i == listener)
+					handle_new_connection(i, &master, &fdmax);
+				else
+					handle_client_data(i, listener, &master, fdmax);
+			}
+		}
+	}
+	
+	return 0;
+}
+```
+
+## server.c
+
+```c
+/*
+** server.c -- a stream socket server demo
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <sys/wait.h>
+#include <signal.h>
+
+#define PORT "3490"  // the port users will be connecting to
+
+#define BACKLOG 10   // how many pending connections queue will hold
+
+void sigchld_handler(int s)
+{
+	(void)s; // quiet unused variable warning
+
+	// waitpid() might overwrite errno, so we save and restore it:
+	int saved_errno = errno;
+
+	while(waitpid(-1, NULL, WNOHANG) > 0);
+
+	errno = saved_errno;
+}
+
+// get sockaddr, IPv4 or IPv6:
+void *get_in_addr(struct sockaddr *sa)
+{
+	if (sa->sa_family == AF_INET) {
+		return &(((struct sockaddr_in*)sa)->sin_addr);
+	}
+
+	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+int main(void)
+{
+	// listen on sock_fd, new connection on new_fd
+	int sockfd, new_fd;
+	struct addrinfo hints, *servinfo, *p;
+	struct sockaddr_storage their_addr; // connector's address info
+	socklen_t sin_size;
+	struct sigaction sa;
+	int yes=1;
+	char s[INET6_ADDRSTRLEN];
+	int rv;
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE; // use my IP
+
+	if ((rv = getaddrinfo(NULL, PORT, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
+
+	// loop through all the results and bind to the first we can
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sockfd = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol)) == -1) {
+			perror("server: socket");
+			continue;
+		}
+
+		if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes,
+				sizeof(int)) == -1) {
+			perror("setsockopt");
+			exit(1);
+		}
+
+		if (bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+			close(sockfd);
+			perror("server: bind");
+			continue;
+		}
+
+		break;
+	}
+
+	freeaddrinfo(servinfo); // all done with this structure
+
+	if (p == NULL)  {
+		fprintf(stderr, "server: failed to bind\n");
+		exit(1);
+	}
+
+	if (listen(sockfd, BACKLOG) == -1) {
+		perror("listen");
+		exit(1);
+	}
+
+	sa.sa_handler = sigchld_handler; // reap all dead processes
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = SA_RESTART;
+	if (sigaction(SIGCHLD, &sa, NULL) == -1) {
+		perror("sigaction");
+		exit(1);
+	}
+
+	printf("server: waiting for connections...\n");
+
+	while(1) {  // main accept() loop
+		sin_size = sizeof their_addr;
+		new_fd = accept(sockfd, (struct sockaddr *)&their_addr,
+				&sin_size);
+		if (new_fd == -1) {
+			perror("accept");
+			continue;
+		}
+
+		inet_ntop(their_addr.ss_family,
+			get_in_addr((struct sockaddr *)&their_addr),
+			s, sizeof s);
+		printf("server: got connection from %s\n", s);
+
+		if (!fork()) { // this is the child process
+			close(sockfd); // child doesn't need the listener
+			if (send(new_fd, "Hello, world!", 13, 0) == -1)
+				perror("send");
+			close(new_fd);
+			exit(0);
+		}
+		close(new_fd);  // parent doesn't need this
+	}
+
+	return 0;
+}
+```
+
+## showip.c
+
+```c
+/*
+** showip.c
+**
+** show IP addresses for a host given on the command line
+*/
+
+#include <stdio.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+
+int main(int argc, char *argv[])
+{
+	struct addrinfo hints, *res, *p;
+	int status;
+	char ipstr[INET6_ADDRSTRLEN];
+
+	if (argc != 2) {
+	    fprintf(stderr,"usage: showip hostname\n");
+	    return 1;
+	}
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;  // Either IPv4 or IPv6
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ((status = getaddrinfo(argv[1], NULL, &hints, &res)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+		return 2;
+	}
+
+	printf("IP addresses for %s:\n\n", argv[1]);
+
+	for(p = res;p != NULL; p = p->ai_next) {
+		void *addr;
+		char *ipver;
+        struct sockaddr_in *ipv4;
+        struct sockaddr_in6 *ipv6;
+
+		// get the pointer to the address itself,
+		// different fields in IPv4 and IPv6:
+		if (p->ai_family == AF_INET) { // IPv4
+			ipv4 = (struct sockaddr_in *)p->ai_addr;
+			addr = &(ipv4->sin_addr);
+			ipver = "IPv4";
+		} else { // IPv6
+			ipv6 = (struct sockaddr_in6 *)p->ai_addr;
+			addr = &(ipv6->sin6_addr);
+			ipver = "IPv6";
+		}
+
+		// convert the IP to a string and print it:
+		inet_ntop(p->ai_family, addr, ipstr, sizeof ipstr);
+		printf("  %s: %s\n", ipver, ipstr);
+	}
+
+	freeaddrinfo(res); // free the linked list
+
+	return 0;
+}
+```
+
+## talker.c
+
+```c
+/*
+** talker.c -- a datagram "client" demo
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+
+#define SERVERPORT "4950"   // the port users will be connecting to
+
+int main(int argc, char *argv[])
+{
+	int sockfd;
+	struct addrinfo hints, *servinfo, *p;
+	int rv;
+	int numbytes;
+
+	if (argc != 3) {
+		fprintf(stderr,"usage: talker hostname message\n");
+		exit(1);
+	}
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_INET6; // set to AF_INET to use IPv4
+	hints.ai_socktype = SOCK_DGRAM;
+
+	rv = getaddrinfo(argv[1], SERVERPORT, &hints, &servinfo);
+	if (rv != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
+
+	// loop through all the results and make a socket
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sockfd = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol)) == -1) {
+			perror("talker: socket");
+			continue;
+		}
+
+		break;
+	}
+
+	if (p == NULL) {
+		fprintf(stderr, "talker: failed to create socket\n");
+		return 2;
+	}
+
+	if ((numbytes = sendto(sockfd, argv[2], strlen(argv[2]), 0,
+			 p->ai_addr, p->ai_addrlen)) == -1) {
+		perror("talker: sendto");
+		exit(1);
+	}
+
+	freeaddrinfo(servinfo);
+
+	printf("talker: sent %d bytes to %s\n", numbytes, argv[1]);
+	close(sockfd);
+
+	return 0;
+}
+```
+
+## telnot.c
+
+```c
+/*
+** telnot.c -- Not telnet, but can be used in place of telnet for
+**             the guide demos.
+**
+** This doesn't implement the telnet protocol in the least.
+**
+** Usage: telnot hostname port
+**
+** Then type things and hit RETURN to send them. (It uses the current
+** terminal line discipline, which is probably line-buffered so nothing
+** will get sent until you hit RETURN.) It will print things to
+** standard output as it receives them.
+**
+** Hit ^C to break out.
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <errno.h>
+#include <string.h>
+#include <netdb.h>
+#include <sys/types.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <poll.h>
+
+#include <arpa/inet.h>
+
+#define BUFSIZE 1024
+
+/**
+ * Get a sockaddr, IPv4 or IPv6
+ */
+void *get_in_addr(struct sockaddr *sa)
+{
+	if (sa->sa_family == AF_INET) {
+		return &(((struct sockaddr_in*)sa)->sin_addr);
+	}
+
+	return &(((struct sockaddr_in6*)sa)->sin6_addr);
+}
+
+/**
+ * Main
+ */
+int main(int argc, char *argv[])
+{
+	int sockfd;  
+	struct addrinfo hints, *servinfo, *p;
+	int rv;
+	char s[INET6_ADDRSTRLEN];
+
+	if (argc != 3) {
+	    fprintf(stderr,"usage: telnot hostname port\n");
+	    exit(1);
+	}
+
+	char *hostname = argv[1];
+	char *port = argv[2];
+
+	// Try to connect
+
+	memset(&hints, 0, sizeof hints);
+	hints.ai_family = AF_UNSPEC;
+	hints.ai_socktype = SOCK_STREAM;
+
+	if ((rv = getaddrinfo(hostname, port, &hints, &servinfo)) != 0) {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
+
+	// loop through all the results and connect to the first we can
+	for(p = servinfo; p != NULL; p = p->ai_next) {
+		if ((sockfd = socket(p->ai_family, p->ai_socktype,
+				p->ai_protocol)) == -1) {
+			//perror("telnot: socket");
+			continue;
+		}
+
+		if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+			//perror("telnot: connect");
+			close(sockfd);
+			continue;
+		}
+
+		break;
+	}
+
+	if (p == NULL) {
+		fprintf(stderr, "client: failed to connect\n");
+		return 2;
+	}
+
+	// Connected!
+
+	inet_ntop(p->ai_family, get_in_addr((struct sockaddr *)p->ai_addr),
+			s, sizeof s);
+
+	printf("Connected to %s port %s\n", s, port);
+	printf("Hit ^C to exit\n");
+
+	freeaddrinfo(servinfo); // All done with this structure
+
+	// Poll stdin and sockfd for incoming data (ready-to-read)
+	struct pollfd fds[2];
+
+	fds[0].fd = 0;
+	fds[0].events = POLLIN;
+
+	fds[1].fd = sockfd;
+	fds[1].events = POLLIN;
+
+	// Main loop
+	for(;;) {
+		if (poll(fds, 2, -1) == -1) {
+			perror("poll");
+			exit(1);
+		}
+
+		for (int i = 0; i < 2; i++) {
+
+			// Check for ready-to-read
+			if (fds[i].revents & POLLIN) {
+
+				int readbytes, writebytes;
+				char buf[BUFSIZE];
+
+				// Compute where to write data. If we're stdin (0),
+				// we'll write to the sockfd. If we're the sockfd, we'll
+				// write to stdout (1).
+				int outfd = fds[i].fd == 0? sockfd: 1;
+
+				// We use read() and write() in here since those work on
+				// all fds, not just sockets. send() and recv() would
+				// fail on stdin and stdout since they're not sockets.
+				if ((readbytes = read(fds[i].fd, buf, BUFSIZE)) == -1) {
+					perror("read");
+					exit(2);
+				}
+
+				char *p = buf;
+				int remainingbytes = readbytes;
+
+				// Write all data out
+				while (remainingbytes > 0) {
+					if ((writebytes = write(outfd, p, remainingbytes)) == -1) {
+						perror("write");
+						exit(2);
+					}
+
+					p += writebytes;
+					remainingbytes -= writebytes;
+				}
+			}
+		}
+	}
+
+	// Not reached--use ^C to exit.
+
+	return 0;
+}
+```

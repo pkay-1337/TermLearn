@@ -1,0 +1,16 @@
+book: {slug: bgnet, title: "Beej's Guide to Network Programming", authors: ['Brian "Beej Jorgensen" Hall'], source: books/bgnet/source.epub}
+toolchain: {lang: c, compile: [gcc, -Wall, -std=c99, -O0], run: ['./prog'], timeout_s: 2}
+order: [ch01, ch02, ch03, ch04, ch05, ch06, ch07, ch08, ch09, ch10, ch11, ch12]
+chapters:
+  - {id: ch01, title: 'Cover', source_ref: 'title.xhtml', prereqs: []}
+  - {id: ch02, title: 'Intro', source_ref: 'intro.xhtml', prereqs: [ch01]}
+  - {id: ch03, title: 'What is a socket?', source_ref: 'what-is-a-socket.xhtml', prereqs: [ch02]}
+  - {id: ch04, title: 'IP Addresses, struct s, and Data Munging', source_ref: 'ip-addresses-structs-and-data-munging.xhtml', prereqs: [ch03]}
+  - {id: ch05, title: 'Jumping from IPv4 to IPv6', source_ref: 'jumping-from-ipv4-to-ipv6.xhtml', prereqs: [ch04]}
+  - {id: ch06, title: 'System Calls or Bust', source_ref: 'system-calls-or-bust.xhtml', prereqs: [ch05]}
+  - {id: ch07, title: 'Client-Server Background', source_ref: 'client-server-background.xhtml', prereqs: [ch06]}
+  - {id: ch08, title: 'Slightly Advanced Techniques', source_ref: 'slightly-advanced-techniques.xhtml', prereqs: [ch07]}
+  - {id: ch09, title: 'Common Questions', source_ref: 'common-questions.xhtml', prereqs: [ch08]}
+  - {id: ch10, title: 'Man Pages', source_ref: 'man-pages.xhtml', prereqs: [ch09]}
+  - {id: ch11, title: 'More References', source_ref: 'more-references.xhtml', prereqs: [ch10]}
+  - {id: ch12, title: 'Appendix: Example Source Code', source_ref: 'appendix.xhtml', prereqs: [ch11]}

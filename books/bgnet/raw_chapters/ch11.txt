@@ -1,0 +1,325 @@
+# 10 More References
+
+<!-- source: more-references.xhtml | spine-id: chapter_10 | chapter: ch11 -->
+
+# 10 More References
+
+You’ve come this far, and now you’re screaming for more! Where else can you go to learn more about all this stuff?
+
+## 10.1 Books
+
+For old-school actual hold-it-in-your-hand pulp paper books, try some of the following excellent books. These redirect to affiliate links with a popular bookseller, giving me nice kickbacks. If you’re merely feeling generous, you can paypal a donation to `beej@beej.us`. `:-)`
+
+Unix Network Programming, volumes 1-2 by W. Richard Stevens. Published by Addison-Wesley Professional and Prentice Hall. ISBNs for volumes 1-2: 978-013141155554, 978-013081081655.
+
+Internetworking with TCP/IP, volume I by Douglas E. Comer. Published by Pearson. ISBN 978-013608530056.
+
+TCP/IP Illustrated, volumes 1-3 by W. Richard Stevens and Gary R. Wright. Published by Addison Wesley. ISBNs for volumes 1, 2, and 3 (and a 3-volume set): 978-020163346757, 978-020163354258, 978-020163495259, (978-020177631760).
+
+TCP/IP Network Administration by Craig Hunt. Published by O’Reilly & Associates, Inc. ISBN 978-059600297861.
+
+Advanced Programming in the UNIX Environment by W. Richard Stevens. Published by Addison Wesley. ISBN 978-032163773462.
+
+## 10.2 Web References
+
+On the web:
+
+BSD Sockets: A Quick And Dirty Primer63 (Unix system programming info, too!)
+
+The Unix Socket FAQ64
+
+TCP/IP FAQ65
+
+The Winsock FAQ66
+
+And here are some relevant Wikipedia pages:
+
+Berkeley Sockets67
+
+Internet Protocol (IP)68
+
+Transmission Control Protocol (TCP)69
+
+User Datagram Protocol (UDP)70
+
+Client-Server71
+
+Serialization72 (packing and unpacking data)
+
+## 10.3 RFCs
+
+RFCs73—the real dirt! These are documents that describe assigned numbers, programming APIs, and protocols that are used on the Internet. I’ve included links to a few of them here for your enjoyment, so grab a bucket of popcorn and put on your thinking cap:
+
+RFC 174 —The First RFC; this gives you an idea of what the “Internet” was like just as it was coming to life, and an insight into how it was being designed from the ground up. (This RFC is completely obsolete, obviously!)
+
+RFC 76875 —The User Datagram Protocol (UDP)
+
+RFC 79176 —The Internet Protocol (IP)
+
+RFC 79377 —The Transmission Control Protocol (TCP)
+
+RFC 85478 —The Telnet Protocol
+
+RFC 95979 —File Transfer Protocol (FTP)
+
+RFC 135080 —The Trivial File Transfer Protocol (TFTP)
+
+RFC 145981 —Internet Relay Chat Protocol (IRC)
+
+RFC 191882 —Address Allocation for Private Internets
+
+RFC 213183 —Dynamic Host Configuration Protocol (DHCP)
+
+RFC 911084 —Hypertext Transfer Protocol (HTTP)
+
+RFC 282185 —Simple Mail Transfer Protocol (SMTP)
+
+RFC 333086 —Special-Use IPv4 Addresses
+
+RFC 349387 —Basic Socket Interface Extensions for IPv6
+
+RFC 354288 —Advanced Sockets Application Program Interface (API) for IPv6
+
+RFC 384989 —IPv6 Address Prefix Reserved for Documentation
+
+RFC 392090 —Extensible Messaging and Presence Protocol (XMPP)
+
+RFC 397791 —Network News Transfer Protocol (NNTP)
+
+RFC 419392 —Unique Local IPv6 Unicast Addresses
+
+RFC 450693 —External Data Representation Standard (XDR)
+
+The IETF has a nice online tool for searching and browsing RFCs94.
+
+1. https://www.linux.com/↩︎
+2. https://bsd.org/↩︎
+3. https://www.illumos.org/↩︎
+4. https://learn.microsoft.com/en-us/windows/wsl/↩︎
+5. https://cygwin.com/↩︎
+6. https://www.tallyhawk.net/WinsockExamples/↩︎
+7. http://www.catb.org/~esr/faqs/smart-questions.html↩︎
+8. https://beej.us/guide/bgnet/source/examples/telnot.c↩︎
+9. https://tools.ietf.org/html/rfc854↩︎
+10. https://tools.ietf.org/html/rfc793↩︎
+11. https://tools.ietf.org/html/rfc791↩︎
+12. https://tools.ietf.org/html/rfc768↩︎
+13. https://tools.ietf.org/html/rfc791↩︎
+14. https://en.wikipedia.org/wiki/Vint_Cerf↩︎
+15. https://en.wikipedia.org/wiki/ELIZA↩︎
+16. https://www.iana.org/assignments/port-numbers↩︎
+17. https://en.wikipedia.org/wiki/Doom_%281993_video_game%29↩︎
+18. https://en.wikipedia.org/wiki/Wilford_Brimley↩︎
+19. https://tools.ietf.org/html/rfc1918↩︎
+20. https://tools.ietf.org/html/rfc4193↩︎
+21. https://www.iana.org/assignments/port-numbers↩︎
+22. https://beej.us/guide/bgnet/source/examples/showip.c↩︎
+23. https://tools.ietf.org/html/rfc1413↩︎
+24. https://beej.us/guide/bgnet/source/examples/server.c↩︎
+25. https://beej.us/guide/bgnet/source/examples/client.c↩︎
+26. https://beej.us/guide/bgnet/source/examples/listener.c↩︎
+27. https://beej.us/guide/bgnet/source/examples/talker.c↩︎
+28. https://libevent.org/↩︎
+29. https://beej.us/guide/bgnet/source/examples/poll.c↩︎
+30. https://beej.us/guide/bgnet/source/examples/pollserver.c↩︎
+31. https://libevent.org/↩︎
+32. https://beej.us/guide/bgnet/source/examples/select.c↩︎
+33. https://beej.us/guide/bgnet/source/examples/selectserver.c↩︎
+34. https://en.wikipedia.org/wiki/Internet_Relay_Chat↩︎
+35. https://beej.us/guide/bgnet/source/examples/pack.c↩︎
+36. https://en.wikipedia.org/wiki/IEEE_754↩︎
+37. https://beej.us/guide/bgnet/source/examples/ieee754.c↩︎
+38. https://beej.us/guide/url/tpop↩︎
+39. https://github.com/protobuf-c/protobuf-c↩︎
+40. https://beej.us/guide/bgnet/source/examples/pack2.c↩︎
+41. https://beej.us/guide/bgnet/source/examples/pack2.c↩︎
+42. https://tools.ietf.org/html/rfc4506↩︎
+43. For the record, I love cats. They’re the best. I’ve had many beloved feline companions over the years. Though I acknowledge the some object to this morbid, figurative expression whose etymology has been lost to time, I think this portion of the guide is best served by its use.↩︎
+44. https://beej.us/guide/bgnet/source/examples/broadcaster.c↩︎
+45. http://www.unpbook.com/src.html↩︎
+46. http://www.unpbook.com/src.html↩︎
+47. https://www.openssl.org/↩︎
+48. https://stackoverflow.com/questions/21323023/↩︎
+49. https://www.iana.org/assignments/port-numbers↩︎
+50. https://www.iana.org/assignments/port-numbers↩︎
+51. https://man.archlinux.org/man/htobe64↩︎
+52. https://gcc.gnu.org/onlinedocs/gcc/Byte-Swapping-Builtins.html↩︎
+53. https://beej.us/guide/bgnet/source/examples/htonll.c↩︎
+54. https://beej.us/guide/url/unixnet1↩︎
+55. https://beej.us/guide/url/unixnet2↩︎
+56. https://beej.us/guide/url/intertcp1↩︎
+57. https://beej.us/guide/url/tcpi1↩︎
+58. https://beej.us/guide/url/tcpi2↩︎
+59. https://beej.us/guide/url/tcpi3↩︎
+60. https://beej.us/guide/url/tcpi123↩︎
+61. https://beej.us/guide/url/tcpna↩︎
+62. https://beej.us/guide/url/advunix↩︎
+63. https://cis.temple.edu/~giorgio/old/cis307s96/readings/docs/sockets.html↩︎
+64. https://developerweb.net/?f=70↩︎
+65. http://www.faqs.org/faqs/internet/tcp-ip/tcp-ip-faq/part1/↩︎
+66. https://tangentsoft.net/wskfaq/↩︎
+67. https://en.wikipedia.org/wiki/Berkeley_sockets↩︎
+68. https://en.wikipedia.org/wiki/Internet_Protocol↩︎
+69. https://en.wikipedia.org/wiki/Transmission_Control_Protocol↩︎
+70. https://en.wikipedia.org/wiki/User_Datagram_Protocol↩︎
+71. https://en.wikipedia.org/wiki/Client-server↩︎
+72. https://en.wikipedia.org/wiki/Serialization↩︎
+73. https://www.rfc-editor.org/↩︎
+74. https://tools.ietf.org/html/rfc1↩︎
+75. https://tools.ietf.org/html/rfc768↩︎
+76. https://tools.ietf.org/html/rfc791↩︎
+77. https://tools.ietf.org/html/rfc793↩︎
+78. https://tools.ietf.org/html/rfc854↩︎
+79. https://tools.ietf.org/html/rfc959↩︎
+80. https://tools.ietf.org/html/rfc1350↩︎
+81. https://tools.ietf.org/html/rfc1459↩︎
+82. https://tools.ietf.org/html/rfc1918↩︎
+83. https://tools.ietf.org/html/rfc2131↩︎
+84. https://tools.ietf.org/html/rfc9110↩︎
+85. https://tools.ietf.org/html/rfc2821↩︎
+86. https://tools.ietf.org/html/rfc3330↩︎
+87. https://tools.ietf.org/html/rfc3493↩︎
+88. https://tools.ietf.org/html/rfc3542↩︎
+89. https://tools.ietf.org/html/rfc3849↩︎
+90. https://tools.ietf.org/html/rfc3920↩︎
+91. https://tools.ietf.org/html/rfc3977↩︎
+92. https://tools.ietf.org/html/rfc4193↩︎
+93. https://tools.ietf.org/html/rfc4506↩︎
+94. https://tools.ietf.org/rfc/↩︎
+
+[Notes]
+- [Note] 54
+- [Note] 55
+- [Note] 56
+- [Note] 57
+- [Note] 58
+- [Note] 59
+- [Note] 60
+- [Note] 61
+- [Note] 62
+- [Note] 63
+- [Note] 64
+- [Note] 65
+- [Note] 66
+- [Note] 67
+- [Note] 68
+- [Note] 69
+- [Note] 70
+- [Note] 71
+- [Note] 72
+- [Note] 73
+- [Note] 74
+- [Note] 75
+- [Note] 76
+- [Note] 77
+- [Note] 78
+- [Note] 79
+- [Note] 80
+- [Note] 81
+- [Note] 82
+- [Note] 83
+- [Note] 84
+- [Note] 85
+- [Note] 86
+- [Note] 87
+- [Note] 88
+- [Note] 89
+- [Note] 90
+- [Note] 91
+- [Note] 92
+- [Note] 93
+- [Note] 94
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎
+- [Note] ↩︎

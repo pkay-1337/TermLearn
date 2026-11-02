@@ -1,0 +1,2992 @@
+blocks:
+- id: b1
+  type: model
+  title: Prepare Address Candidates with getaddrinfo
+  explain_md: |
+    `getaddrinfo()` is the workhorse that turns a name and a service into a
+    linked list of ready-to-use address records. Its four parameters are the
+    `node` (a host name or an IP address), the `service` (a port number such
+    as `"3490"` or a service name such as `"http"`), a pointer to a `struct
+    addrinfo` of `hints`, and the address of a `struct addrinfo *` that
+    receives the result list.
+
+    ### The Notional Machine: the kernel fills a list you did not allocate
+
+    You do not create the result nodes. `getaddrinfo()` asks the resolver and
+    the kernel for address candidates, allocates a linked list of `struct
+    addrinfo` nodes on your behalf, and stores the head pointer in `res`.
+    Each node carries an `ai_family`, an `ai_socktype`, an `ai_protocol`, and
+    an `ai_addr` pointing at a `struct sockaddr` whose concrete type depends
+    on the family. The list may hold IPv4 records, IPv6 records, or both.
+
+    ### Why this replaces gethostbyname()
+
+    The old `gethostbyname()` returned IPv4-only data, and callers then packed
+    a `struct sockaddr_in` by hand. `getaddrinfo()` performs DNS and service
+    lookups for both families and prepares the structures for you. Because it
+    allocates the list, you must eventually return it with `freeaddrinfo()`.
+
+    The call returns `0` on success and a non-zero error code on failure; the
+    error code is not `errno`, so translate it with `gai_strerror()`. The
+    sample below asks for candidates for port 3490 without naming a host; the
+    `AI_PASSIVE` hint is discussed in the next block.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <netdb.h>
+
+      int main(void)
+      {
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          int status;
+          int count = 0;
+          struct addrinfo *p;
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+          hints.ai_flags = AI_PASSIVE;
+
+          status = getaddrinfo(NULL, "3490", &hints, &res);
+          if (status != 0) {
+              printf("lookup failed: %s\n", gai_strerror(status));
+              return 1;
+          }
+
+          for (p = res; p != NULL; p = p->ai_next) {
+              count++;
+          }
+          printf("candidates: %s\n", count > 0 ? "at least one" : "none");
+          printf("list can be freed: yes\n");
+          freeaddrinfo(res);
+          return 0;
+      }
+    run_expected: |
+      candidates: at least one
+      list can be freed: yes
+    explain_md: |
+      `hints` is cleared first so no stale flag bits survive, then the family,
+      socket type, and passive flag are set. `getaddrinfo()` allocates the
+      list and writes its head into `res`. The loop only counts nodes; the
+      final `freeaddrinfo(res)` returns the whole chain to the allocator.
+    subgoals:
+    - label: Clear and Shape the Hints
+      lines:
+      - 14
+      - 15
+      - 16
+      - 17
+    - label: Request the Candidate List
+      lines:
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+    - label: Consume and Release the List
+      lines:
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+    adapted: true
+    note: 'Adapted from the chapter''s server hints/getaddrinfo example: fixed host and service, shortened
+      error exits, and added printed field checks.'
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'hints: all zero, then ai_family=AF_UNSPEC, ai_socktype=SOCK_STREAM, ai_flags=AI_PASSIVE'
+    - getaddrinfo returns 0 and allocates a list; res points at the first addrinfo node
+    - 'node 1: ai_family + ai_addr -> sockaddr; ai_next -> node 2 or NULL'
+    - freeaddrinfo(res) walks ai_next and releases every node in the chain
+  checks:
+  - kind: mcq
+    q: What does getaddrinfo() store in the pointer passed as its fourth argument?
+    choices:
+    - a single struct addrinfo that is copied by value
+    - the head of an allocated list of address records
+    - a socket file descriptor ready for send and recv
+    answer: 1
+    why: The fourth argument is `struct addrinfo **res`. On success the function allocates one or more
+      nodes and writes the head pointer into `res`. A single copied struct would not explain the `ai_next`
+      traversal, and a socket descriptor comes from socket(), not from a lookup. (b1)
+    concept: getaddrinfo-result
+  - kind: predict
+    q: Trace the call and the branch line by line. Which word does the program print when the lookup succeeds?
+    code: |
+      status = getaddrinfo(NULL, "3490", &hints, &res);
+      if (status != 0) {
+          printf("error\n");
+          return 1;
+      }
+      printf("ok\n");
+      freeaddrinfo(res);
+    choices:
+    - it prints the word error
+    - it prints the digit 0
+    - it prints nothing at all
+    - it prints the word ok
+    answer: 3
+    why: getaddrinfo returns 0 on success, so `status != 0` is false and the error branch is skipped.
+      Execution reaches the second printf and prints ok. Choosing error reverses the success convention;
+      choosing 0 prints the integer return value instead of the branch text; choosing nothing ignores
+      the final printf. (b1)
+    concept: getaddrinfo-status
+  - kind: fillblank
+    q: Complete the cleanup call that releases the whole addrinfo chain.
+    code: |
+      struct addrinfo *res = NULL;
+      getaddrinfo(NULL, "3490", &hints, &res);
+      ____(res);
+    answer_text: freeaddrinfo
+    why: '`freeaddrinfo()` is the matching release for the list allocated by `getaddrinfo()`. Plain `free(res)`
+      would free only the first node and leak the rest of the chain; `close()` is for descriptors, not
+      for lookup results. (b1)'
+    concept: freeaddrinfo
+  - kind: why-fails
+    q: A program calls getaddrinfo(), uses the first result, and returns from main without calling freeaddrinfo().
+      Why is this a defect even though the program exits successfully?
+    choices:
+    - getaddrinfo keeps a lock that blocks all later lookups
+    - the list is caller-owned heap memory that leaks until exit
+    - the socket descriptor returned by getaddrinfo is left open
+    answer: 0
+    why: getaddrinfo allocates the linked list for the caller, so the caller owns it and must release
+      it with freeaddrinfo(). The process exit may reclaim memory, but the ownership rule still matters
+      for long-running programs. No global lookup lock is part of this contract, and getaddrinfo does
+      not return a socket descriptor. (b1)
+    concept: lookup-leak
+  - kind: eipe
+    q: In one sentence, what is getaddrinfo() FOR?
+    choices:
+    - it opens a TCP connection to the host named by the first argument
+    - it converts a host and service into socket-ready address records
+    - it prints the numeric IP address of a host to standard output
+    answer: 1
+    why: 'The purpose is lookup and structure preparation: name plus service in, family-tagged address
+      candidates out. Connecting is connect()''s job, and printing is inet_ntop()''s job. (b1)'
+    concept: getaddrinfo-purpose
+  - kind: choose-better
+    q: A new program must resolve a host name and work on IPv4 and IPv6. Which approach is better?
+    choices:
+    - call gethostbyname() and hand-pack a struct sockaddr_in
+    - call gethostbyname() twice, once for each address family
+    - call getaddrinfo() and consume the returned addrinfo records
+    answer: 2
+    why: getaddrinfo prepares family-tagged records for both IPv4 and IPv6 and removes hand packing. gethostbyname
+      is IPv4-oriented and returns data that the caller must translate manually; calling it twice does
+      not make it dual-stack. (b1)
+    concept: lookup-choice
+  - kind: mcq
+    q: Each node returned by getaddrinfo carries an ai_addr field. What does that field point to?
+    choices:
+    - a sockaddr whose layout depends on ai_family
+    - a null-terminated string holding the host name
+    - a socket descriptor owned by the resolver
+    answer: 0
+    why: ai_addr points at a generic struct sockaddr; the family field tells you whether the bytes are
+      really a sockaddr_in or a sockaddr_in6. The host name is not stored in ai_addr, and descriptors
+      come from socket(). (b1; the addrinfo record carries ai_addr and ai_next)
+    concept: ai-addr
+    from_chapter: ch04
+    from_block: b7
+  common_bugs:
+  - Using free(res) instead of freeaddrinfo(res) leaks every node after the first.
+  - Checking errno instead of the non-zero return code from getaddrinfo().
+- id: b2
+  type: syntax
+  title: Shape Lookup Hints for the Role You Play
+  explain_md: |
+    The `hints` structure is your request form. Clearing it with `memset()`
+    first is essential: every field you do not set must be zero, or the
+    resolver may honor a garbage flag that happened to be in the stack.
+
+    Three fields carry most of the meaning. `ai_family` selects the address
+    family: `AF_UNSPEC` means either IPv4 or IPv6, while `AF_INET` or
+    `AF_INET6` forces one. `ai_socktype` selects the socket kind:
+    `SOCK_STREAM` for TCP-style streams or `SOCK_DGRAM` for datagrams.
+    `ai_flags` carries behavior switches; `AI_PASSIVE` is the server switch.
+
+    ### Server versus client
+
+    A server passes `NULL` as the `node` and sets `AI_PASSIVE`. The resolver
+    then fills in the local host's address, so the server does not hard-code
+    one. A client passes the remote host name and leaves `AI_PASSIVE` off,
+    because it wants to connect to a specific destination. Both roles still
+    use the same structure and the same lookup call.
+
+    ### Why order matters in the source
+
+    Clear the structure, then choose the family, then the socket type, then
+    the flags. If you assign a field before the `memset()`, the clear erases
+    your work. If you skip the clear, every unset field is unpredictable.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <netdb.h>
+
+      static void fill_server_hints(struct addrinfo *hints)
+      {
+          memset(hints, 0, sizeof *hints);
+          hints->ai_family = AF_UNSPEC;
+          hints->ai_socktype = SOCK_STREAM;
+          hints->ai_flags = AI_PASSIVE;
+      }
+
+      static void fill_client_hints(struct addrinfo *hints)
+      {
+          memset(hints, 0, sizeof *hints);
+          hints->ai_family = AF_UNSPEC;
+          hints->ai_socktype = SOCK_STREAM;
+      }
+
+      int main(void)
+      {
+          struct addrinfo server, client;
+
+          fill_server_hints(&server);
+          fill_client_hints(&client);
+
+          printf("server family: %s\n", server.ai_family == AF_UNSPEC ? "either" : "fixed");
+          printf("server passive: %s\n", (server.ai_flags & AI_PASSIVE) ? "yes" : "no");
+          printf("client family: %s\n", client.ai_family == AF_UNSPEC ? "either" : "fixed");
+          printf("client passive: %s\n", (client.ai_flags & AI_PASSIVE) ? "yes" : "no");
+          return 0;
+      }
+    run_expected: |
+      server family: either
+      server passive: yes
+      client family: either
+      client passive: no
+    explain_md: |
+      Both helpers clear the whole structure before touching it. The server
+      helper adds `AI_PASSIVE`, which asks the resolver to supply the local
+      address. The client helper leaves the flag zero, so the returned records
+      describe the destination. The printed bit test shows the difference.
+    subgoals:
+    - label: Build the Server Request
+      lines:
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+    - label: Build the Client Request
+      lines:
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+    - label: Compare the Two Requests
+      lines:
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+    adapted: true
+    note: 'Adapted from the chapter''s getaddrinfo ownership example: fixed service, compact loop, and
+      a printed candidate count instead of full address text.'
+  checks:
+  - kind: mcq
+    q: Which hint tells getaddrinfo() to fill in the local host's address for a server?
+    choices:
+    - SOCK_STREAM type
+    - AI_PASSIVE flag
+    - AF_INET6 family
+    answer: 1
+    why: '`AI_PASSIVE` is the server-side flag that lets the resolver supply the local address when the
+      node argument is NULL. `SOCK_STREAM` chooses a stream socket, not an address, and `AF_INET6` merely
+      restricts the lookup to IPv6. (b2)'
+    concept: ai-passive
+  - kind: mcq
+    q: What does ai_family = AF_UNSPEC request from getaddrinfo()?
+    choices:
+    - IPv4 addresses only
+    - IPv6 addresses only
+    - either IPv4 or IPv6
+    answer: 2
+    why: '`AF_UNSPEC` means the family is unspecified, so both IPv4 and IPv6 candidates are acceptable.
+      `AF_INET` would restrict the result to IPv4 and `AF_INET6` to IPv6. (b2)'
+    concept: af-unspec
+  - kind: order
+    q: Order the 4 correct statements that prepare a server lookup request. One line is a distractor.
+    lines:
+    - hints.ai_flags = AI_PASSIVE;
+    - memset(&hints, 0, sizeof hints);
+    - hints.ai_socktype = SOCK_STREAM;
+    - hints.ai_family = AF_UNSPEC;
+    - hints.ai_family = AF_INET6;
+    answer_order:
+    - 1
+    - 3
+    - 2
+    - 0
+    distractor_why:
+      hints.ai_family = AF_INET6;: This forces IPv6-only and defeats the AF_UNSPEC request for either
+        family; it is not part of the dual-stack server setup.
+    hint: Which statement must happen before any field is written?
+    why: The structure is cleared first so every unset field is zero. The family is chosen next, then
+      the socket type, then the passive flag. The extra AF_INET6 assignment would overwrite the earlier
+      AF_UNSPEC choice and restrict the lookup to IPv6. (b2)
+    concept: hints-order
+  - kind: fillblank
+    q: Complete the hint that requests a TCP-style stream socket.
+    code: |
+      memset(&hints, 0, sizeof hints);
+      hints.ai_family = AF_UNSPEC;
+      hints.ai_socktype = ____;
+    answer_text: SOCK_STREAM
+    why: '`SOCK_STREAM` selects the stream socket type used by TCP. `SOCK_DGRAM` would request datagrams,
+      and `AF_INET` belongs in ai_family, not ai_socktype. (b2)'
+    concept: socktype-hint
+  - kind: why-fails
+    q: A program fills hints without calling memset first. Why can the lookup behave differently from
+      run to run?
+    choices:
+    - unset fields contain leftover stack bytes and stray flag bits
+    - getaddrinfo refuses to run unless hints is zeroed
+    - AF_UNSPEC only works when the socket type is also unset
+    answer: 0
+    why: hints is an automatic variable, so its initial bytes are indeterminate. A stray `AI_PASSIVE`
+      or other flag bit can change the resolver's behavior. The function does not require zeroed memory
+      as a precondition; it simply reads what you give it. AF_UNSPEC is independent of the socket type.
+      (b2)
+    concept: hints-memset
+  - kind: choose-better
+    q: Two server setups are proposed. Which one correctly asks the resolver for the local address on
+      either family?
+    choices:
+    - hints.ai_family = AF_INET; hints.ai_flags = AI_PASSIVE; getaddrinfo(NULL, "3490", &hints, &res);
+    - hints.ai_family = AF_UNSPEC; hints.ai_flags = AI_PASSIVE; getaddrinfo(NULL, "3490", &hints, &res);
+    - hints.ai_family = AF_UNSPEC; hints.ai_flags = AI_PASSIVE; getaddrinfo("host", "3490", &hints, &res);
+    answer: 1
+    why: AF_UNSPEC plus AI_PASSIVE with a NULL node asks for local addresses on either family. AF_INET
+      limits the server to IPv4, and naming a remote host asks about that host instead of the local machine.
+      (b2)
+    concept: server-hints-choice
+  - kind: eipe
+    q: In one sentence, what is the hints structure FOR?
+    choices:
+    - it stores the numeric address that getaddrinfo returns
+    - it holds the socket descriptor created after the lookup
+    - it sets family, socket type, and flags for the lookup
+    answer: 2
+    why: 'The hints structure is the request: it constrains which candidates the resolver should return.
+      The returned addresses live in the allocated list, not in hints, and descriptors come from socket().
+      (b2)'
+    concept: hints-purpose
+- id: b3
+  type: model
+  title: Walk the addrinfo List and Extract the Numeric Address
+  explain_md: |
+    `getaddrinfo()` hands back a linked list, not one answer. A host may have
+    several IPv4 and IPv6 addresses, so a robust program walks the chain with
+    `p = res; p != NULL; p = p->ai_next`.
+
+    Each node's `ai_addr` is a `struct sockaddr *`. That generic type does not
+    expose the address bytes directly because the concrete layout differs by
+    family. For `AF_INET` you cast `ai_addr` to `struct sockaddr_in *` and read
+    `sin_addr`; for `AF_INET6` you cast to `struct sockaddr_in6 *` and read
+    `sin6_addr`. Casting to the wrong family produces a plausible-looking but
+    wrong address, because the field offsets are different.
+
+    ### The Notional Machine: a chain of tagged buffers
+
+    Picture each node as a small record with a family tag, a socket type, a
+    protocol, and a pointer to a buffer holding the address bytes. The family
+    tag is the instruction manual for the cast. `inet_ntop()` then converts
+    the binary address at that buffer into printable text, and its first
+    argument must be the same family you used for the cast.
+
+    The loop below builds a two-node list by hand so the output is stable and
+    no network lookup is required. In real code the list would come from
+    `getaddrinfo()`, but the traversal and casting are identical.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <netdb.h>
+      #include <arpa/inet.h>
+      #include <netinet/in.h>
+
+      int main(void)
+      {
+          struct sockaddr_in v4;
+          struct sockaddr_in6 v6;
+          struct addrinfo a4, a6;
+          struct addrinfo *p;
+          char ipstr[INET6_ADDRSTRLEN];
+
+          memset(&v4, 0, sizeof v4);
+          v4.sin_family = AF_INET;
+          inet_pton(AF_INET, "192.0.2.88", &v4.sin_addr);
+
+          memset(&v6, 0, sizeof v6);
+          v6.sin6_family = AF_INET6;
+          inet_pton(AF_INET6, "2001:db8::171", &v6.sin6_addr);
+
+          memset(&a4, 0, sizeof a4);
+          memset(&a6, 0, sizeof a6);
+          a4.ai_family = AF_INET;
+          a4.ai_addr = (struct sockaddr *)&v4;
+          a4.ai_next = &a6;
+          a6.ai_family = AF_INET6;
+          a6.ai_addr = (struct sockaddr *)&v6;
+
+          for (p = &a4; p != NULL; p = p->ai_next) {
+              void *addr;
+              const char *ipver;
+
+              if (p->ai_family == AF_INET) {
+                  struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+                  addr = &ipv4->sin_addr;
+                  ipver = "IPv4";
+              } else {
+                  struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)p->ai_addr;
+                  addr = &ipv6->sin6_addr;
+                  ipver = "IPv6";
+              }
+              inet_ntop(p->ai_family, addr, ipstr, sizeof ipstr);
+              printf("%s: %s\n", ipver, ipstr);
+          }
+          return 0;
+      }
+    run_expected: |
+      IPv4: 192.0.2.88
+      IPv6: 2001:db8::171
+    explain_md: |
+      The two sockaddr structures hold the raw address bytes. Each addrinfo
+      node points at one of them through ai_addr and chains to the next through
+      ai_next. The loop reads the family tag, casts ai_addr to the matching
+      concrete type, selects the address field, and lets inet_ntop format it.
+    subgoals:
+    - label: Build Tagged Address Records
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+    - label: Link the Records
+      lines:
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+    - label: Cast by Family and Format
+      lines:
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+      - 43
+      - 44
+      - 45
+      - 46
+      - 47
+    adapted: true
+    note: 'Adapted from showip.c: host and service are fixed, the walk prints only family and address,
+      and error handling is compact.'
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'v4: sin_family=AF_INET, sin_addr bytes = c0 00 02 58 (192.0.2.88)'
+    - 'v6: sin6_family=AF_INET6, sin6_addr bytes = 2001:0db8::0171'
+    - a4.ai_family=AF_INET, a4.ai_addr -> v4, a4.ai_next -> a6
+    - a6.ai_family=AF_INET6, a6.ai_addr -> v6, a6.ai_next=NULL
+    - 'iteration 1: cast ai_addr to sockaddr_in, read sin_addr, print IPv4'
+    - 'iteration 2: cast ai_addr to sockaddr_in6, read sin6_addr, print IPv6'
+  checks:
+  - kind: predict
+    q: Trace the loop with the two-node list. What does the second iteration print?
+    code: |
+      for (p = res; p != NULL; p = p->ai_next) {
+          if (p->ai_family == AF_INET) {
+              struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+              inet_ntop(AF_INET, &ipv4->sin_addr, ipstr, sizeof ipstr);
+              printf("IPv4: %s\n", ipstr);
+          } else {
+              struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)p->ai_addr;
+              inet_ntop(AF_INET6, &ipv6->sin6_addr, ipstr, sizeof ipstr);
+              printf("IPv6: %s\n", ipstr);
+          }
+      }
+    choices:
+    - 'IPv4: 192.0.2.88'
+    - 'IPv6: 2001:db8::171'
+    - 'IPv6: 192.0.2.88'
+    - no line printed
+    answer: 1
+    why: The first node has family AF_INET and prints the IPv4 branch. The second node has family AF_INET6,
+      so the else branch casts to sockaddr_in6 and formats sin6_addr, producing the IPv6 line. The third
+      choice mixes the IPv6 label with IPv4 bytes; the fourth ignores ai_next. (b3)
+    concept: list-predict
+  - kind: mcq
+    q: Why does the loop branch on p->ai_family before reading the address?
+    choices:
+    - to decide which concrete sockaddr type to cast ai_addr to
+    - to decide whether to call freeaddrinfo() or free()
+    - to convert the port from host order to network order
+    answer: 0
+    why: ai_addr is a generic pointer. The family tag tells you whether the pointed-to bytes are a sockaddr_in
+      or a sockaddr_in6, so the cast and field name must match it. Cleanup uses freeaddrinfo regardless
+      of family, and byte order is handled when the port is stored. (b3)
+    concept: family-cast
+  - kind: fillblank
+    q: Complete the IPv6 branch so it selects the 16-byte address field.
+    code: |
+      struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)p->ai_addr;
+      void *addr = &ipv6->____;
+    answer_text: sin6_addr
+    why: A sockaddr_in6 stores its address in `sin6_addr`. `sin_addr` belongs to the IPv4 structure, and
+      `s_addr` is a field inside the IPv4 address, not a member of sockaddr_in6. (b3)
+    concept: sin6-field
+  - kind: order
+    q: Order the 5 correct actions inside one loop iteration that prints a node's address. One line is
+      a distractor.
+    lines:
+    - read p->ai_family and choose the matching sockaddr type
+    - set p = p->ai_next to advance the chain
+    - cast p->ai_addr to that concrete type
+    - select sin_addr or sin6_addr as the address pointer
+    - call inet_ntop with p->ai_family and the address pointer
+    - freeaddrinfo(p) to release the current node
+    answer_order:
+    - 0
+    - 2
+    - 3
+    - 4
+    - 1
+    distractor_why:
+      freeaddrinfo(p) to release the current node: Releasing inside the loop destroys the chain you are
+        still walking; the whole list is freed once after the loop.
+    hint: What information must you learn before you can cast the pointer?
+    why: Read the family, cast ai_addr, select the address field, format it, and only then advance to
+      the next node. Freeing a node inside the loop would invalidate the ai_next link you need for the
+      next iteration. (b3)
+    concept: loop-order
+  - kind: why-fails
+    q: A program casts every ai_addr to struct sockaddr_in *, even when ai_family is AF_INET6. Why does
+      it print a wrong or truncated address?
+    choices:
+    - inet_ntop refuses to format any address from a cast pointer
+    - the sockaddr_in layout mismatches IPv6 bytes, shifting the fields
+    - AF_INET6 lookup nodes do not contain an ai_addr field
+    answer: 1
+    why: A cast reinterprets the same bytes using the target type's layout. A sockaddr_in6 is larger and
+      places its address at a different offset, so reading it as sockaddr_in gives garbage. inet_ntop
+      does format valid pointers, and every addrinfo node has ai_addr. (b3)
+    concept: wrong-cast
+  - kind: trace
+    q: Trace the traversal. Which value belongs in the target cell for the second node's address field?
+    code: |
+      struct addrinfo *p = res;
+      p = p->ai_next;
+      printf("%s\n", p->ai_family == AF_INET ? "IPv4" : "IPv6");
+    trace:
+      headers:
+      - Step
+      - Line
+      - Node
+      - ai_family
+      - Address field
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - '1'
+        - first
+        - AF_INET
+        - sin_addr
+      - step: 2
+        line: 2
+        cells:
+        - '2'
+        - '2'
+        - second
+        - AF_INET6
+        - ???
+      - step: 3
+        line: 3
+        cells:
+        - '3'
+        - '3'
+        - second
+        - AF_INET6
+        - sin6_addr
+    target:
+      row: 1
+      col: 4
+    choices:
+    - sin6_addr field
+    - sin_addr field
+    - s_addr field
+    - ai_next field
+    answer: 0
+    why: After `p = p->ai_next`, p points at the second node whose family is AF_INET6, so the correct
+      address field is sin6_addr. sin_addr belongs to the IPv4 node, s_addr is inside the IPv4 address,
+      and ai_next is the link field rather than an address buffer. (b3)
+    concept: list-trace
+  - kind: mcq
+    q: What is the correct first argument to inet_ntop() when formatting a node's address?
+    choices:
+    - the node's p->ai_family value
+    - AF_INET, regardless of the node
+    - SOCK_STREAM, regardless of the node
+    answer: 0
+    why: inet_ntop needs the family to know whether the binary address is four or sixteen bytes and how
+      to format it, so pass p->ai_family. Hard-coding AF_INET breaks IPv6 nodes, and SOCK_STREAM is a
+      socket type, not an address family. (b3)
+    concept: ntop-family
+  - kind: spot-bug
+    q: The loop below crashes after the first node. Which line causes the fault, and why?
+    code: |
+      for (p = res; p != NULL; p = p->ai_next) {
+          struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
+          inet_ntop(AF_INET, &ipv4->sin_addr, ipstr, sizeof ipstr);
+          printf("%s\n", ipstr);
+          free(p);
+      }
+    diagnostic_log: |
+      ==4711==ERROR: AddressSanitizer: heap-use-after-free on address 0x602000000018
+      READ of size 8 at 0x602000000018 thread T0
+          #0 main loop.c:4
+      freed by thread T0 here:
+          #0 free
+          #1 main loop.c:6
+    target_line: 5
+    choices:
+    - 'Line 2: the cast to sockaddr_in is always wrong'
+    - 'Line 3: inet_ntop cannot format into ipstr'
+    - 'Line 1: p should start at res->ai_next instead'
+    - 'Line 5: free(p) frees the node ai_next still needs'
+    answer: 3
+    why: The loop reads p->ai_next after freeing p, so the next iteration touches freed memory. The fix
+      is to free the whole list once with freeaddrinfo after the loop. The cast is valid for AF_INET nodes,
+      inet_ntop is used correctly, and starting at res is correct. (b3)
+    concept: free-in-loop
+  common_bugs:
+  - Casting ai_addr to sockaddr_in for every node instead of branching on ai_family.
+  - Freeing individual nodes with free() while the loop still needs ai_next.
+- id: b4
+  type: syntax
+  title: Create a Socket Descriptor from a Lookup Record
+  explain_md: |
+    A lookup produces address records; `socket()` turns one record's family,
+    socket type, and protocol into a file descriptor. The signature is
+    `socket(int domain, int type, int protocol)`.
+
+    The clean modern call feeds the three fields straight from the chosen
+    `addrinfo` node: `socket(res->ai_family, res->ai_socktype,
+    res->ai_protocol)`. That keeps the descriptor consistent with the address
+    you will bind or connect to. Hard-coding `PF_INET`, `SOCK_STREAM`, `0`
+    still works for IPv4, but it ignores what the resolver actually returned.
+
+    ### PF versus AF
+
+    `PF_INET` and `AF_INET` have the same numeric value on the systems this
+    guide targets. The historical distinction was protocol family versus
+    address family, but the two constants converged. The guide's stylistic
+    rule is to use `AF_INET` in a `sockaddr_in` and `PF_INET` in the `socket()`
+    call. In lookup-driven code you avoid the question by passing the fields
+    from `res`.
+
+    ### The Notional Machine: the kernel installs a handle
+
+    `socket()` asks the kernel to create a socket object and return a small
+    integer handle into the process's descriptor table. The call does not
+    connect, bind, or send anything. It returns `-1` on failure and sets
+    `errno`; a valid descriptor is a non-negative integer. Until you pass that
+    handle to `bind()`, `connect()`, `listen()`, or `send()`, it does nothing
+    useful.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <unistd.h>
+      #include <netdb.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          int s;
+          int status;
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+
+          status = getaddrinfo("127.0.0.1", "3490", &hints, &res);
+          if (status != 0) {
+              printf("lookup failed: %s\n", gai_strerror(status));
+              return 1;
+          }
+
+          s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+          printf("descriptor valid: %s\n", s != -1 ? "yes" : "no");
+          if (s != -1) {
+              close(s);
+          }
+          freeaddrinfo(res);
+          return 0;
+      }
+    run_expected: |
+      descriptor valid: yes
+    explain_md: |
+      The lookup returns at least one record for the loopback host. The three
+      fields of that record are copied into socket(), so the descriptor's
+      family and type match the address it will later use. The descriptor is
+      closed on success, and the lookup list is released separately.
+    subgoals:
+    - label: Obtain a Matching Address Record
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+    - label: Create and Validate the Descriptor
+      lines:
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+    - label: Release Both Resources
+      lines:
+      - 30
+      - 31
+    adapted: true
+    note: 'Adapted from the chapter''s socket creation snippet: fixed service, added a descriptor print,
+      and shortened error handling.'
+  checks:
+  - kind: mcq
+    q: What does socket() return on success?
+    choices:
+    - the number of bytes currently available to read
+    - the IP address of the local host machine
+    - a socket descriptor for later system calls
+    answer: 2
+    why: socket() installs a socket object and returns a small integer descriptor for later calls. It
+      does not report available bytes and does not return an address. On failure it returns -1 and sets
+      errno. (b4)
+    concept: socket-return
+  - kind: fillblank
+    q: Complete the lookup-driven socket call so it matches the chosen record.
+    code: |
+      s = socket(res->ai_family, res->ai_socktype, res->____);
+    answer_text: ai_protocol
+    why: The third argument is the protocol, and the lookup record already carries the matching value
+      in ai_protocol. Passing 0 would ask the system to choose a protocol for the type, which may not
+      match the record; passing ai_addr would be a pointer, not an integer protocol. (b4)
+    concept: socket-protocol
+  - kind: order
+    q: Order the 5 correct steps that turn a lookup result into a usable, cleanly released descriptor.
+      One line is a distractor.
+    lines:
+    - call getaddrinfo() to obtain records
+    - call socket() with the chosen record's family, type, and protocol
+    - check whether the descriptor is -1
+    - call bind() before the descriptor exists
+    - close() the descriptor when finished
+    - call freeaddrinfo() on the lookup list
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 4
+    - 5
+    distractor_why:
+      call bind() before the descriptor exists: bind() needs a descriptor as its first argument, so it
+        cannot run before socket() returns one.
+    hint: Which call creates the handle that every later call consumes?
+    why: The data flow is lookup, create, validate, use or close, then release the lookup list. bind()
+      consumes the descriptor and therefore cannot precede socket(). Closing the descriptor and freeing
+      the list are separate ownership actions. (b4)
+    concept: socket-order
+  - kind: mcq
+    q: In lookup-driven code, which arguments should socket() receive?
+    choices:
+    - the record's ai_family, ai_socktype, and ai_protocol
+    - PF_INET, SOCK_STREAM, and 0 for every program
+    - AF_UNSPEC, SOCK_DGRAM, and AI_PASSIVE flags
+    answer: 0
+    why: Feeding the record's fields keeps the descriptor consistent with the address you will use. Hard-coded
+      PF_INET limits the program to IPv4, and AF_UNSPEC is a lookup wildcard, not a valid socket family.
+      AI_PASSIVE is a lookup flag, not a protocol number. (b4)
+    concept: socket-arguments
+  - kind: why-fails
+    q: A program creates an IPv6 address record but calls socket(PF_INET, SOCK_STREAM, 0). Why does a
+      later bind with that IPv6 address fail?
+    choices:
+    - SOCK_STREAM cannot be used with IPv6 addresses
+    - the descriptor is IPv4, so it rejects an IPv6 address
+    - PF_INET is a text string that socket() rejects
+    answer: 1
+    why: The family passed to socket() fixes the descriptor's address layout. PF_INET creates an IPv4
+      socket, so an IPv6 sockaddr_in6 does not match its contract. SOCK_STREAM works with IPv6, and PF_INET
+      is an integer constant, not a string. (b4)
+    concept: socket-family-mismatch
+  - kind: choose-better
+    q: Two clients create sockets. Which call is better for a program that may receive either IPv4 or
+      IPv6 records?
+    choices:
+    - call socket with PF_INET, SOCK_STREAM, and protocol 0
+    - call socket with AF_UNSPEC, the record type, and protocol 0
+    - call socket with the record family, type, and protocol
+    answer: 2
+    why: Copying the chosen record's fields follows the family the resolver actually returned. PF_INET
+      forces IPv4, and AF_UNSPEC is not a concrete family for creating a socket. (b4)
+    concept: socket-choice
+  - kind: eipe
+    q: In one sentence, what is socket() FOR?
+    choices:
+    - it resolves a host name into a linked list of addresses
+    - it sends a buffer of bytes to a remote peer process
+    - it asks the kernel for a descriptor for network calls
+    answer: 0
+    why: socket() creates the kernel object and returns its descriptor; it does not resolve names or move
+      data. Resolution belongs to getaddrinfo, and data transfer belongs to send/recv or sendto/recvfrom.
+      (b4)
+    concept: socket-purpose
+  - kind: spot-bug
+    q: The program ignores socket()'s return value. Which line turns the error into a misleading failure
+      later, and why?
+    code: |
+      int s = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+      printf("descriptor: %d\n", s);
+      bind(s, res->ai_addr, res->ai_addrlen);
+      connect(s, res->ai_addr, res->ai_addrlen);
+    diagnostic_log: |
+      descriptor: -1
+      bind: Bad file descriptor
+      connect: Bad file descriptor
+    target_line: 3
+    choices:
+    - 'Line 1: socket() cannot use res->ai_protocol'
+    - 'Line 2: printing the descriptor corrupts its value'
+    - 'Line 4: connect() must always run before bind()'
+    - 'Line 3: bind() receives -1 as a valid descriptor'
+    answer: 3
+    why: socket() returned -1, but the program passed that value to bind(). The kernel reports EBADF because
+      -1 is not an open descriptor. The protocol field is valid, printing does not corrupt a descriptor,
+      and a client would not call bind before connect in this sequence anyway. (b4)
+    concept: unchecked-socket
+  common_bugs:
+  - Ignoring socket()'s -1 return and passing it to later calls.
+  - Passing AF_UNSPEC to socket() instead of a concrete family from res.
+- id: b5
+  type: syntax
+  title: Bind the Socket to a Local Port
+  explain_md: |
+    A socket descriptor alone has no local address. `bind()` attaches a
+    `struct sockaddr` to it so the kernel can match incoming packets to this
+    process. The signature is `bind(int sockfd, struct sockaddr *my_addr,
+    int addrlen)`.
+
+    The lookup-driven form is short: ask `getaddrinfo()` for the local
+    address with `AI_PASSIVE`, create the socket from the record, then call
+    `bind(sockfd, res->ai_addr, res->ai_addrlen)`. The record already contains
+    the port and the wildcard address, so you do not pack fields by hand.
+
+    ### What the kernel records
+
+    The descriptor table entry gains a local address and port. Later,
+    `listen()` uses that binding to decide which port's incoming connections
+    belong to this socket. If two processes try to bind the same port, the
+    second call fails with "Address already in use" and sets `errno`.
+
+    ### Old-style packing and the wildcard
+
+    Older code fills a `struct sockaddr_in` directly: set `sin_family`, store
+    `htons(port)` in `sin_port`, store an address in `sin_addr.s_addr`, clear
+    `sin_zero`, then cast the structure to `struct sockaddr *`. For a server
+    that should accept on any local interface, use `INADDR_ANY` in IPv4 or
+    `in6addr_any` in IPv6.
+
+    ### Port rules
+
+    Ports below 1024 are reserved for privileged processes. A normal program
+    can bind ports from 1024 through 65535, provided no other socket is
+    already using the port. A client that only calls `connect()` usually does
+    not need `bind()` at all, because the kernel chooses an unused local port.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <unistd.h>
+      #include <netdb.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          int sockfd;
+          int status;
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+          hints.ai_flags = AI_PASSIVE;
+
+          status = getaddrinfo(NULL, "3490", &hints, &res);
+          if (status != 0) {
+              printf("lookup failed: %s\n", gai_strerror(status));
+              return 1;
+          }
+
+          sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+          if (sockfd == -1) {
+              printf("socket failed\n");
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          status = bind(sockfd, res->ai_addr, res->ai_addrlen);
+          printf("bind succeeded: %s\n", status == 0 ? "yes" : "no");
+
+          close(sockfd);
+          freeaddrinfo(res);
+          return 0;
+      }
+    run_expected: |
+      bind succeeded: yes
+    explain_md: |
+      The passive lookup returns local addresses for port 3490. socket() turns
+      the first record into a descriptor, and bind() copies the record's
+      address into that descriptor's local endpoint. The descriptor and the
+      lookup list are independent resources, so both are released.
+    subgoals:
+    - label: Request a Local Address
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+    - label: Create the Descriptor
+      lines:
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+    - label: Attach the Address and Release
+      lines:
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+    adapted: true
+    note: 'Adapted from the chapter''s bind example: fixed port, explicit htons, and a compact error path;
+      the sockaddr_in setup is unchanged.'
+  checks:
+  - kind: mcq
+    q: What does bind() associate with a socket descriptor?
+    choices:
+    - the remote peer's address and port number
+    - a queue of pending incoming connections
+    - a local address and port for this socket
+    answer: 2
+    why: bind() attaches a local address and port so the kernel can route matching traffic to the socket.
+      The remote peer is supplied later by connect() or by sendto(), and the pending-connection queue
+      is created by listen(). (b5)
+    concept: bind-role
+  - kind: fillblank
+    q: Complete the lookup-driven bind call.
+    code: |
+      sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+      bind(sockfd, res->ai_addr, res->____);
+    answer_text: ai_addrlen
+    why: The third argument is the byte length of the address structure, which the lookup already recorded
+      in ai_addrlen. Passing the address pointer again would be a type error, and a fixed sizeof would
+      not follow the actual record. (b5)
+    concept: bind-length
+  - kind: order
+    q: Order the 5 correct server steps that create a bound socket. One line is a distractor.
+    lines:
+    - call getaddrinfo() with AI_PASSIVE
+    - call socket() with the chosen record
+    - call bind() with the record's address and length
+    - call listen() before bind()
+    - close the descriptor when finished
+    - freeaddrinfo() the lookup list
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 4
+    - 5
+    distractor_why:
+      call listen() before bind(): listen() needs a socket that already has a local port, so it must follow
+        bind() for a server.
+    hint: Which call gives the descriptor its local identity?
+    why: The record comes first, then the descriptor, then the local binding. Cleanup closes the descriptor
+      and frees the separate lookup list. listen() consumes the bound socket, so it cannot precede bind().
+      (b5)
+    concept: bind-order
+  - kind: mcq
+    q: A normal, non-root process wants to bind port 80. What does the port rule say?
+    choices:
+    - ports below 1024 are reserved, so bind fails without privilege
+    - any port from 0 through 65535 is available to every process
+    - port 80 is reserved for IPv6 traffic only on this host
+    answer: 0
+    why: Ports below 1024 are reserved unless the process has superuser privilege. Ports above that range
+      are available if unused, and the reservation is not family-specific. (b5)
+    concept: reserved-ports
+  - kind: why-fails
+    q: A server exits and is restarted immediately. bind() fails with "Address already in use" even though
+      the old process is gone. Why?
+    choices:
+    - the new process forgot to call socket() before bind()
+    - a closed socket lingers in the kernel and still holds the port
+    - bind() always fails on the second run of any program
+    answer: 1
+    why: A recently closed connection can remain in a kernel state that still occupies the port for a
+      short time. Waiting lets it clear, or the program can set SO_REUSEADDR. The new process did create
+      a socket, and repeated runs normally succeed once the old binding is fully gone. (b5)
+    concept: address-in-use
+  - kind: choose-better
+    q: A development server is restarted many times per minute and keeps hitting "Address already in use."
+      Which remedy is better?
+    choices:
+    - wait a full minute after every restart
+    - bind a different random port on every run
+    - set SO_REUSEADDR before bind on the listener
+    answer: 2
+    why: SO_REUSEADDR lets the new socket reuse a port that is lingering in the kernel, which is the intended
+      tool for rapid restarts. Waiting works but wastes time; changing ports breaks clients that expect
+      a fixed port. (b5)
+    concept: reuse-choice
+  - kind: eipe
+    q: In one sentence, what is bind() FOR?
+    choices:
+    - it reserves a local address and port for the socket
+    - it contacts a remote server and establishes a connection
+    - it converts a host name into a list of address records
+    answer: 0
+    why: bind() gives the socket its local identity. Contacting a peer is connect()'s job, and name resolution
+      belongs to getaddrinfo(). (b5)
+    concept: bind-purpose
+  - kind: mcq
+    q: In hand-packed IPv4 code, why is the port stored with my_addr.sin_port = htons(3490) rather than
+      plain 3490?
+    choices:
+    - htons() converts the address from text into binary form
+    - the port field must use network byte order on the wire
+    - htons() reserves the requested port in the kernel
+    answer: 1
+    why: Multi-byte integer fields in sockaddr structures use network byte order, and htons converts the
+      host value to that order. Address text conversion is inet_pton's job, and reservation happens at
+      bind() time. (b5; sockaddr port fields use network byte order)
+    concept: bind-port-order
+    from_chapter: ch04
+    from_block: b6
+  common_bugs:
+  - Calling bind() before socket(), or listen() before bind().
+  - Forgetting htons() when hand-packing sin_port.
+- id: b6
+  type: design
+  title: Reuse a Lingering Port and Know When Bind Is Optional
+  explain_md: |
+    Two design decisions surround `bind()`. The first is port reuse. A
+    connection that has just closed can leave the port unavailable for a
+    short time. The kernel is protecting the old connection's state, not
+    leaking it forever. You can either wait for the state to clear or ask for
+    reuse before binding.
+
+    The reuse request is `setsockopt(listener, SOL_SOCKET, SO_REUSEADDR,
+    &yes, sizeof yes)` with `int yes = 1`. The option belongs on the listening
+    socket, before `bind()`. Setting `yes` to `0` asks to disable reuse, which
+    is the opposite of what a restarting server wants.
+
+    ### The Notional Machine: a flag on the socket object
+
+    `setsockopt()` writes an option into the socket object in the kernel. The
+    option is consulted when `bind()` checks whether the requested port is
+    available. It does not close existing connections and it does not let two
+    live servers share the same port by magic; it relaxes the lingering-state
+    rule.
+
+    ### When bind is optional
+
+    A client that only calls `connect()` does not need `bind()`. The kernel
+    checks whether the socket is unbound and, if so, picks an unused local
+    port for it. A server must bind because clients need a known port to
+    connect to. This is a role distinction, not a syntax rule.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <unistd.h>
+      #include <netdb.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          int listener;
+          int yes = 1;
+          int rc;
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+          hints.ai_flags = AI_PASSIVE;
+
+          if (getaddrinfo(NULL, "3490", &hints, &res) != 0) {
+              printf("lookup failed\n");
+              return 1;
+          }
+
+          listener = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+          if (listener == -1) {
+              printf("socket failed\n");
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          rc = setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
+          printf("reuse address option: %s\n", rc == 0 ? "set" : "failed");
+
+          close(listener);
+          freeaddrinfo(res);
+          return 0;
+      }
+    run_expected: |
+      reuse address option: set
+    explain_md: |
+      `yes` is an int flag with value 1. setsockopt copies that value into the
+      socket's option table under SOL_SOCKET/SO_REUSEADDR. The option is set
+      before bind in a real server so the port-availability check honors it.
+      The descriptor and lookup list are still released separately.
+    subgoals:
+    - label: Obtain the Listening Descriptor
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+    - label: Install the Reuse Option
+      lines:
+      - 33
+      - 34
+    adapted: true
+    note: 'Adapted from the chapter''s SO_REUSEADDR snippet: fixed port and added a print of the option
+      value; the setsockopt call shape is unchanged.'
+  checks:
+  - kind: mcq
+    q: What does SO_REUSEADDR allow a server to do?
+    choices:
+    - accept multiple connections without calling accept()
+    - send UDP datagrams without naming a destination address
+    - reuse a local port still lingering from a closed connection
+    answer: 2
+    why: The option relaxes the lingering-state check that produces "Address already in use." It does
+      not replace accept(), and datagram addressing is controlled by sendto(), not by this option. (b6)
+    concept: reuse-purpose
+  - kind: order
+    q: Order the 4 correct statements that enable address reuse on a listening socket. One line is a distractor.
+    lines:
+    - int yes = 1;
+    - setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
+    - int yes = 0;
+    - bind(listener, res->ai_addr, res->ai_addrlen);
+    - listen(listener, BACKLOG);
+    answer_order:
+    - 0
+    - 1
+    - 3
+    - 4
+    distractor_why:
+      int yes = 0;: A zero value disables the option instead of enabling it; the server would still hit
+        the lingering-port error.
+    hint: Which value requests the option rather than disabling it?
+    why: 'Declare the flag as 1, install it before bind, then bind and listen. The zero-valued flag is
+      the paired near-miss: it compiles but asks for the opposite behavior. (b6)'
+    concept: reuse-order
+  - kind: why-fails
+    q: A server calls setsockopt() with int yes = 0, then bind() still fails with "Address already in
+      use." Why?
+    choices:
+    - zero disables the option, so the strict check remains
+    - setsockopt() must be called after bind() to have any effect
+    - SO_REUSEADDR only applies to datagram socket types
+    answer: 0
+    why: 'The option''s value is the request: non-zero enables it, zero disables it. The call belongs
+      before bind so the check can consult it, but the immediate cause here is the zero value. The option
+      applies to stream sockets as well as datagrams. (b6)'
+    concept: reuse-zero
+  - kind: choose-better
+    q: A test harness restarts a TCP server every few seconds. Which policy is better for the server's
+      listening port?
+    choices:
+    - wait for the kernel to clear the old port before each restart
+    - enable SO_REUSEADDR before bind so restarts avoid collisions
+    - let the kernel pick a new port on every restart and tell clients
+    answer: 1
+    why: SO_REUSEADDR targets exactly the restart case and keeps the service on a known port. Waiting
+      is correct but slow, and a changing port breaks clients that need a stable destination. (b6)
+    concept: reuse-policy
+  - kind: eipe
+    q: In one sentence, what is SO_REUSEADDR FOR?
+    choices:
+    - it encrypts traffic on the listening socket interface
+    - it increases the number of connections the backlog can hold
+    - it lets a new socket bind a port whose old state is clearing
+    answer: 2
+    why: The option addresses the lingering-port condition during restarts. It has nothing to do with
+      encryption, and the backlog size is the second argument to listen(). (b6)
+    concept: reuse-eipe
+  - kind: mcq
+    q: A client program creates a socket and calls connect() without calling bind(). What happens to its
+      local port?
+    choices:
+    - the kernel chooses an unused local port automatically
+    - connect() fails because a local port is mandatory
+    - the client reuses the server's local port number
+    answer: 0
+    why: The kernel checks whether the socket is unbound and binds it to an unused local port when connect()
+      needs one. A client does not need to know or choose its local port, while a server needs a known
+      port that clients can target. (b6)
+    concept: client-auto-bind
+  - kind: choose-better
+    q: A server must accept connections on one specific local interface instead of every interface. Which
+      setup is better?
+    choices:
+    - keep AI_PASSIVE and pass NULL as the node for the wildcard
+    - drop AI_PASSIVE and pass the specific local address as node
+    - keep AI_PASSIVE and call bind() twice, once per interface
+    answer: 1
+    why: AI_PASSIVE with NULL asks for the wildcard address. Naming the specific address in the node argument
+      asks the resolver for that address, so bind() attaches only to it. Binding twice to the same socket
+      is not the mechanism for selecting an interface. (b6)
+    concept: specific-bind
+- id: b7
+  type: syntax
+  title: Connect Without Binding Your Own Port
+  explain_md: |
+    A client uses `connect()` to attach a socket to a remote address. The
+    signature is `connect(int sockfd, struct sockaddr *serv_addr, int
+    addrlen)`. The descriptor comes from `socket()`, the address comes from a
+    lookup record, and the length is that record's `ai_addrlen`.
+
+    The client normally does not call `bind()`. Its local port does not matter
+    to the application, so the kernel chooses an unused one during
+    `connect()`. The remote peer learns the chosen port from the connection
+    itself.
+
+    ### The Notional Machine: a three-way handshake begins
+
+    `connect()` asks the kernel to start establishing a stream connection to
+    the destination. For a TCP stream socket the kernel performs the handshake
+    and, on success, marks the descriptor as connected. The call returns `0`
+    on success and `-1` on failure, with `errno` describing the problem. A
+    non-zero return is not an address; it is an error indication.
+
+    ### Trying candidates in order
+
+    Because a lookup can return several records, real clients loop over the
+    list, create a socket for each record, and try `connect()` until one
+    succeeds. If a record's family is not usable on this host, skip it and
+    try the next one. The code below shows that loop; it needs a live server
+    to complete a connection, so it is a compile-ready skeleton rather than a
+    runnable demo.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <unistd.h>
+      #include <netdb.h>
+      #include <sys/socket.h>
+
+      int main(int argc, char *argv[])
+      {
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          struct addrinfo *p;
+          int sockfd = -1;
+          int status;
+
+          if (argc != 3) {
+              fprintf(stderr, "usage: client host port\n");
+              return 1;
+          }
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+
+          status = getaddrinfo(argv[1], argv[2], &hints, &res);
+          if (status != 0) {
+              fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
+              return 2;
+          }
+
+          for (p = res; p != NULL; p = p->ai_next) {
+              sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+              if (sockfd == -1) {
+                  continue;
+              }
+              if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+                  close(sockfd);
+                  sockfd = -1;
+                  continue;
+              }
+              break;
+          }
+
+          freeaddrinfo(res);
+
+          if (p == NULL) {
+              fprintf(stderr, "failed to connect\n");
+              return 2;
+          }
+
+          close(sockfd);
+          return 0;
+      }
+    explain_md: |
+      Each candidate record is tried in turn. A socket failure skips to the
+      next record; a connect failure closes that descriptor and also advances.
+      The loop breaks on the first success. The lookup list is released before
+      the final check because it is no longer needed, while the connected
+      descriptor stays open until close().
+    subgoals:
+    - label: Resolve the Destination
+      lines:
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+    - label: Try Each Candidate
+      lines:
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+    - label: Release and Report
+      lines:
+      - 44
+      - 45
+      - 46
+      - 47
+      - 48
+      - 49
+      - 50
+      - 51
+      - 52
+    adapted: true
+    note: 'Adapted from the chapter''s connect example: fixed host and service, compact candidate loop,
+      and printed result instead of a live connection.'
+  checks:
+  - kind: mcq
+    q: What information does connect() need besides the socket descriptor?
+    choices:
+    - the local port to bind before connecting
+    - the number of bytes to send immediately
+    - the remote address structure and its byte length
+    answer: 2
+    why: connect() takes the destination sockaddr and its length. The local port is chosen by the kernel,
+      so it is not supplied by the caller. Sending data is a separate send() call after the connection
+      succeeds. (b7)
+    concept: connect-arguments
+  - kind: fillblank
+    q: Complete the lookup-driven connect call.
+    code: |
+      sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+      connect(sockfd, p->ai_addr, p->____);
+    answer_text: ai_addrlen
+    why: The third argument is the length of the destination address, stored in the record's ai_addrlen.
+      The address pointer is already the second argument; passing it again would not provide a length.
+      (b7)
+    concept: connect-length
+  - kind: order
+    q: Order the 5 correct client steps that connect to the first usable lookup record. One line is a
+      distractor.
+    lines:
+    - call getaddrinfo() for the remote host and service
+    - call socket() with the current record
+    - call connect() with the current record's address and length
+    - close the descriptor and try the next record if connect fails
+    - call bind() to choose the client's local port
+    - close the connected descriptor when finished
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 5
+    distractor_why:
+      call bind() to choose the client's local port: The client does not need to choose a local port;
+        connect() lets the kernel bind an unused one automatically.
+    hint: Which step is the kernel already willing to do for a client?
+    why: The client resolves, creates, connects, and retries on failure. It does not need bind because
+      the kernel supplies an unused local port. The connected descriptor is closed only after the connection
+      is finished. (b7)
+    concept: connect-order
+  - kind: mcq
+    q: Why does a client usually skip bind() before connect()?
+    choices:
+    - the kernel chooses an unused local port when connect() needs one
+    - connect() refuses to run on a socket that has a local port
+    - bind() can only be used by servers on privileged ports
+    answer: 0
+    why: The local port is irrelevant to most clients, so the kernel picks one automatically. connect()
+      works fine on a bound socket as well; it does not refuse one. bind() is not restricted to servers,
+      although servers are the common users. (b7)
+    concept: no-client-bind
+  - kind: why-fails
+    q: A program calls connect() but never checks its return value, then immediately calls send(). Why
+      can send() fail with a broken-pipe or bad-descriptor error?
+    choices:
+    - send() requires the remote address as an extra argument
+    - connect() may have failed, so the descriptor is not connected
+    - connect() always closes the descriptor when it succeeds
+    answer: 1
+    why: A failed connect leaves the socket unconnected, and using it for stream I/O can fail. Checking
+      for -1 and inspecting errno is the documented contract. send() does not take a destination on a
+      connected stream socket, and connect() does not close a descriptor on success. (b7)
+    concept: unchecked-connect
+  - kind: predict
+    q: Trace the retry loop. The first record's socket succeeds but connect returns -1; the second record
+      connects successfully. Which statement executes immediately after the first connect failure?
+    code: |
+      for (p = res; p != NULL; p = p->ai_next) {
+          sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+          if (sockfd == -1) continue;
+          if (connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+              close(sockfd);
+              sockfd = -1;
+              continue;
+          }
+          break;
+      }
+    choices:
+    - close the failed socket and try the next record
+    - break out of the loop with the failed socket open
+    - call freeaddrinfo(res) inside the retry loop
+    - return 0 because one socket was created
+    answer: 0
+    why: The failed connect enters the if body, closes the descriptor, resets it to -1, and continues
+      to the next record. Breaking would keep an unconnected socket; freeing inside the loop would invalidate
+      the list; creating a socket is not the success condition. (b7)
+    concept: connect-retry
+  - kind: choose-better
+    q: Two clients handle connect() results differently. Which is better for a program that may run on
+      a host with both IPv4 and IPv6?
+    choices:
+    - try only the first record and exit if connect fails
+    - try each record, closing failed descriptors as you go
+    - ignore connect()'s return value and send immediately
+    answer: 0
+    why: Trying each record handles hosts where the first family or address is unreachable. Exiting after
+      one failure gives up too early, and ignoring the return uses a socket that may never have connected.
+      (b7)
+    concept: connect-strategy
+  - kind: eipe
+    q: In one sentence, what is connect() FOR?
+    choices:
+    - it assigns a local port so other hosts can connect
+    - it connects the local socket to a remote address
+    - it converts a host name into a list of sockaddr records
+    answer: 1
+    why: connect() is the client's setup step that targets a remote endpoint and begins the connection.
+      Local port assignment belongs to bind() or to the kernel's automatic choice, and name resolution
+      belongs to getaddrinfo(). (b7)
+    concept: connect-purpose
+  common_bugs:
+  - Ignoring connect()'s -1 return and using an unconnected descriptor.
+  - Trying only the first lookup record instead of looping over candidates.
+- id: b8
+  type: syntax
+  title: Open the Listening Queue with listen()
+  explain_md: |
+    After a server binds its port, it calls `listen(int sockfd, int backlog)`.
+    The call converts the descriptor from an ordinary bound socket into a
+    listening socket: incoming connection requests can now be queued for it.
+    `backlog` is the number of connections allowed to wait in the queue before
+    the server accepts them.
+
+    The queue is not the connection itself. A client can finish its handshake
+    and wait in this queue while the server is busy. When the server calls
+    `accept()`, it removes one pending connection from the queue. If the queue
+    is full, new connection attempts may be refused or ignored, so the backlog
+    is a capacity limit, not a promise of service.
+
+    ### The Notional Machine: a door and a waiting line
+
+    Think of the bound socket as a door at a known address. `listen()` installs
+    the waiting line outside that door. The kernel owns the line; the server
+    does not see individual clients until it accepts them. The original
+    descriptor remains the door and keeps listening after each acceptance.
+
+    ### Call order
+
+    The server sequence is `getaddrinfo()`, `socket()`, `bind()`, `listen()`,
+    then `accept()`. `listen()` must follow `bind()` because the kernel needs a
+    local port to listen on. It returns `0` on success and `-1` on failure,
+    setting `errno`.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <unistd.h>
+      #include <netdb.h>
+      #include <sys/socket.h>
+
+      #define MYPORT "3490"
+      #define BACKLOG 10
+
+      int main(void)
+      {
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          int sockfd;
+          int status;
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+          hints.ai_flags = AI_PASSIVE;
+
+          if (getaddrinfo(NULL, MYPORT, &hints, &res) != 0) {
+              printf("lookup failed\n");
+              return 1;
+          }
+
+          sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+          if (sockfd == -1) {
+              printf("socket failed\n");
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          if (bind(sockfd, res->ai_addr, res->ai_addrlen) == -1) {
+              printf("bind failed\n");
+              close(sockfd);
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          status = listen(sockfd, BACKLOG);
+          printf("listen succeeded: %s\n", status == 0 ? "yes" : "no");
+
+          close(sockfd);
+          freeaddrinfo(res);
+          return 0;
+      }
+    run_expected: |
+      listen succeeded: yes
+    explain_md: |
+      The lookup and bind give the socket a local port. listen() then tells the
+      kernel to queue connection requests for that port; BACKLOG caps the line.
+      The descriptor is still the listening door, not a connected channel. It is
+      closed only after the server stops accepting.
+    subgoals:
+    - label: Prepare the Bound Socket
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+    - label: Start Listening
+      lines:
+      - 42
+      - 43
+    - label: Release the Descriptor
+      lines:
+      - 45
+      - 46
+      - 47
+    adapted: true
+    note: 'Adapted from the chapter''s listen example: fixed port and backlog, with the server call order
+      printed rather than waiting for a connection.'
+  checks:
+  - kind: mcq
+    q: What does listen() do to a bound socket?
+    choices:
+    - it blocks until one client connects and returns its address
+    - it sends a greeting to every host on the local network
+    - it marks the socket as listening and sets a queue limit
+    answer: 2
+    why: listen() turns a bound socket into a listening socket and uses backlog as the pending-connection
+      queue limit. It does not accept a connection; accept() does that. It also sends no traffic. (b8)
+    concept: listen-role
+  - kind: why-fails
+    q: A busy server sets the listen() backlog to 1. Why can additional clients be refused even though
+      the server process is still running?
+    choices:
+    - the backlog is a byte limit, and one byte is too small
+    - the pending-connection queue is full, so arrivals cannot wait
+    - listen() stops the server after one successful connection
+    answer: 0
+    why: Backlog bounds how many connections may wait before accept() drains them. A value of 1 leaves
+      almost no waiting room, so new arrivals can be refused while the server is busy. It is not a byte
+      limit, and listen() does not stop after one connection. (b8)
+    concept: backlog
+  - kind: fillblank
+    q: Complete the call that starts listening with a queue limit of 10.
+    code: |
+      #define BACKLOG 10
+      status = listen(sockfd, ____);
+    answer_text: BACKLOG
+    why: The second argument is the backlog, and the macro names the chosen queue limit. Passing sockfd
+      again would be the wrong type and would not set a queue size. (b8)
+    concept: listen-backlog
+  - kind: order
+    q: Order the 5 correct server calls through the point where connections can queue. One line is a distractor.
+    lines:
+    - call getaddrinfo() for the local service
+    - call socket() with the chosen record
+    - call bind() to claim the local port
+    - call listen() to open the queue
+    - call accept() before listen()
+    - close the listening descriptor when finished
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 5
+    distractor_why:
+      call accept() before listen(): accept() removes a connection from the listening queue, so the queue
+        must exist first; it cannot precede listen().
+    hint: Which call creates the queue that accept() later drains?
+    why: A server resolves, creates, binds, and listens in that dependency order. accept() consumes the
+      queue created by listen(), so it cannot come first. Closing the descriptor is cleanup after service
+      ends. (b8)
+    concept: listen-order
+  - kind: why-fails
+    q: A server calls listen() on a socket that was never bound. Why does the kernel reject the call?
+    choices:
+    - listen() requires a connected socket, not a bound socket
+    - the socket has no local port for the kernel to use
+    - listen() only accepts datagram sockets, not streams
+    answer: 1
+    why: A listening socket needs a local port so clients know where to connect. bind() supplies that
+      port. listen() does not require an existing connection, and stream sockets are its normal use. (b8)
+    concept: listen-unbound
+  - kind: predict
+    q: Trace the sequence. What is the final value of status when all calls succeed?
+    code: |
+      sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+      bind(sockfd, res->ai_addr, res->ai_addrlen);
+      status = listen(sockfd, 10);
+    choices:
+    - 10, the backlog value
+    - -1, the failure value
+    - 0, the success value
+    - the new socket descriptor
+    answer: 2
+    why: listen() returns 0 on success. The value 10 is the backlog argument, not the return value; -1
+      signals failure; the descriptor is returned by socket(), not by listen(). (b8)
+    concept: listen-return
+  - kind: eipe
+    q: In one sentence, what is listen() FOR?
+    choices:
+    - it turns a bound socket into one that queues connections
+    - it establishes an outgoing connection to a remote server
+    - it receives a byte buffer from an already connected peer
+    answer: 0
+    why: 'listen() enables the server side: incoming requests can now wait for accept(). Outgoing connections
+      belong to connect(), and receiving data belongs to recv() after a connection exists. (b8)'
+    concept: listen-purpose
+  common_bugs:
+  - Calling listen() before bind(), so the socket has no local port.
+  - Assuming backlog guarantees service rather than merely bounding the queue.
+- id: b9
+  type: model
+  title: Accept a Connection and Talk on the New Descriptor
+  explain_md: |
+    `accept()` is the call that removes one pending connection from the
+    listening queue. Its signature is `accept(int sockfd, struct sockaddr
+    *addr, socklen_t *addrlen)`. The first argument is the listening
+    descriptor, not a connected one.
+
+    The surprising part is the return value: `accept()` returns a brand-new
+    socket descriptor for this single connection. The original descriptor
+    stays in listening mode and can accept more clients. You now have two
+    descriptors: the door and the private channel.
+
+    ### The Notional Machine: two handles into the same kernel object family
+
+    The listening descriptor is bound to the local port and owns the queue.
+    The accepted descriptor is connected to one remote peer. `send()` and
+    `recv()` belong on the accepted descriptor; using the listening descriptor
+    for them is a category error. If the server handles only one client ever,
+    it may close the listening descriptor after accepting, which stops further
+    incoming connections on that port.
+
+    ### Filling in the peer address
+
+    `addr` usually points to a local `struct sockaddr_storage`, which is large
+    enough for any family. Before the call, set the length variable to
+    `sizeof(struct sockaddr_storage)`. The kernel writes the peer's address
+    into the storage and may replace the length with the number of bytes it
+    actually used. The code below compiles as a complete one-shot server; it
+    blocks in `accept()` until a client arrives.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <unistd.h>
+      #include <netdb.h>
+      #include <sys/socket.h>
+
+      #define MYPORT "3490"
+      #define BACKLOG 10
+
+      int main(void)
+      {
+          struct sockaddr_storage their_addr;
+          socklen_t addr_size;
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          int sockfd;
+          int new_fd;
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+          hints.ai_flags = AI_PASSIVE;
+
+          if (getaddrinfo(NULL, MYPORT, &hints, &res) != 0) {
+              printf("lookup failed\n");
+              return 1;
+          }
+
+          sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
+          if (sockfd == -1) {
+              printf("socket failed\n");
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          if (bind(sockfd, res->ai_addr, res->ai_addrlen) == -1) {
+              printf("bind failed\n");
+              close(sockfd);
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          if (listen(sockfd, BACKLOG) == -1) {
+              printf("listen failed\n");
+              close(sockfd);
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          addr_size = sizeof their_addr;
+          new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
+          if (new_fd == -1) {
+              printf("accept failed\n");
+              close(sockfd);
+              freeaddrinfo(res);
+              return 1;
+          }
+
+          printf("accepted a connection on a new descriptor\n");
+
+          close(new_fd);
+          close(sockfd);
+          freeaddrinfo(res);
+          return 0;
+      }
+    explain_md: |
+      The first four calls build a listening socket. accept() then blocks until
+      a client arrives, fills their_addr with the peer address, updates
+      addr_size, and returns a new connected descriptor. The server closes that
+      new descriptor when the conversation ends, then closes the listening
+      descriptor to stop new connections.
+    subgoals:
+    - label: Build the Listening Socket
+      lines:
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+      - 44
+      - 45
+      - 46
+      - 47
+      - 48
+      - 49
+    - label: Take One Pending Connection
+      lines:
+      - 51
+      - 52
+      - 53
+      - 54
+      - 55
+      - 56
+      - 57
+      - 58
+    - label: Release Both Descriptors
+      lines:
+      - 60
+      - 62
+      - 63
+      - 64
+      - 65
+    adapted: true
+    note: 'Adapted from the chapter''s accept example: a synthetic pending connection supplies peer data,
+      and output prints the accepted descriptor and peer text.'
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'sockfd = 3: bound to port 3490 and listening; queue holds pending clients'
+    - a client completes the handshake; its request waits in the queue
+    - accept(sockfd, ...) removes one request and returns new_fd = 4
+    - sockfd 3 stays listening; new_fd 4 is connected to the client
+    - send/recv use new_fd 4; closing 4 ends this conversation
+    - closing sockfd 3 stops new connections on port 3490
+  checks:
+  - kind: mcq
+    q: What does accept() return on success?
+    choices:
+    - the original listening descriptor, now connected
+    - a new socket descriptor connected to one client
+    - the number of bytes waiting to be read
+    answer: 1
+    why: accept() returns a fresh descriptor for the accepted connection. The original descriptor remains
+      a listening socket. The byte count comes from recv(), not accept(). (b9)
+    concept: accept-return
+  - kind: why-fails
+    q: After accept() returns a new descriptor, a server calls send() on the original listening descriptor.
+      Why does the client not receive the data?
+    choices:
+    - the kernel closes the listening descriptor when accept() returns
+    - send() cannot be used on any descriptor that was ever bound
+    - the listening descriptor is a queue, not this client's channel
+    answer: 2
+    why: accept() creates a separate connected handle; the original stays in listening mode and has no
+      per-client byte stream. The kernel does not close it, and bound sockets can certainly send once
+      they are connected. (b9)
+    concept: two-descriptors
+  - kind: fillblank
+    q: Complete the accept call so the peer address fits in the storage.
+    code: |
+      struct sockaddr_storage their_addr;
+      socklen_t addr_size = sizeof their_addr;
+      new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &____);
+    answer_text: addr_size
+    why: accept() takes a pointer to the length so it can both read the capacity and write back the actual
+      size. Passing addr_size by value would not let the kernel update it, and passing the structure pointer
+      again would be the wrong type. (b9)
+    concept: accept-addrlen
+  - kind: order
+    q: Order the 5 correct calls that serve one client. One line is a distractor.
+    lines:
+    - call getaddrinfo() for the local service
+    - call socket() and bind() the chosen record
+    - call listen() to start queueing connections
+    - call accept() to take one pending connection
+    - use the returned new descriptor for send() and recv()
+    - use the original listening descriptor for send() and recv()
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      use the original listening descriptor for send() and recv(): The listening descriptor owns the queue,
+        not a conversation; data calls belong on the descriptor returned by accept().
+    hint: Which descriptor is connected to the client?
+    why: The server resolves, creates and binds, listens, accepts, then talks on the new descriptor. The
+      listening descriptor is not a data channel, so sending or receiving on it is the classic mix-up.
+      (b9)
+    concept: accept-order
+  - kind: why-fails
+    q: A server calls recv() on the listening descriptor instead of on the descriptor returned by accept().
+      Why does this fail to read client data?
+    choices:
+    - recv() cannot be used after accept() has been called
+    - the listening descriptor has no client stream to read
+    - the listening descriptor was closed automatically by accept()
+    answer: 0
+    why: accept() creates a separate connected descriptor for the client. The listening descriptor only
+      accepts new connections, so it has no per-client byte stream. recv() is valid on connected descriptors,
+      and accept() does not close the listener. (b9)
+    concept: wrong-descriptor
+  - kind: predict
+    q: Trace the descriptor values. The listening socket is 3 and accept() returns 4. Which descriptor
+      should the server pass to send()?
+    code: |
+      sockfd = socket(...);      /* returns 3 */
+      bind(sockfd, ...);
+      listen(sockfd, 10);
+      new_fd = accept(sockfd, ...); /* returns 4 */
+      send(____, "hello", 5, 0);
+    choices:
+    - the original listening sockfd
+    - the accepted new_fd descriptor
+    - the integer descriptor 3
+    - either descriptor is valid
+    answer: 1
+    why: new_fd is the connected channel to the client, so it is the descriptor for send(). The listening
+      descriptor 3 has no client stream. The two descriptors are not interchangeable even though they
+      refer to the same local port. (b9)
+    concept: descriptor-choice
+  - kind: trace
+    q: Trace the two descriptors. Which value belongs in the target cell for the role of the original
+      descriptor after accept()?
+    code: |
+      int sockfd = socket(...);
+      bind(sockfd, ...);
+      listen(sockfd, 10);
+      int new_fd = accept(sockfd, ...);
+      send(new_fd, "hi", 2, 0);
+    trace:
+      headers:
+      - Step
+      - Line
+      - Descriptor
+      - Value
+      - Role
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - '1'
+        - sockfd
+        - '3'
+        - unbound socket
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '3'
+        - sockfd
+        - '3'
+        - listening
+      - step: 3
+        line: 4
+        cells:
+        - '3'
+        - '4'
+        - new_fd
+        - '4'
+        - connected to one client
+      - step: 4
+        line: 4
+        cells:
+        - '4'
+        - '4'
+        - sockfd
+        - '3'
+        - ???
+    target:
+      row: 3
+      col: 4
+    choices:
+    - still listening for more connections
+    - connected to the same client as new_fd
+    - closed by the kernel after accept()
+    - converted into a datagram socket
+    answer: 0
+    why: accept() leaves the original descriptor in listening mode while the new descriptor carries the
+      client conversation. The listener is not closed and does not become the connected handle. (b9)
+    concept: accept-trace
+  - kind: mcq
+    q: Why is struct sockaddr_storage a good choice for accept()'s address buffer?
+    choices:
+    - it forces every connection to use IPv4 addresses
+    - it stores the server's listening queue itself
+    - it is large enough for IPv4 or IPv6 addresses
+    answer: 0
+    why: sockaddr_storage is sized to hold any supported sockaddr type, so the server can accept either
+      family without knowing it in advance. It does not force a family and it does not hold the queue.
+      (b9)
+    concept: accept-storage
+  common_bugs:
+  - Using the listening descriptor for send/recv instead of the accepted descriptor.
+  - Forgetting to initialize addr_size to sizeof their_addr before accept().
+- id: b10
+  type: algorithm
+  title: Move Stream Bytes with send and recv
+  explain_md: |
+    `send(int sockfd, const void *msg, int len, int flags)` writes bytes to a
+    connected stream socket; `recv(int sockfd, void *buf, int len, int flags)`
+    reads bytes from one. Set `flags` to `0` unless a specific option is
+    needed.
+
+    These calls are blocking. `recv()` waits until some data is available.
+    `send()` can also block if the outgoing buffer is full, although that is
+    less common. Blocking is not an error; it is the socket's default
+    behavior.
+
+    ### send may write less than you asked
+
+    `send()` returns the number of bytes it actually accepted, which may be
+    less than `len`. A small write usually goes out in one call, but a large
+    one can be partial. Correct code loops until every byte has been sent. If
+    `send()` returns `-1`, check `errno`; do not treat the return as the
+    message length.
+
+    ### recv has a special zero
+
+    `recv()` returns the number of bytes read, `-1` on error, or `0`. A return
+    of `0` means the peer has closed the connection. It does not mean "try
+    again" and it does not mean the buffer is empty. `len` is the capacity of
+    the buffer, not the number of bytes you expect.
+
+    ### The Notional Machine: a stream, not a message queue
+
+    A stream socket carries an ordered byte stream with no message boundaries.
+    One `recv()` may return part of a logical message, and one `send()` may be
+    split. The program must track how many bytes it has sent or received and
+    decide when a complete application message has arrived.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <sys/socket.h>
+
+      int send_all(int sockfd, const char *msg, int len)
+      {
+          int total = 0;
+
+          while (total < len) {
+              int n = send(sockfd, msg + total, len - total, 0);
+              if (n <= 0) {
+                  return -1;
+              }
+              total += n;
+          }
+          return total;
+      }
+
+      int main(void)
+      {
+          printf("send_all handles partial sends: yes\n");
+          return 0;
+      }
+    run_expected: |
+      send_all handles partial sends: yes
+    explain_md: |
+      The loop advances by the number of bytes send() actually accepted. If a
+      call returns 0 or -1, the helper reports failure instead of spinning. The
+      remaining count shrinks on each iteration, so the loop ends only after
+      every byte has been handed to the kernel.
+    subgoals:
+    - label: Track the Bytes Already Sent
+      lines:
+      - 5
+      - 6
+      - 7
+    - label: Send the Remaining Slice
+      lines:
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+    - label: Report the Total
+      lines:
+      - 15
+      - 16
+    adapted: true
+    note: 'Adapted from the chapter''s send/recv snippets: a deterministic in-memory channel replaces
+      a live socket so partial sends and zero-byte receive are visible.'
+  checks:
+  - kind: mcq
+    q: What does send() return on success?
+    choices:
+    - the bytes still waiting in the kernel buffer
+    - the number of bytes actually accepted for sending
+    - the peer's acknowledgment sequence number
+    answer: 1
+    why: send() reports how many bytes it accepted, which can be less than the requested length. It does
+      not report the kernel's remaining buffer or a peer acknowledgment number. (b10)
+    concept: send-return
+  - kind: fillblank
+    q: Complete the send call inside the partial-write loop.
+    code: |
+      while (total < len) {
+          int n = send(sockfd, msg + total, len - total, ____);
+          if (n <= 0) return -1;
+          total += n;
+      }
+    answer_text: '0'
+    why: The flags argument is normally 0 for ordinary stream sends. Passing len would be a flag value
+      rather than a length, and passing total would be the wrong quantity for the flags field. (b10)
+    concept: send-flags
+  - kind: predict
+    q: Trace the loop. send() returns 4 on the first call and the message is 13 bytes long. What is total
+      after the first iteration?
+    code: |
+      int total = 0;
+      int len = 13;
+      int n = send(sockfd, msg + total, len - total, 0); /* returns 4 */
+      if (n > 0) {
+          total += n;
+      }
+    choices:
+    - total is 9
+    - total is 4
+    - total is 13
+    - total is 0
+    answer: 1
+    why: total starts at 0 and gains the four bytes send() accepted, so it is 4. The value 9 is the remaining
+      byte count, 13 is the original length, and 0 is the starting value. Confusing total with remaining
+      is the classic partial-send tracing error. (b10)
+    concept: partial-send-trace
+  - kind: mcq
+    q: What does recv() returning 0 mean?
+    choices:
+    - the remote peer has closed the connection
+    - the buffer is empty while the peer stays alive
+    - the call failed and errno describes the error
+    answer: 0
+    why: A zero return is the orderly-close signal. An empty but live connection would block instead of
+      returning 0. Errors return -1 and set errno. (b10)
+    concept: recv-zero
+  - kind: why-fails
+    q: A program sends a 5000-byte message with one send() call and assumes the whole message went out
+      because the return value was positive. Why is this unsafe?
+    choices:
+    - send() always sends exactly one byte per call in this loop
+    - send() may accept fewer bytes, leaving the rest unsent
+    - a positive return means the peer processed the data
+    answer: 1
+    why: The return value is a byte count, not a success boolean. A positive but smaller value means only
+      that prefix was accepted, so the program must send the remainder. send() is not limited to one byte,
+      and a positive return does not mean the peer processed anything. (b10)
+    concept: partial-send-bug
+  - kind: order
+    q: Order the 5 correct steps of a correct partial-send loop. One line is a distractor.
+    lines:
+    - initialize total to 0
+    - call send() for the remaining slice
+    - stop with failure if send() returns 0 or -1
+    - add the returned byte count to total
+    - repeat while total is less than the message length
+    - return success as soon as one send() call returns a positive value
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      return success as soon as one send() call returns a positive value: A positive return can be smaller
+        than the message, so returning early leaves bytes unsent; the loop must continue until total reaches
+        len.
+    hint: What has to reach the message length before the loop can stop?
+    why: The loop tracks accepted bytes, sends only the remainder, fails on a non-positive result, and
+      continues until total equals the message length. Treating one positive send as completion is the
+      partial-write bug. (b10)
+    concept: send-loop-order
+  - kind: trace
+    q: Trace the partial-send loop. What value belongs in the target cell for total after the second send?
+    code: |
+      int total = 0;
+      int len = 10;
+      int n1 = send(sockfd, msg + total, len - total, 0); /* 3 */
+      total += n1;
+      int n2 = send(sockfd, msg + total, len - total, 0); /* 4 */
+      total += n2;
+    trace:
+      headers:
+      - Step
+      - Line
+      - Call
+      - Returned
+      - total
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - '1'
+        - initialize
+        - '-'
+        - '0'
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '3'
+        - 'send #1'
+        - '3'
+        - '3'
+      - step: 3
+        line: 5
+        cells:
+        - '3'
+        - '5'
+        - 'send #2'
+        - '4'
+        - ???
+    target:
+      row: 2
+      col: 4
+    choices:
+    - total is 3
+    - total is 4
+    - total is 7
+    - total is 10
+    answer: 2
+    why: The second send accepts four more bytes, and total already held three, so total becomes 7. The
+      value 4 is only the second return, 3 is the previous total, and 10 is the full message length. (b10)
+    concept: send-trace
+  - kind: choose-better
+    q: Two functions send a large buffer. Which is better?
+    choices:
+    - one send() call followed by assuming it all went out
+    - a loop that sends the remaining slice until total is complete
+    - a loop that retries only when send() returns -1
+    answer: 0
+    why: The loop handles partial acceptance, which is the documented behavior. One call can leave bytes
+      unsent, and retrying only on -1 ignores positive-but-partial returns. (b10)
+    concept: send-strategy
+  - kind: eipe
+    q: In one sentence, what are send() and recv() FOR?
+    choices:
+    - they resolve names and create address records
+    - they move bytes over an already connected stream socket
+    - they bind a local port and start a listening queue
+    answer: 1
+    why: send() and recv() operate on an established stream connection. Lookup is getaddrinfo's job, and
+      binding/listening belong to bind() and listen(). (b10)
+    concept: send-recv-purpose
+  common_bugs:
+  - Treating a short positive send() return as complete success.
+  - Treating recv() returning 0 as an empty buffer instead of a peer close.
+- id: b11
+  type: syntax
+  title: Address Every Datagram with sendto and recvfrom
+  explain_md: |
+    A datagram socket does not have a connection, so every send must name its
+    destination. `sendto()` extends `send()` with a destination address and
+    its length: `sendto(int sockfd, const void *msg, int len, unsigned int
+    flags, const struct sockaddr *to, socklen_t tolen)`.
+
+    `recvfrom()` extends `recv()` with a place to record the sender:
+    `recvfrom(int sockfd, void *buf, int len, unsigned int flags, struct
+    sockaddr *from, int *fromlen)`. The kernel fills `from` with the source
+    address and updates `fromlen` to the number of bytes it actually wrote.
+
+    ### The Notional Machine: each packet carries its own address
+
+    There is no connected channel holding the peer's identity. The destination
+    travels with each outgoing call, and the source is reported on each
+    incoming call. The socket object still owns the local port, but the remote
+    endpoint is supplied per packet.
+
+    ### Why sockaddr_storage
+
+    The caller does not always know whether the next packet will come from
+    IPv4 or IPv6. `struct sockaddr_storage` is large enough for either, and it
+    can be cast to the specific type after the family is known. A
+    `struct sockaddr_in` would be too small for an IPv6 peer. `struct sockaddr`
+    itself is the generic pointer type, not a storage container.
+
+    ### Connected datagrams
+
+    If you call `connect()` on a datagram socket, the kernel remembers the
+    destination and filters incoming packets to that peer. You can then use
+    ordinary `send()` and `recv()` calls. The packets are still UDP datagrams;
+    only the interface convenience changes.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+
+      int main(void)
+      {
+          struct sockaddr_storage to;
+          struct sockaddr_storage from;
+          socklen_t tolen = sizeof to;
+          socklen_t fromlen = sizeof from;
+
+          memset(&to, 0, sizeof to);
+          memset(&from, 0, sizeof from);
+
+          printf("storage covers IPv4: %s\n",
+                 tolen >= sizeof(struct sockaddr_in) ? "yes" : "no");
+          printf("storage covers IPv6: %s\n",
+                 tolen >= sizeof(struct sockaddr_in6) ? "yes" : "no");
+          fromlen = sizeof(struct sockaddr_in);
+          printf("fromlen reports actual size: %s\n",
+                 fromlen == sizeof(struct sockaddr_in) ? "yes" : "no");
+          return 0;
+      }
+    run_expected: |
+      storage covers IPv4: yes
+      storage covers IPv6: yes
+      fromlen reports actual size: yes
+    explain_md: |
+      sockaddr_storage is wide enough for both concrete address types, which is
+      why it is the safe buffer for sendto/recvfrom. tolen starts as the buffer
+      capacity. fromlen follows the same convention: the caller passes capacity
+      and the kernel replaces it with the actual address size.
+    subgoals:
+    - label: Reserve Family-Agnostic Address Storage
+      lines:
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+    - label: Verify Capacity and Reported Length
+      lines:
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+    adapted: true
+    note: 'Adapted from the chapter''s sendto/recvfrom snippets: fixed datagram text and a synthetic sender
+      address, with printed byte counts.'
+  checks:
+  - kind: mcq
+    q: What two extra pieces of information does sendto() need compared with send()?
+    choices:
+    - a local port number and a backlog
+    - a receive buffer and a timeout value
+    - a destination address and its length
+    answer: 2
+    why: An unconnected datagram socket has no remembered peer, so each sendto() names the destination
+      sockaddr and its byte length. A local port is set by bind, and a receive buffer belongs to recv/recvfrom.
+      (b11)
+    concept: sendto-arguments
+  - kind: fillblank
+    q: Complete the sendto call so the destination length matches the storage.
+    code: |
+      struct sockaddr_storage to;
+      memset(&to, 0, sizeof to);
+      sendto(sockfd, msg, len, 0, (struct sockaddr *)&to, ____ to);
+    answer_text: sizeof
+    why: The final argument is the size of the destination address structure, so sizeof is correct. Passing
+      len would describe the payload rather than the address, and passing &to again would be a pointer
+      where a length is expected. (b11)
+    concept: sendto-length
+  - kind: mcq
+    q: What does recvfrom() do with its fromlen argument?
+    choices:
+    - the caller passes capacity, and the kernel writes back the length
+    - the caller passes the length, and the kernel writes back capacity
+    - the kernel treats it as a millisecond timeout value
+    answer: 0
+    why: 'fromlen is an in/out parameter: initialize it to the buffer size before the call, and read it
+      afterward to learn how many bytes the kernel stored. It is not a timeout. (b11)'
+    concept: fromlen
+  - kind: why-fails
+    q: A dual-stack receiver passes a struct sockaddr_in * as recvfrom()'s from argument. Why can an incoming
+      IPv6 datagram be misread or truncated?
+    choices:
+    - recvfrom refuses to run unless the buffer is an IPv4 buffer
+    - sockaddr_in is too small, so the kernel cannot store the full peer
+    - the kernel converts every IPv6 peer into IPv4 automatically
+    answer: 1
+    why: The from buffer must be large enough for the largest address the socket can receive. A sockaddr_in
+      is too small for sockaddr_in6, so the peer address cannot be represented correctly. recvfrom is
+      family-agnostic, and no automatic IPv6-to-IPv4 conversion happens here. (b11)
+    concept: small-from-buffer
+  - kind: choose-better
+    q: A datagram receiver must work with both IPv4 and IPv6 peers. Which from buffer is better?
+    choices:
+    - sockaddr_in, because datagrams are always IPv4
+    - a single char buffer sized to the whole payload
+    - sockaddr_storage, because it can hold either family
+    answer: 2
+    why: sockaddr_storage is sized for any supported address family and can be cast after the family is
+      known. sockaddr_in cannot hold IPv6, and a payload buffer is not an address structure. (b11)
+    concept: storage-choice
+  - kind: order
+    q: Order the 5 correct steps for sending one datagram and learning who replied. One line is a distractor.
+    lines:
+    - fill a destination sockaddr and set its length
+    - call sendto() with the payload and destination
+    - prepare a sockaddr_storage and set fromlen to its size
+    - call recvfrom() to receive a reply and the sender address
+    - call bind() to connect the datagram socket to the peer
+    - inspect the updated fromlen and family before casting
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 5
+    distractor_why:
+      call bind() to connect the datagram socket to the peer: bind() assigns a local address, not a remote
+        peer; connecting a datagram socket would use connect(), not bind().
+    hint: Which call supplies the destination for an unconnected datagram?
+    why: Build the destination, send, prepare family-agnostic storage for the reply, receive, and then
+      inspect the updated length and family. bind() does not connect a socket to a remote peer. (b11)
+    concept: datagram-order
+  - kind: why-fails
+    q: A program calls connect() on a datagram socket and then uses send() and recv() successfully. Why
+      is this allowed even though the socket is not a stream socket?
+    choices:
+    - connect() changes the datagram socket into a stream socket
+    - connect() stores the peer, so datagram calls know the destination
+    - send() and recv() work on every socket regardless of state
+    answer: 0
+    why: The socket remains a datagram socket, but connect() records the peer so send() knows the destination
+      and recv() knows which source to accept. It does not become a stream socket, and send/recv on an
+      unconnected datagram socket are not the ordinary path. (b11)
+    concept: connected-datagram
+  - kind: spot-bug
+    q: The receiver forgets to initialize fromlen. Which line is the root cause of the failure, and why?
+    code: |
+      struct sockaddr_storage from;
+      socklen_t fromlen;
+      ssize_t n = recvfrom(sockfd, buf, sizeof buf, 0,
+                           (struct sockaddr *)&from, &fromlen);
+    diagnostic_log: |
+      recvfrom: Bad address
+      errno = EFAULT
+    target_line: 2
+    choices:
+    - 'Line 1: sockaddr_storage is too small for a datagram'
+    - 'Line 3: recvfrom requires an explicit timeout argument'
+    - 'Line 2: fromlen has no valid capacity for the buffer'
+    - 'Line 3: the cast to struct sockaddr * is illegal'
+    answer: 2
+    why: fromlen is an in/out parameter. Before the call it must describe how many bytes the from buffer
+      can hold; an uninitialized value gives the kernel no valid capacity. The storage type is correct,
+      recvfrom has no timeout argument, and the cast is the documented pattern. (b11)
+    concept: fromlen-uninitialized
+  - kind: eipe
+    q: In one sentence, what are sendto() and recvfrom() FOR?
+    choices:
+    - they establish a reliable byte stream between two hosts
+    - they convert host names into linked address lists
+    - they move datagrams and name the destination or sender
+    answer: 2
+    why: These calls carry the per-packet address that an unconnected datagram socket lacks. Stream establishment
+      belongs to connect(), and name resolution belongs to getaddrinfo(). (b11)
+    concept: datagram-purpose
+  common_bugs:
+  - Passing a sockaddr_in where a dual-stack peer may be IPv6.
+  - Leaving fromlen uninitialized before recvfrom().
+- id: b12
+  type: design
+  title: Close or Shut Down Without Leaking the Descriptor
+  explain_md: |
+    `close(sockfd)` is the ordinary Unix descriptor close. It prevents further
+    reads and writes on the socket, and the remote end sees an error when it
+    tries to use the connection. The descriptor is released for reuse by the
+    process.
+
+    `shutdown(int sockfd, int how)` is the finer-grained tool. It changes what
+    the socket can still do without releasing the descriptor. The `how` value
+    selects a direction:
+
+    | how | Effect |
+    | --- | --- |
+    | `SHUT_RD` (0) | further receives are disallowed |
+    | `SHUT_WR` (1) | further sends are disallowed |
+    | `SHUT_RDWR` (2) | further sends and receives are disallowed |
+
+    ### The Notional Machine: usability versus ownership
+
+    `shutdown()` changes the socket's usability flags in the kernel. The
+    descriptor remains in the process's descriptor table, so you can still
+    inspect or finally close it. `close()` removes the descriptor table entry.
+    Calling `shutdown()` alone does not free the descriptor, and calling
+    `close()` on a descriptor does not let you choose one direction.
+
+    ### Choosing the tool
+
+    Use `shutdown(SHUT_WR)` when you have finished sending but still want to
+    read the peer's remaining response. Use `close()` when the whole
+    conversation is over and you want to release the descriptor. On Windows
+    with Winsock, the descriptor release call is `closesocket()` instead of
+    `close()`.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <sys/socket.h>
+
+      static const char *how_name(int how)
+      {
+          switch (how) {
+          case SHUT_RD:   return "further receives disallowed";
+          case SHUT_WR:   return "further sends disallowed";
+          case SHUT_RDWR: return "further sends and receives disallowed";
+          default:        return "unknown";
+          }
+      }
+
+      int main(void)
+      {
+          printf("SHUT_RD: %s\n", how_name(SHUT_RD));
+          printf("SHUT_WR: %s\n", how_name(SHUT_WR));
+          printf("SHUT_RDWR: %s\n", how_name(SHUT_RDWR));
+          return 0;
+      }
+    run_expected: |
+      SHUT_RD: further receives disallowed
+      SHUT_WR: further sends disallowed
+      SHUT_RDWR: further sends and receives disallowed
+    explain_md: |
+      The helper maps each shutdown direction to its effect. SHUT_RD stops
+      receiving, SHUT_WR stops sending, and SHUT_RDWR stops both. None of these
+      calls releases the descriptor; close() performs that separate ownership
+      step.
+    subgoals:
+    - label: Map Each Direction to Its Effect
+      lines:
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+    - label: Compare the Three Directions
+      lines:
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+    adapted: true
+    note: 'Adapted from the chapter''s shutdown example: a synthetic descriptor and printed direction
+      names replace a live connection.'
+  checks:
+  - kind: mcq
+    q: Which shutdown direction disallows further receives but still allows sends?
+    choices:
+    - SHUT_RD
+    - SHUT_WR
+    - SHUT_RDWR
+    answer: 0
+    why: SHUT_RD closes the receive direction only, so the program can still send. SHUT_WR is the opposite,
+      and SHUT_RDWR stops both directions. (b12)
+    concept: shutdown-read
+  - kind: mcq
+    q: Which shutdown direction disallows further sends but still allows receives?
+    choices:
+    - SHUT_RD
+    - SHUT_WR
+    - SHUT_RDWR
+    answer: 1
+    why: SHUT_WR stops the send direction while leaving receives available, which is useful for half-closing
+      after a request. SHUT_RD stops receives, and SHUT_RDWR stops both. (b12)
+    concept: shutdown-write
+  - kind: fillblank
+    q: Complete the call that stops both sending and receiving.
+    code: |
+      shutdown(sockfd, ____);
+    answer_text: SHUT_RDWR
+    why: SHUT_RDWR disallows both directions. SHUT_RD and SHUT_WR each stop only one direction, and close()
+      would release the descriptor as well, which is a different operation. (b12)
+    concept: shutdown-both
+  - kind: why-fails
+    q: A program calls shutdown(sockfd, SHUT_RDWR) and then exits without calling close(). Why is the
+      descriptor not properly released?
+    choices:
+    - shutdown only works on unconnected datagram sockets here
+    - shutdown automatically reopens the socket after one second
+    - shutdown changes usability but leaves the descriptor in place
+    answer: 2
+    why: shutdown() changes what the socket may do; close() is the call that releases the descriptor.
+      The two operations are distinct. shutdown is not limited to datagrams, and it does not reopen anything.
+      (b12)
+    concept: shutdown-not-close
+  - kind: choose-better
+    q: A client has finished sending a request but still expects a long response. Which action is better?
+    choices:
+    - close() the socket immediately, ending both directions
+    - shutdown(SHUT_WR) to end sending, then recv the response
+    - shutdown(SHUT_RD) to stop receiving the response
+    answer: 0
+    why: Half-closing the write side tells the peer that no more request bytes are coming while preserving
+      the read side for the response. Closing ends both directions, and shutting down reads prevents the
+      very data the client wants. (b12)
+    concept: half-close-choice
+  - kind: eipe
+    q: In one sentence, what is shutdown() FOR?
+    choices:
+    - it releases the socket descriptor and frees its table entry
+    - it changes which directions remain usable without closing
+    - it queues incoming connections for a listening server
+    answer: 1
+    why: shutdown() controls directionality while the descriptor stays open. close() releases the descriptor,
+      and listen() manages the connection queue. (b12)
+    concept: shutdown-purpose
+  - kind: choose-better
+    q: A program is being ported from Unix to Windows Winsock. Which cleanup call is better there?
+    choices:
+    - close(sockfd) on the descriptor
+    - shutdown(sockfd, SHUT_RDWR) only
+    - closesocket(sockfd) on the descriptor
+    answer: 2
+    why: Winsock uses closesocket() to release a socket descriptor. close() is the Unix call, and shutdown()
+      alone changes usability without releasing the descriptor. (b12)
+    concept: winsock-close
+  - kind: mcq
+    q: What is the difference between close() and shutdown(sockfd, SHUT_RDWR)?
+    choices:
+    - close() stops only sends; shutdown releases the descriptor
+    - close() releases the descriptor; shutdown keeps it
+    - they are identical in every respect on all systems
+    answer: 0
+    why: close() removes the descriptor from the process table, while shutdown(SHUT_RDWR) stops both directions
+      but leaves the descriptor in place. They overlap in effect on traffic but differ in ownership. (b12)
+    concept: close-vs-shutdown
+  common_bugs:
+  - Calling shutdown() and assuming the descriptor was freed.
+  - Using close() when only the write direction should be closed.
+- id: b13
+  type: syntax
+  title: Identify the Peer and the Local Host
+  explain_md: |
+    `getpeername(int sockfd, struct sockaddr *addr, int *addrlen)` reports who
+    is at the other end of a connected stream socket. The descriptor must
+    already be connected. `addr` receives the peer's address, and `addrlen`
+    starts as the capacity of that buffer and is updated with the actual
+    length. The call returns `-1` on error and sets `errno`.
+
+    Once you have the peer's address, `inet_ntop()` can format it, or a name
+    service such as `getnameinfo()` can try to resolve it. The peer's login
+    name is not part of the socket API; only network identity is available.
+
+    `gethostname(char *hostname, size_t size)` is even simpler: it writes the
+    local computer's name into the buffer. The name can then be passed to
+    `getaddrinfo()` to discover the local machine's addresses. It returns `0`
+    on success and `-1` on error.
+
+    ### The Notional Machine: two directions of identity
+
+    A connected socket already stores the local endpoint and the remote
+    endpoint in the kernel. `getpeername()` reads the remote endpoint into
+    your buffer. `gethostname()` asks the operating system for the machine's
+    own name, independent of any socket. Neither call creates a connection or
+    sends a packet.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <unistd.h>
+
+      int main(void)
+      {
+          char hostname[256];
+
+          if (gethostname(hostname, sizeof hostname) == -1) {
+              printf("hostname lookup failed\n");
+              return 1;
+          }
+          hostname[sizeof hostname - 1] = '\0';
+          printf("hostname available: %s\n", hostname[0] != '\0' ? "yes" : "no");
+          return 0;
+      }
+    run_expected: |
+      hostname available: yes
+    explain_md: |
+      gethostname writes the machine name into the caller's buffer up to the
+      given size. The explicit terminator guarantees a printable string even if
+      the system filled the whole buffer. The returned name can later be passed
+      to getaddrinfo to look up the local address.
+    subgoals:
+    - label: Ask for the Local Host Name
+      lines:
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+    - label: Guarantee a Printable Result
+      lines:
+      - 13
+      - 14
+      - 15
+    adapted: true
+    note: 'Adapted from the chapter''s getpeername/gethostname snippets: synthetic peer data and a fixed
+      local host name make the output deterministic.'
+  checks:
+  - kind: mcq
+    q: What does getpeername() report?
+    choices:
+    - the local host's own machine name string
+    - the other end's address on a connected socket
+    - the number of bytes waiting to be received
+    answer: 1
+    why: getpeername reads the remote endpoint stored in a connected socket. The local machine name comes
+      from gethostname(), and the byte count comes from recv() or an ioctl, not from getpeername(). (b13)
+    concept: getpeername-role
+  - kind: fillblank
+    q: Complete the getpeername call so the buffer capacity is known.
+    code: |
+      struct sockaddr_storage peer;
+      int addrlen = sizeof peer;
+      getpeername(sockfd, (struct sockaddr *)&peer, &____);
+    answer_text: addrlen
+    why: The third argument is a pointer to the length so the kernel can read the capacity and write back
+      the actual size. Passing addrlen by value would not let it update the variable. (b13)
+    concept: getpeername-length
+  - kind: mcq
+    q: What does gethostname() return on success?
+    choices:
+    - the length of the copied host name
+    - a pointer to a static name buffer
+    - 0, because the call returns a status
+    answer: 2
+    why: gethostname returns 0 on success and -1 on error, setting errno. The name is written into the
+      caller's buffer, not returned as a pointer, and the return value is not the name length. (b13)
+    concept: gethostname-return
+  - kind: why-fails
+    q: A program calls getpeername() on a socket that has been created but not connected. Why does the
+      call fail?
+    choices:
+    - getpeername only works on datagram socket types
+    - there is no peer endpoint stored for this socket
+    - the supplied address buffer is always too small
+    answer: 0
+    why: A peer name exists only after a connection associates the socket with a remote endpoint. An unconnected
+      socket has none, so the kernel reports an error such as ENOTCONN. The call is not datagram-only,
+      and the buffer size is a separate concern. (b13)
+    concept: getpeername-unconnected
+  - kind: choose-better
+    q: A server has a peer address in a sockaddr_storage and wants to print the numeric address. Which
+      next step is better?
+    choices:
+    - call getpeername() again to convert the address to text
+    - inspect the family, cast the address, and call inet_ntop()
+    - pass the storage directly to printf with a %s format
+    answer: 1
+    why: getpeername retrieves the address; it does not format it. The family tells you which concrete
+      type to cast to, and inet_ntop produces the numeric text. A sockaddr_storage is binary data, not
+      a C string. (b13)
+    concept: peer-format
+  - kind: order
+    q: Order the 5 correct steps that obtain and print a connected peer's numeric address. One line is
+      a distractor.
+    lines:
+    - declare a sockaddr_storage and initialize addrlen to its size
+    - call getpeername() on the connected descriptor
+    - inspect the returned family and cast to the matching sockaddr type
+    - call inet_ntop() with the family and address field
+    - call gethostname() to learn the peer's name
+    - close the descriptor when finished
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 5
+    distractor_why:
+      call gethostname() to learn the peer's name: gethostname reports the local machine's name, not the
+        remote peer's identity.
+    hint: Which call reads the remote endpoint from the connected socket?
+    why: Allocate family-agnostic storage, ask getpeername for the peer, cast by family, then format with
+      inet_ntop. gethostname is local identity, not peer identity. (b13)
+    concept: peer-order
+  - kind: eipe
+    q: In one sentence, what are getpeername() and gethostname() FOR?
+    choices:
+    - they create connections to a remote host and bind a local port
+    - they send and receive datagrams on unconnected sockets
+    - they read the peer's address and the local host name
+    answer: 2
+    why: getpeername reads the remote endpoint of an existing connection, and gethostname reads the local
+      machine name. They do not create connections or move data. (b13)
+    concept: identity-purpose
+  - kind: why-fails
+    q: A dual-stack program uses struct sockaddr_in as getpeername()'s address buffer. Why can the call
+      fail to report an IPv6 peer correctly?
+    choices:
+    - getpeername requires a stream socket, not a datagram socket
+    - sockaddr_in is too small to hold an IPv6 peer address
+    - sockaddr_in is only valid for the local machine's address
+    answer: 0
+    why: The buffer must be large enough for the largest address the socket can return. sockaddr_storage
+      is the family-agnostic choice; sockaddr_in cannot represent a 16-byte IPv6 peer. The structure does
+      not change the socket type or restrict the peer to the local machine. (b13; sockaddr_storage is
+      sized for either family)
+    concept: peer-storage
+    from_chapter: ch04
+    from_block: b9
+  common_bugs:
+  - Calling getpeername() on an unconnected socket.
+  - Passing addrlen by value instead of by address.

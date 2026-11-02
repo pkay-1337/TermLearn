@@ -1,0 +1,481 @@
+quiz:
+- kind: mcq
+  level: intro
+  q: What is the overall purpose of this IPv6 migration guide?
+  choices:
+  - a short list of code changes that move IPv4 code toward IPv6
+  - a complete replacement for the sockets API and its headers
+  - a tutorial on assigning domain names to IPv6 hosts
+  answer: 0
+  why: It is the short, practical list of code changes that migrate IPv4 code to IPv6. It does not replace
+    the sockets API, and it does not teach domain-name administration. (b8)
+  concept: migration-purpose
+- kind: mcq
+  level: intro
+  q: Which address family constant requests IPv6?
+  choices:
+  - AF_INET
+  - AF_INET6
+  - PF_INET
+  answer: 1
+  why: AF_INET6 is the IPv6 address family. AF_INET and PF_INET are both IPv4-era constants and would
+    keep the code on IPv4 behavior. (b1)
+  concept: quiz-family
+- kind: fillblank
+  level: intro
+  q: Complete the IPv6 socket creation.
+  code: |
+    int fd = socket(____, SOCK_STREAM, 0);
+  answer_text: AF_INET6
+  why: The address family is the first socket argument, and AF_INET6 selects IPv6. AF_INET would select
+    IPv4, while PF_INET is the IPv4 protocol-family constant. (b1)
+  concept: quiz-socket
+- kind: mcq
+  level: intro
+  q: What is in6addr_any?
+  choices:
+  - the IPv6 loopback address known as ::1
+  - a library function that resolves IPv6 hostnames
+  - the all-zero IPv6 wildcard address object
+  answer: 2
+  why: in6addr_any is the 16-byte all-zero IPv6 wildcard, meaning any local address. Loopback is ::1.
+    Hostname resolution belongs to getaddrinfo, not to this address object. (b2)
+  concept: quiz-any
+- kind: fillblank
+  level: intro
+  q: Complete the declaration so the new IPv6 address begins as the wildcard.
+  code: |
+    struct in6_addr address = ____;
+  answer_text: IN6ADDR_ANY_INIT
+  why: A declaration uses the initializer macro IN6ADDR_ANY_INIT. The lowercase in6addr_any is the address
+    object used in later assignments, and INADDR_ANY is a 32-bit IPv4 value. (b2)
+  concept: quiz-any-init
+- kind: mcq
+  level: intro
+  q: Which IPv4 padding field has no sin6_ counterpart in sockaddr_in6?
+  choices:
+  - sin_zero
+  - sin_port
+  - sin_addr
+  answer: 0
+  why: There is no sin6_zero field. Port and address do have IPv6 counterparts, sin6_port and sin6_addr.
+    Zero the whole sockaddr_in6 with memset instead of trying to clear a padding member. (b3)
+  concept: quiz-sin-zero
+- kind: mcq
+  level: intro
+  q: Which function replaces inet_aton() and inet_addr()?
+  choices:
+  - inet_ntop()
+  - inet_pton()
+  - getnameinfo()
+  answer: 1
+  why: inet_pton performs presentation-to-network conversion for both families. inet_ntop is the reverse
+    direction, and getnameinfo is a reverse name lookup. (b4)
+  concept: quiz-pton
+- kind: mcq
+  level: intro
+  q: Which function replaces gethostbyname()?
+  choices:
+  - getnameinfo()
+  - inet_aton()
+  - getaddrinfo()
+  answer: 2
+  why: getaddrinfo is the superior forward lookup and can return address candidates for both families.
+    getnameinfo is the reverse lookup, and inet_aton is an obsolete IPv4 text parser. (b5)
+  concept: quiz-getaddrinfo
+- kind: mcq
+  level: intro
+  q: What should replace INADDR_BROADCAST in an IPv6 migration?
+  choices:
+  - an IPv6 multicast group address
+  - the IPv6 loopback address ::1
+  - the IN6ADDR_ANY_INIT wildcard macro
+  answer: 0
+  why: The rule says INADDR_BROADCAST no longer works and IPv6 multicast is the replacement. Loopback
+    reaches only the local host, and IN6ADDR_ANY_INIT is a wildcard initializer, not a group destination.
+    (b7)
+  concept: quiz-broadcast
+- kind: mcq
+  level: core
+  q: A program changes AF_INET to AF_INET6 but leaves socket(PF_INET, ...) unchanged. Which statement
+    best describes the result?
+  choices:
+  - the socket automatically upgrades because AF_INET6 appears elsewhere
+  - the socket is still created for IPv4, so IPv6 address data does not match it
+  - the port number automatically becomes network byte order for the call
+  answer: 1
+  why: Each family decision is independent, and PF_INET still creates an IPv4 socket. Seeing AF_INET6
+    in another line does not rewrite that call. Port byte order is governed by htons/ntohs, not by the
+    family tag. (b1)
+  concept: quiz-mixed-family
+- kind: why-fails
+  level: core
+  q: Why does this migration fail to compile?
+  code: |
+    struct sockaddr_in6 sa6 = {0};
+    sa6.sin_family = AF_INET6;
+    sa6.sin_port = htons(80);
+    sa6.sin_addr.s_addr = INADDR_ANY;
+  choices:
+  - sockaddr_in6 cannot be initialized with the value {0} at all here
+  - port 80 cannot be used together with any valid IPv6 address at all
+  - the declaration is IPv6, but the fields still use IPv4 names like sin_addr
+  answer: 2
+  why: The compiler reports that sockaddr_in6 has no member sin_family, sin_port, or sin_addr; the fields
+    need the sin6_ names. Zero initialization is legal, and port 80 is an ordinary 16-bit port. (b3)
+  concept: quiz-field-names
+- kind: predict
+  level: core
+  q: Trace the port conversion and the print. What exact line is produced?
+  code: |
+    struct sockaddr_in6 sa6;
+    memset(&sa6, 0, sizeof sa6);
+    sa6.sin6_port = htons(8080);
+    printf("%d\n", ntohs(sa6.sin6_port));
+  choices:
+  - the line reads 8080
+  - the line reads 32896
+  - the line reads 0
+  answer: 0
+  why: htons stores 8080 in network order, and ntohs converts it back to host order, so printing yields
+    8080. 32896 is the byte-swapped value seen when network-order bytes are read as host order. 0 would
+    mean memset ran after the port was stored. (b3; ch04 b8 byte order)
+  concept: quiz-port-roundtrip
+- kind: mcq
+  level: core
+  q: Which sockaddr_in6 field holds the 16-byte IPv6 address?
+  choices:
+  - sin6_port
+  - sin6_addr
+  - sin6_family
+  answer: 1
+  why: sin6_addr is the struct in6_addr field containing the address; its s6_addr array exposes the 16
+    bytes. sin6_port is the 16-bit port and sin6_family is the family tag. (b3)
+  concept: quiz-addr-field
+- kind: why-fails
+  level: core
+  q: What goes wrong when the return value of inet_pton() is ignored?
+  code: |
+    struct in6_addr a6;
+    inet_pton(AF_INET6, "2001:db8::bad::1", &a6);
+    char text[INET6_ADDRSTRLEN];
+    inet_ntop(AF_INET6, &a6, text, sizeof text);
+    puts(text);
+  choices:
+  - inet_pton always exits the program whenever the text is malformed
+  - inet_ntop refuses to format any address value that came from inet_pton
+  - malformed text returns 0 and leaves the destination unusable, yet code formats it
+  answer: 2
+  why: 'The double :: is malformed, so inet_pton returns 0 without writing a valid address. Ignoring that
+    result lets stale bytes reach inet_ntop. inet_pton reports through its return value rather than exiting,
+    and pton/ntop are designed to round-trip valid data. (b4)'
+  concept: quiz-pton-check
+- kind: mcq
+  level: core
+  q: gethostbyaddr() can still work with IPv6, but which call is recommended for new code?
+  choices:
+  - use getnameinfo() as the superior reverse lookup
+  - use gethostbyname() for the reverse lookup instead
+  - use inet_addr() to format the IPv6 address as text
+  answer: 0
+  why: getnameinfo is the recommended reverse lookup. gethostbyname is a forward lookup being replaced,
+    and inet_addr is an obsolete IPv4 parser that cannot format an IPv6 address. (b5)
+  concept: quiz-getnameinfo
+- kind: choose-better
+  level: core
+  q: A codebase selects AF_INET or AF_INET6 in nine separate functions. Which refactor is better?
+  choices:
+  - duplicate the if/else in all nine functions
+  - centralize the selection in one helper that callers use
+  - always select AF_INET so the code stays consistent
+  answer: 1
+  why: One helper makes the version decision auditable and testable. Duplicating it invites drift, and
+    always selecting IPv4 abandons the migration. (b6)
+  concept: quiz-helper
+- kind: spot-bug
+  level: core
+  q: A round trip prints the wrong address form. Which line causes it, and why?
+  code: |
+    struct in6_addr a6;
+    char text[INET6_ADDRSTRLEN];
+    inet_pton(AF_INET6, "::1", &a6);
+    inet_ntop(AF_INET, &a6, text, sizeof text);
+    printf("%s\n", text);
+  diagnostic_log: |
+    expected: ::1
+    observed: 0.0.0.0
+  target_line: 4
+  choices:
+  - 'Line 1: in6_addr cannot hold the ::1 loopback value at all'
+  - 'Line 3: inet_pton must use AF_INET when parsing loopback'
+  - 'Line 4: inet_ntop is given AF_INET, so it reads four bytes as IPv4'
+  answer: 2
+  why: The family argument selects how many bytes inet_ntop interprets. AF_INET reads four bytes of the
+    16-byte ::1 address and renders 0.0.0.0. in6_addr holds the address correctly, and pton used the right
+    family. (b4)
+  concept: quiz-ntop-family
+- kind: mcq
+  level: core
+  q: When is IN6ADDR_ANY_INIT the right wildcard form?
+  choices:
+  - when a struct in6_addr is being declared and initialized
+  - when an existing sin6_addr field is assigned later
+  - whenever a 32-bit IPv4 INADDR_ANY value is needed
+  answer: 0
+  why: IN6ADDR_ANY_INIT is an initializer for a declaration. For an existing field, assign the in6addr_any
+    object. It has nothing to do with the 32-bit IPv4 INADDR_ANY value. (b2)
+  concept: quiz-when-init
+- kind: order
+  level: core
+  q: Order the 5 correct lines that convert an IPv6 text address to binary and back. One line is a distractor.
+  lines:
+  - printf("%s\n", text);
+  - struct in6_addr a6;
+  - inet_ntoa(a6);
+  - inet_ntop(AF_INET6, &a6, text, sizeof text);
+  - char text[INET6_ADDRSTRLEN];
+  - inet_pton(AF_INET6, "2001:db8::5", &a6);
+  answer_order:
+  - 1
+  - 5
+  - 4
+  - 3
+  - 0
+  distractor_why:
+    inet_ntoa(a6);: inet_ntoa is the obsolete IPv4 formatter and cannot accept a struct in6_addr.
+  hint: Reserve the binary object, parse into it, reserve the text buffer, format, then print.
+  why: The binary destination must exist before parsing, and the text buffer must exist before formatting.
+    inet_ntoa is the old IPv4-only call being replaced, not part of the IPv6 pipeline. (b4)
+  concept: quiz-conversion-order
+- kind: why-fails
+  level: core
+  q: Why is this wildcard assignment invalid?
+  code: |
+    struct sockaddr_in6 sa6 = {0};
+    sa6.sin6_addr.s6_addr = in6addr_any;
+  choices:
+  - in6addr_any is a function that must be called before the assignment
+  - s6_addr is an array, so it cannot be assigned whole; assign in6addr_any instead
+  - sockaddr_in6 has no address field that can receive an assignment
+  answer: 1
+  why: The field sin6_addr is the whole struct in6_addr, and that is what accepts the in6addr_any assignment.
+    s6_addr is the internal byte array and cannot be reassigned with =. in6addr_any is an object, not
+    a function, and sin6_addr definitely exists. (b2)
+  concept: quiz-array-assign
+- kind: choose-better
+  level: core
+  q: Which migration sequence follows the migration leverage?
+  choices:
+  - start by globally replacing every AF_INET name, then compile only once at the end
+  - start by changing every service port in the program to 443 before anything else
+  - start with getaddrinfo(), isolate family choices, then migrate structures and converters
+  answer: 2
+  why: getaddrinfo can eliminate hand-packing, and helpers contain the remaining decisions, so later mechanical
+    swaps are smaller. A global replace makes errors hard to localize. Ports are unrelated to address-family
+    migration. (b5, b6)
+  concept: quiz-order-strategy
+- kind: predict
+  level: core
+  q: Trace the initializer, the mutation, and the comparisons. What exact line is printed?
+  code: |
+    struct in6_addr a = IN6ADDR_ANY_INIT;
+    struct in6_addr b = IN6ADDR_ANY_INIT;
+    b.s6_addr[0] = 1;
+    printf("%d %d\n",
+           memcmp(&a, &in6addr_any, sizeof a) == 0,
+           memcmp(&b, &in6addr_any, sizeof b) == 0);
+  choices:
+  - 1 0
+  - 0 1
+  - 1 1
+  answer: 0
+  why: a remains all zero and matches in6addr_any, giving 1. Changing b's first byte breaks equality,
+    giving 0. Reversing the pair follows the mutation backwards, and 1 1 ignores the byte write entirely.
+    (b2)
+  concept: quiz-any-compare
+- kind: mcq
+  level: core
+  q: Which field rename is required when moving a port from sockaddr_in to sockaddr_in6?
+  choices:
+  - sin_port becomes sin_addr
+  - sin_port becomes sin6_port
+  - sin_port becomes sin6_zero
+  answer: 1
+  why: The port field follows the IPv6 naming rule and becomes sin6_port. sin_addr is the address field,
+    and sin6_zero does not exist in sockaddr_in6. (b3)
+  concept: quiz-port-rename
+- kind: trace
+  level: advanced
+  q: Trace the endpoint setup. What value belongs in the target cell?
+  code: |
+    struct sockaddr_in6 sa6;
+    memset(&sa6, 0, sizeof sa6);
+    sa6.sin6_family = AF_INET6;
+    sa6.sin6_port = htons(80);
+    sa6.sin6_addr = in6addr_any;
+  trace:
+    headers:
+    - Step
+    - Line
+    - Field
+    - Value
+    rows:
+    - step: 1
+      line: 2
+      cells:
+      - '1'
+      - '2'
+      - sa6
+      - all zero
+    - step: 2
+      line: 3
+      cells:
+      - '2'
+      - '3'
+      - sin6_family
+      - AF_INET6
+    - step: 3
+      line: 4
+      cells:
+      - '3'
+      - '4'
+      - sin6_port
+      - ???
+    - step: 4
+      line: 5
+      cells:
+      - '4'
+      - '5'
+      - sin6_addr
+      - all zero
+  target:
+    row: 2
+    col: 3
+  choices:
+  - 0x5000 (byte-swapped)
+  - 80 (host-order decimal)
+  - 0x0050 (network-order)
+  answer: 2
+  why: Port 80 is 0x0050, and htons stores it in network byte order. 0x5000 is the byte-swapped form seen
+    if the bytes are read in the wrong order. Decimal 80 is the host-order value before conversion. (b3)
+  concept: quiz-port-trace
+- kind: choose-better
+  level: advanced
+  q: New code needs a reverse lookup that produces a host and service name. Which choice is better?
+  choices:
+  - getnameinfo(), the recommended reverse lookup call
+  - gethostbyaddr(), because it is forbidden for all IPv6 use
+  - inet_ntoa(), because it turns an address into a name
+  answer: 0
+  why: getnameinfo is the recommended reverse lookup. gethostbyaddr can still work with IPv6, but the
+    rule still points new code to the superior getnameinfo, so the claim that it is forbidden is false.
+    inet_ntoa formats an IPv4 address and does not resolve names. (b5)
+  concept: quiz-reverse-choice
+- kind: why-fails
+  level: advanced
+  q: A program calls getaddrinfo() but accepts only results with family AF_INET. Why does it remain IPv4-only?
+  choices:
+  - getaddrinfo cannot return IPv6 results at all
+  - it discards any IPv6 candidates the lookup returns
+  - the program forgot to call inet_addr on each result
+  answer: 1
+  why: The lookup can return multiple families; filtering to AF_INET removes IPv6 candidates before use.
+    getaddrinfo does return IPv6 results. inet_addr is an obsolete IPv4 parser and is not part of consuming
+    lookup results. (b5)
+  concept: quiz-filtered
+- kind: mcq
+  level: advanced
+  q: Why can using getaddrinfo() eliminate many later migration steps?
+  choices:
+  - it deletes every trace of IPv4 support from the source code automatically
+  - it changes all numbers to network byte order on every source code line
+  - it fills sockaddr records, so the program does not hand-pack family and address fields
+  answer: 2
+  why: The lookup packages address information for the supported families; consuming those records replaces
+    manual structure filling. It does not edit source or globally rewrite byte order. (b5)
+  concept: quiz-eliminate
+- kind: spot-bug
+  level: advanced
+  q: A migration changed the socket to AF_INET6 but left the lookup hints on AF_INET. Which line keeps
+    the lookup IPv4-only, and why?
+  code: |
+    int fd = socket(AF_INET6, SOCK_STREAM, 0);
+    struct addrinfo hints = {0};
+    /* ai_family controls which address family the lookup returns */
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+  diagnostic_log: |
+    lookup returned: 192.0.2.44 (AF_INET)
+    expected candidates: IPv6 addresses
+    socket family: AF_INET6
+  target_line: 3
+  choices:
+  - 'Line 3: the hints request IPv4 addresses that do not match the IPv6 socket'
+  - 'Line 1: a stream socket cannot be created with AF_INET6 in this program'
+  - 'Line 4: SOCK_STREAM is an IPv4-only socket type in this program'
+  answer: 0
+  why: ai_family controls the candidates the lookup returns. AF_INET keeps the result list IPv4-only even
+    though the socket is IPv6, so the families do not match. AF_INET6 supports stream sockets, and SOCK_STREAM
+    is not IPv4-specific. (b1, b5)
+  concept: quiz-hints-family
+- kind: predict
+  level: advanced
+  q: Trace the two parse calls and the format call. What exact line is printed?
+  code: |
+    struct in6_addr a6;
+    char text[INET6_ADDRSTRLEN];
+    int good = inet_pton(AF_INET6, "::", &a6);
+    int bad = inet_pton(AF_INET6, "2001:db8:::1", &a6);
+    inet_ntop(AF_INET6, &a6, text, sizeof text);
+    printf("%d %d %s\n", good, bad, text);
+  choices:
+  - good is 1, bad is 0, text is the value 2001:db8:::1
+  - 'good is 1, bad is 0, text is the value ::'
+  - 'good is 0, bad is 1, text is the value ::'
+  answer: 1
+  why: ':: parses successfully, while the triple colon is malformed and returns 0. The failed call does
+    not store the text, so formatting the last valid bytes yields ::. The option that shows the rejected
+    input as stored text is wrong, and the option with reversed return values is also wrong. (b4)'
+  concept: quiz-parse-predict
+- kind: eipe
+  level: advanced
+  q: In one sentence, what is preferring getaddrinfo() over hand-packing FOR?
+  code: |
+    /* hand-packing: choose family and fill every field yourself */
+    sa.sin_family = AF_INET;
+    sa.sin_addr.s_addr = INADDR_ANY;
+
+    /* lookup-driven: consume prepared candidates */
+    getaddrinfo(name, service, &hints, &results);
+  choices:
+  - it removes the need to choose a service port number for the lookup
+  - it guarantees that every returned candidate is a genuine IPv6 address
+  - it makes the program follow the host's families instead of one hard-coded family
+  answer: 2
+  why: Lookup-driven code adapts to the families the lookup returns, which is the version-agnostic goal.
+    It does not remove service-port selection, and it can return IPv4 candidates as well as IPv6 ones.
+    (b5)
+  concept: quiz-lookup-purpose
+- kind: mcq
+  level: advanced
+  q: What is the key difference between IN6ADDR_ANY_INIT and in6addr_any?
+  choices:
+  - IN6ADDR_ANY_INIT initializes a declaration; in6addr_any is an assignable object
+  - IN6ADDR_ANY_INIT is an IPv4 value; in6addr_any is an IPv6 object
+  - IN6ADDR_ANY_INIT is a function call; in6addr_any is a macro constant
+  answer: 0
+  why: The uppercase macro initializes at declaration, while the lowercase object is copied into an existing
+    field. Both describe the IPv6 wildcard, neither is IPv4, and neither is a function call. (b2)
+  concept: quiz-any-forms
+- kind: choose-better
+  level: advanced
+  q: An existing sockaddr_in6 field must become the wildcard. Which form is correct?
+  choices:
+  - assign IN6ADDR_ANY_INIT to the existing sin6_addr field
+  - assign the in6addr_any object to the existing sin6_addr field
+  - assign INADDR_ANY to the existing s6_addr byte array
+  answer: 1
+  why: An existing field uses structure assignment from the in6addr_any object. IN6ADDR_ANY_INIT is only
+    an initializer, so it cannot appear on the right side of a later assignment. The third form assigns
+    a 32-bit IPv4 value to an array, which is invalid. (b2)
+  concept: quiz-any-assign-choice

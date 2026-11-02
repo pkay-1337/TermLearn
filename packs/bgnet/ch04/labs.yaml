@@ -1,0 +1,537 @@
+labs:
+  - id: lab1
+    title: "Compute Network Addresses from Prefix Lengths"
+    instruction_md: |
+      ## Goal
+
+      Turn a CIDR prefix length into a netmask, AND it with an IPv4 address to
+      find the network, and report how many host bits remain. This is the
+      subnet arithmetic made executable.
+
+      ## What you must implement
+
+      Complete the three functions in `subnet.c`:
+
+      1. `prefix_mask(prefix)` — return a 32-bit mask with `prefix` leading
+         1-bits followed by zeros. `prefix` is 0 through 32. A prefix of 0
+         is all zeros; a prefix of 32 is all ones.
+      2. `network_of(ip, prefix)` — return `ip` bitwise-ANDed with
+         `prefix_mask(prefix)`.
+      3. `host_bits(prefix)` — return the number of host bits left, which is
+         `32 - prefix`.
+
+      `subnet.h` fixes the contract. `main.c` and `test_runner.c` are complete
+      and must not be edited.
+
+      ## Verify
+
+      - `t` (test) builds and runs the unit runner; every assertion must PASS.
+      - `r` (run) builds and runs the driver, which prints one masked address,
+        one network address, and one remaining-host-bit count.
+
+      The untouched starter returns zeros, so the tests fail first. Implement
+      the functions and watch them turn green.
+    files:
+      - path: subnet.h
+        content: |
+          #ifndef SUBNET_H
+          #define SUBNET_H
+
+          #include <stdint.h>
+
+          /* Return a 32-bit mask with `prefix` leading 1-bits.
+           * prefix is 0..32; prefix 0 yields 0, prefix 32 yields 0xffffffff. */
+          uint32_t prefix_mask(unsigned prefix);
+
+          /* Return ip bitwise-ANDed with prefix_mask(prefix). */
+          uint32_t network_of(uint32_t ip, unsigned prefix);
+
+          /* Return the number of host bits remaining: 32 - prefix. */
+          unsigned host_bits(unsigned prefix);
+
+          #endif
+      - path: subnet.c
+        content: |
+          #include "subnet.h"
+
+          /* TODO: build a mask with `prefix` leading 1-bits.
+           * Hint: shifting 0xffffffff left by (32 - prefix) works for
+           * prefix > 0; prefix 0 must be handled separately. */
+          uint32_t prefix_mask(unsigned prefix)
+          {
+              (void)prefix;
+              return 0;
+          }
+
+          /* TODO: AND the address with the mask for this prefix. */
+          uint32_t network_of(uint32_t ip, unsigned prefix)
+          {
+              (void)ip;
+              (void)prefix;
+              return 0;
+          }
+
+          /* TODO: host bits are the bits not claimed by the prefix. */
+          unsigned host_bits(unsigned prefix)
+          {
+              (void)prefix;
+              return 0;
+          }
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "subnet.h"
+
+          static void print_ip(uint32_t value)
+          {
+              printf("%u.%u.%u.%u",
+                     (unsigned)((value >> 24) & 0xffu),
+                     (unsigned)((value >> 16) & 0xffu),
+                     (unsigned)((value >> 8) & 0xffu),
+                     (unsigned)(value & 0xffu));
+          }
+
+          int main(void)
+          {
+              uint32_t host = 0xc000020cu;  /* 192.0.2.12 */
+
+              printf("mask /24 = ");
+              print_ip(prefix_mask(24));
+              printf("\n");
+
+              printf("network 192.0.2.12/24 = ");
+              print_ip(network_of(host, 24));
+              printf("\n");
+
+              printf("host bits /30 = %u\n", host_bits(30));
+              return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include "subnet.h"
+
+          static int failures = 0;
+
+          static void check(int cond, const char *what)
+          {
+              if (cond)
+                  printf("PASS: %s\n", what);
+              else {
+                  printf("FAIL: %s\n", what);
+                  failures++;
+              }
+          }
+
+          int main(void)
+          {
+              check(prefix_mask(24) == 0xffffff00u, "prefix_mask(24) is 255.255.255.0");
+              check(prefix_mask(30) == 0xfffffffcu, "prefix_mask(30) is 255.255.255.252");
+              check(prefix_mask(0) == 0u, "prefix_mask(0) is all zeros");
+              check(prefix_mask(32) == 0xffffffffu, "prefix_mask(32) is all ones");
+
+              check(network_of(0xc000020cu, 24) == 0xc0000200u,
+                    "192.0.2.12/24 yields 192.0.2.0");
+              check(network_of(0xc000020cu, 30) == 0xc000020cu,
+                    "192.0.2.12/30 stays 192.0.2.12");
+
+              check(host_bits(30) == 2u, "a /30 leaves two host bits");
+              check(host_bits(32) == 0u, "a /32 leaves no host bits");
+
+              if (failures == 0)
+                  puts("ALL TESTS PASSED");
+              else
+                  printf("%d test(s) failed\n", failures);
+              return failures != 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 subnet.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 subnet.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "unit runner: masks, networks, and host bits"
+        command: "gcc -Wall -Wextra -std=c99 subnet.c test_runner.c -o test_runner && ./test_runner"
+        stdin: ""
+        expect: |
+          PASS: prefix_mask(24) is 255.255.255.0
+          PASS: prefix_mask(30) is 255.255.255.252
+          PASS: prefix_mask(0) is all zeros
+          PASS: prefix_mask(32) is all ones
+          PASS: 192.0.2.12/24 yields 192.0.2.0
+          PASS: 192.0.2.12/30 stays 192.0.2.12
+          PASS: a /30 leaves two host bits
+          PASS: a /32 leaves no host bits
+          ALL TESTS PASSED
+        expect_exit: 0
+      - name: "interactive driver: masked address, network, host bits"
+        command: "gcc -Wall -Wextra -std=c99 subnet.c main.c -o app && ./app"
+        stdin: ""
+        expect: |
+          mask /24 = 255.255.255.0
+          network 192.0.2.12/24 = 192.0.2.0
+          host bits /30 = 2
+        expect_exit: 0
+    hints:
+      - "A mask is a run of 1-bits: start from all ones and clear the host portion."
+      - "For prefix > 0, shift 0xffffffffu left by 32 - prefix. Handle prefix 0 separately so you do not shift a 32-bit value by 32."
+      - "Bottom-out: uint32_t prefix_mask(unsigned p) { return p == 0 ? 0u : 0xffffffffu << (32 - p); } then network_of returns ip & prefix_mask(prefix), and host_bits returns 32 - prefix."
+
+  - id: lab2
+    title: "Normalize Ports and Addresses to Network Byte Order"
+    instruction_md: |
+      ## Goal
+
+      Implement the four byte-order conversions and prove,
+      byte by byte, that the wire receives the most significant byte first.
+
+      ## What you must implement
+
+      Complete the four functions in `byteorder.c`:
+
+      1. `to_network16(value)` — convert a host-order 16-bit value to network
+         order.
+      2. `from_network16(value)` — convert a network-order 16-bit value back
+         to host order.
+      3. `to_network32(value)` — the same for a 32-bit value.
+      4. `from_network32(value)` — the reverse for a 32-bit value.
+
+      Use the standard socket conversion functions; do not hand-roll a byte
+      swap. `byteorder.h` fixes the contract, and `main.c` plus
+      `test_runner.c` are complete.
+
+      ## Verify
+
+      - `t` (test) asserts round trips and inspects the first two bytes of the
+        converted 0x1f90 value and the first four bytes of 0x0a0c0d0e. On any
+        host, network order must put the most significant byte first.
+      - `r` (run) prints both round trips and the network-order bytes.
+
+      The untouched starter returns zeros, so the tests fail first.
+    files:
+      - path: byteorder.h
+        content: |
+          #ifndef BYTEORDER_H
+          #define BYTEORDER_H
+
+          #include <stdint.h>
+
+          /* Host order -> network order. */
+          uint16_t to_network16(uint16_t host_value);
+          uint32_t to_network32(uint32_t host_value);
+
+          /* Network order -> host order. */
+          uint16_t from_network16(uint16_t wire_value);
+          uint32_t from_network32(uint32_t wire_value);
+
+          #endif
+      - path: byteorder.c
+        content: |
+          #include "byteorder.h"
+          #include <arpa/inet.h>
+
+          /* TODO: use htons for the 16-bit host-to-network conversion. */
+          uint16_t to_network16(uint16_t host_value)
+          {
+              (void)host_value;
+              return 0;
+          }
+
+          /* TODO: use htonl for the 32-bit host-to-network conversion. */
+          uint32_t to_network32(uint32_t host_value)
+          {
+              (void)host_value;
+              return 0;
+          }
+
+          /* TODO: use ntohs for the 16-bit network-to-host conversion. */
+          uint16_t from_network16(uint16_t wire_value)
+          {
+              (void)wire_value;
+              return 0;
+          }
+
+          /* TODO: use ntohl for the 32-bit network-to-host conversion. */
+          uint32_t from_network32(uint32_t wire_value)
+          {
+              (void)wire_value;
+              return 0;
+          }
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "byteorder.h"
+
+          int main(void)
+          {
+              uint16_t port = 0x1f90u;      /* 8080 */
+              uint32_t addr = 0x0a0c0d0eu;
+              uint16_t wire_port = to_network16(port);
+              unsigned char *p = (unsigned char *)&wire_port;
+
+              printf("16-bit round trip: %04x\n",
+                     (unsigned)from_network16(wire_port));
+              printf("32-bit round trip: %08lx\n",
+                     (unsigned long)from_network32(to_network32(addr)));
+              printf("network bytes of 0x1f90: %02x %02x\n",
+                     (unsigned)p[0], (unsigned)p[1]);
+              return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include "byteorder.h"
+
+          static int failures = 0;
+
+          static void check(int cond, const char *what)
+          {
+              if (cond)
+                  printf("PASS: %s\n", what);
+              else {
+                  printf("FAIL: %s\n", what);
+                  failures++;
+              }
+          }
+
+          int main(void)
+          {
+              uint16_t wire16 = to_network16(0x1f90u);
+              uint32_t wire32 = to_network32(0x0a0c0d0eu);
+              unsigned char *p;
+
+              p = (unsigned char *)&wire16;
+              check(p[0] == 0x1fu && p[1] == 0x90u,
+                    "0x1f90 is stored most-significant byte first");
+              check(from_network16(wire16) == 0x1f90u,
+                    "16-bit network order round-trips");
+
+              p = (unsigned char *)&wire32;
+              check(p[0] == 0x0au && p[1] == 0x0cu &&
+                    p[2] == 0x0du && p[3] == 0x0eu,
+                    "0x0a0c0d0e is stored most-significant byte first");
+              check(from_network32(wire32) == 0x0a0c0d0eu,
+                    "32-bit network order round-trips");
+
+              if (failures == 0)
+                  puts("ALL TESTS PASSED");
+              else
+                  printf("%d test(s) failed\n", failures);
+              return failures != 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 byteorder.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 byteorder.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "unit runner: network order bytes and round trips"
+        command: "gcc -Wall -Wextra -std=c99 byteorder.c test_runner.c -o test_runner && ./test_runner"
+        stdin: ""
+        expect: |
+          PASS: 0x1f90 is stored most-significant byte first
+          PASS: 16-bit network order round-trips
+          PASS: 0x0a0c0d0e is stored most-significant byte first
+          PASS: 32-bit network order round-trips
+          ALL TESTS PASSED
+        expect_exit: 0
+      - name: "interactive driver: round trips and wire bytes"
+        command: "gcc -Wall -Wextra -std=c99 byteorder.c main.c -o app && ./app"
+        stdin: ""
+        expect: |
+          16-bit round trip: 1f90
+          32-bit round trip: 0a0c0d0e
+          network bytes of 0x1f90: 1f 90
+        expect_exit: 0
+    hints:
+      - "Each function is a one-line wrapper around a standard socket conversion; match the width and direction in the name."
+      - "h = host, n = network, s = short (16-bit), l = long (32-bit). Values leaving the host use h-to-n; values arriving use n-to-h."
+      - "Bottom-out: to_network16 -> htons, to_network32 -> htonl, from_network16 -> ntohs, from_network32 -> ntohl. Return the call's result."
+
+  - id: lab3
+    title: "Build a Checked Text-to-Binary Address Round Trip"
+    instruction_md: |
+      ## Goal
+
+      Wrap the numeric address converters in checked functions:
+      parse printable text into binary, format binary back into text, and
+      report failure cleanly instead of trusting a malformed address.
+
+      ## What you must implement
+
+      Complete the four functions in `conversion.c`:
+
+      1. `parse_ipv4(text, out)` — use `inet_pton(AF_INET, ...)`. Return `1`
+         when the result is greater than 0, otherwise `0`.
+      2. `format_ipv4(addr, buf, buflen)` — use `inet_ntop(AF_INET, ...)`.
+         Return `1` when it returns a non-NULL pointer, otherwise `0`.
+      3. `parse_ipv6(text, out)` — the same contract for `AF_INET6`.
+      4. `format_ipv6(addr, buf, buflen)` — the same contract for `AF_INET6`.
+
+      `conversion.h` fixes the contract. `main.c` and `test_runner.c` are
+      complete and must not be edited.
+
+      ## Verify
+
+      - `t` (test) parses valid IPv4 and IPv6 text, formats them back, rejects
+        the malformed text `192.0.2.999`, and rejects `not-an-address`.
+      - `r` (run) performs an IPv4 round trip and an IPv6 round trip.
+
+      The untouched starter returns zero everywhere, so the tests fail first.
+    files:
+      - path: conversion.h
+        content: |
+          #ifndef CONVERSION_H
+          #define CONVERSION_H
+
+          #include <stddef.h>
+          #include <netinet/in.h>
+
+          /* Return 1 when the numeric IPv4 text parses, else 0. */
+          int parse_ipv4(const char *text, struct in_addr *out);
+
+          /* Return 1 when the IPv4 address formats into buf, else 0. */
+          int format_ipv4(const struct in_addr *addr, char *buf, size_t buflen);
+
+          /* Return 1 when the numeric IPv6 text parses, else 0. */
+          int parse_ipv6(const char *text, struct in6_addr *out);
+
+          /* Return 1 when the IPv6 address formats into buf, else 0. */
+          int format_ipv6(const struct in6_addr *addr, char *buf, size_t buflen);
+
+          #endif
+      - path: conversion.c
+        content: |
+          #include "conversion.h"
+          #include <arpa/inet.h>
+
+          /* TODO: call inet_pton with AF_INET and return 1 only when it
+           * reports a value greater than 0. */
+          int parse_ipv4(const char *text, struct in_addr *out)
+          {
+              (void)text;
+              (void)out;
+              return 0;
+          }
+
+          /* TODO: call inet_ntop with AF_INET and return 1 only when it
+           * returns a non-NULL pointer. */
+          int format_ipv4(const struct in_addr *addr, char *buf, size_t buflen)
+          {
+              (void)addr;
+              (void)buf;
+              (void)buflen;
+              return 0;
+          }
+
+          /* TODO: the same parse contract for AF_INET6. */
+          int parse_ipv6(const char *text, struct in6_addr *out)
+          {
+              (void)text;
+              (void)out;
+              return 0;
+          }
+
+          /* TODO: the same format contract for AF_INET6. */
+          int format_ipv6(const struct in6_addr *addr, char *buf, size_t buflen)
+          {
+              (void)addr;
+              (void)buf;
+              (void)buflen;
+              return 0;
+          }
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "conversion.h"
+
+          int main(void)
+          {
+              struct in_addr a4;
+              struct in6_addr a6;
+              char buf4[INET_ADDRSTRLEN];
+              char buf6[INET6_ADDRSTRLEN];
+
+              if (parse_ipv4("192.0.2.33", &a4) &&
+                  format_ipv4(&a4, buf4, sizeof buf4))
+                  printf("IPv4 round trip: %s\n", buf4);
+              else
+                  puts("IPv4 round trip failed");
+
+              if (parse_ipv6("2001:db8::1", &a6) &&
+                  format_ipv6(&a6, buf6, sizeof buf6))
+                  printf("IPv6 round trip: %s\n", buf6);
+              else
+                  puts("IPv6 round trip failed");
+              return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <string.h>
+          #include "conversion.h"
+
+          static int failures = 0;
+
+          static void check(int cond, const char *what)
+          {
+              if (cond)
+                  printf("PASS: %s\n", what);
+              else {
+                  printf("FAIL: %s\n", what);
+                  failures++;
+              }
+          }
+
+          int main(void)
+          {
+              struct in_addr a4;
+              struct in6_addr a6;
+              char buf4[INET_ADDRSTRLEN];
+              char buf6[INET6_ADDRSTRLEN];
+
+              check(parse_ipv4("192.0.2.33", &a4) == 1,
+                    "valid IPv4 text parses");
+              check(format_ipv4(&a4, buf4, sizeof buf4) == 1 &&
+                    strcmp(buf4, "192.0.2.33") == 0,
+                    "IPv4 formats back to 192.0.2.33");
+              check(parse_ipv4("192.0.2.999", &a4) == 0,
+                    "malformed IPv4 text is rejected");
+
+              check(parse_ipv6("2001:db8::1", &a6) == 1,
+                    "valid IPv6 text parses");
+              check(format_ipv6(&a6, buf6, sizeof buf6) == 1 &&
+                    strcmp(buf6, "2001:db8::1") == 0,
+                    "IPv6 formats back to 2001:db8::1");
+              check(parse_ipv6("not-an-address", &a6) == 0,
+                    "non-numeric IPv6 text is rejected");
+
+              if (failures == 0)
+                  puts("ALL TESTS PASSED");
+              else
+                  printf("%d test(s) failed\n", failures);
+              return failures != 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 conversion.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 conversion.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "unit runner: checked parse and format round trips"
+        command: "gcc -Wall -Wextra -std=c99 conversion.c test_runner.c -o test_runner && ./test_runner"
+        stdin: ""
+        expect: |
+          PASS: valid IPv4 text parses
+          PASS: IPv4 formats back to 192.0.2.33
+          PASS: malformed IPv4 text is rejected
+          PASS: valid IPv6 text parses
+          PASS: IPv6 formats back to 2001:db8::1
+          PASS: non-numeric IPv6 text is rejected
+          ALL TESTS PASSED
+        expect_exit: 0
+      - name: "interactive driver: IPv4 and IPv6 round trips"
+        command: "gcc -Wall -Wextra -std=c99 conversion.c main.c -o app && ./app"
+        stdin: ""
+        expect: |
+          IPv4 round trip: 192.0.2.33
+          IPv6 round trip: 2001:db8::1
+        expect_exit: 0
+    hints:
+      - "Each function wraps one call; the family argument must match the function's name and the destination type."
+      - "inet_pton success is a return value greater than 0 (0 means malformed, -1 means system error). inet_ntop success is a non-NULL return pointer."
+      - "Bottom-out: parse_ipv4 returns inet_pton(AF_INET, text, out) > 0; format_ipv4 returns inet_ntop(AF_INET, addr, buf, buflen) != NULL; the IPv6 versions are identical with AF_INET6 and the IPv6 types."

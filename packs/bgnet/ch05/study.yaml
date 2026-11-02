@@ -1,0 +1,1551 @@
+blocks:
+- id: b1
+  type: model
+  title: Switch the Address and Protocol Families at Every Decision Point
+  explain_md: |
+    The first mechanical change in the migration is the *family* constant.
+    `AF_INET` selects the IPv4 address family; `AF_INET6` selects IPv6.
+    `PF_INET` and `PF_INET6` are the matching protocol-family constants used
+    where a socket is created. The rule is direct: change `AF_INET` to
+    `AF_INET6`, and change `PF_INET` to `PF_INET6`.
+
+    ### The Notional Machine: one integer steers a whole layout
+
+    The kernel does not see a `struct sockaddr_in` or `struct sockaddr_in6`
+    as a magic object. It sees bytes plus a family tag. The family tag is the
+    contract that says how many bytes to read and where each field lives.
+    If the tag says IPv4 but the bytes were written for IPv6, the kernel
+    interprets the wrong offsets. That is why the family change is not
+    cosmetic: it selects the *layout* and the protocol code path.
+
+    ### Change decisions, not just one call
+
+    A real program names a family in several places: `socket()`, lookup
+    hints, address-structure initialization, and helper branches. Finding
+    only the first `AF_INET` is the classic incomplete migration. The safe
+    habit is to search for every occurrence of `AF_INET`, `PF_INET`, and the
+    IPv4-only structures, then decide each one deliberately.
+
+    This block covers the two family-constant changes. Later blocks replace
+    the wildcard, the structures, the converters, and the legacy lookup
+    calls.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          int old_family = AF_INET;
+          int new_family = AF_INET6;
+          int old_pf = PF_INET;
+          int new_pf = PF_INET6;
+
+          printf("IPv4 and IPv6 families differ: %s\n",
+                 old_family != new_family ? "yes" : "no");
+          printf("IPv6 family selected for the socket: %s\n",
+                 new_family == AF_INET6 ? "yes" : "no");
+          printf("IPv6 family selected for the hints: %s\n",
+                 new_pf == PF_INET6 ? "yes" : "no");
+          return 0;
+      }
+    run_expected: |
+      IPv4 and IPv6 families differ: yes
+      IPv6 family selected for the socket: yes
+      IPv6 family selected for the hints: yes
+    explain_md: |
+      The four constants are integer tags stored in ordinary variables. The
+      comparisons print verdicts rather than platform-specific numbers, so
+      the output is stable. `AF_INET6` and `PF_INET6` are the IPv6 tags; the
+      code must carry the IPv6 tag everywhere the endpoint is described.
+    subgoals:
+    - label: Hold Old and New Family Tags
+      lines:
+      - 5
+      - 6
+      - 7
+      - 8
+    - label: Verify the Family Switch
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+  viz:
+    kind: ascii-memory
+    steps:
+    - old_family=AF_INET; new_family=AF_INET6; old_pf=PF_INET; new_pf=PF_INET6
+    - the kernel receives a family tag with the address bytes; the tag decides the layout
+    - new_family and new_pf both carry IPv6 tags, so every call describes one family
+  checks:
+  - kind: mcq
+    q: A program currently passes AF_INET when creating its socket. Which constant belongs there after
+      an IPv6 migration?
+    choices:
+    - the AF_INET6 family constant
+    - the PF_INET family constant
+    - the INADDR_ANY wildcard value
+    answer: 0
+    why: The address family for IPv6 is AF_INET6. PF_INET still names the IPv4 protocol family and would
+      keep the socket on IPv4, while INADDR_ANY is an IPv4 wildcard address value, not a family. (b1)
+    concept: family-constant
+  - kind: predict
+    q: Trace the assignments line by line, tracking both family variables. What exact word does the program
+      print?
+    code: |
+      int family = AF_INET;
+      int protocol_family = PF_INET;
+      family = AF_INET6;
+      protocol_family = PF_INET6;
+      printf("%s\n", family == AF_INET6 &&
+                     protocol_family == PF_INET6 ? "v6" : "v4");
+    choices:
+    - the string v6
+    - the string v4
+    - the string 0
+    - empty output
+    answer: 0
+    why: Both assignments overwrite the old IPv4 tags with IPv6 tags, so both comparisons are true and
+      the conditional selects v6. Choosing v4 reads the initial values and ignores the later stores. Choosing
+      0 confuses a boolean expression's integer form with the printed branch. Choosing nothing ignores
+      the printf entirely. (b1)
+    concept: family-predict
+  - kind: fillblank
+    q: Complete the socket creation so the program asks for an IPv6 stream socket.
+    code: |
+      int fd = socket(____, SOCK_STREAM, 0);
+    answer_text: AF_INET6
+    why: The first argument to socket() is the address family; AF_INET6 requests IPv6. Leaving AF_INET
+      would create an IPv4 socket even if the rest of the program stored IPv6 addresses, and PF_INET would
+      likewise keep the IPv4 protocol family. (b1)
+    concept: socket-family
+  - kind: why-fails
+    q: A migration sets up an IPv6 address structure but leaves the socket call as socket(PF_INET, SOCK_STREAM,
+      0). Why does the endpoint fail when it binds an IPv6 address?
+    choices:
+    - the port number was not converted with htons() before use
+    - the socket is IPv4, so an IPv6 address violates its family contract
+    - AF_INET6 cannot be combined with SOCK_STREAM in any socket call
+    - PF_INET is a text string, so socket() cannot accept it as input
+    answer: 1
+    why: The protocol-family tag tells socket() which address layout the descriptor expects. PF_INET creates
+      an IPv4 socket, so a later IPv6 bind supplies bytes whose family does not match the socket. The
+      port issue is a separate byte-order bug and is not indicated here. SOCK_STREAM works with IPv6.
+      PF_INET is an integer constant, not a string. (b1)
+    concept: mixed-family-bug
+  - kind: eipe
+    q: In one sentence, what is changing AF_INET/PF_INET to AF_INET6/PF_INET6 FOR?
+    code: |
+      socket(PF_INET6, SOCK_STREAM, 0);
+      int family = AF_INET6;
+    choices:
+    - it changes only the printed spelling of an IPv4 address
+    - it tells every socket and lookup call to use IPv6 and its layout
+    - it converts an existing IPv4 address into IPv6 at runtime
+    answer: 1
+    why: The purpose is to select the IPv6 family consistently so the kernel uses IPv6 addressing and
+      interprets IPv6 structures. Changing spelling is presentation, not family selection. The constants
+      do not translate addresses; converters such as inet_pton handle text-to-binary conversion later.
+      (b1)
+    concept: family-purpose
+  - kind: choose-better
+    q: Two migration plans are proposed. Which plan is safer for a program that opens sockets in three
+      places and builds lookup hints in two places?
+    choices:
+    - replace only the first AF_INET found, then test just one path
+    - leave every AF_INET in place and change only the port number
+    - find every family constant and make each call site use IPv6 deliberately
+    answer: 2
+    why: A family decision exists at every socket and lookup site; leaving one behind produces a mixed-family
+      bug. Changing only the first occurrence tests only one path. Changing the port has nothing to do
+      with address family. The safer principle is to migrate every version decision consistently. (b1)
+    concept: family-search
+  - kind: mcq
+    q: Which pair correctly lists the two family constants to change for an IPv6 migration?
+    choices:
+    - AF_INET becomes AF_INET6, and PF_INET becomes PF_INET6
+    - AF_INET becomes INADDR_ANY, and PF_INET becomes in6addr_any
+    - SOCK_STREAM becomes SOCK_DGRAM, and AF_INET becomes AF_UNSPEC
+    answer: 0
+    why: The migration explicitly pairs AF_INET with AF_INET6 and PF_INET with PF_INET6. INADDR_ANY and
+      in6addr_any are wildcard address values, not family constants. Changing the socket type to datagram
+      changes the transport semantics and does not migrate the address family. (b1)
+    concept: family-pairs
+- id: b2
+  type: model
+  title: Represent the IPv6 Wildcard with in6addr_any
+  explain_md: |
+    IPv4 code often says "use any local address" by assigning `INADDR_ANY`
+    to `sin_addr.s_addr`. The IPv6 migration replaces that with
+    `in6addr_any`, assigned to the whole `sin6_addr` field. The shapes look
+    similar, but they are different kinds of value.
+
+    `INADDR_ANY` is an IPv4 wildcard value that fits a 32-bit address.
+    `in6addr_any` is a 16-byte IPv6 address object whose bytes are all zero.
+    You assign the *whole structure*:
+
+    ```c
+    sa6.sin6_addr = in6addr_any;
+    ```
+
+    When the variable is being **declared**, C also offers the initializer
+    macro:
+
+    ```c
+    struct in6_addr ia6 = IN6ADDR_ANY_INIT;
+    ```
+
+    ### Notional Machine: copy sixteen bytes, not one integer
+
+    In the assignment form, the compiler copies all 16 bytes of the global
+    `in6addr_any` object into the `sin6_addr` field. In the initializer form,
+    the compiler writes the all-zero pattern while creating the variable.
+    There is no pointer stored and no string parsed — the wildcard is a value
+    made of bytes.
+
+    ### Why the two forms are not interchangeable
+
+    `IN6ADDR_ANY_INIT` is an initializer, so it belongs in a declaration. You
+    cannot write `sa6.sin6_addr = IN6ADDR_ANY_INIT;` as a later assignment.
+    Conversely, `in6addr_any` is an object you can assign after the structure
+    already exists. Matching the form to the moment of initialization avoids
+    a compile error and makes the intent obvious.
+
+    One more habit carries over from IPv4: zero the whole `sockaddr_in6`
+    first with `memset`, then set family, port, and address. The wildcard
+    assignment fills the address field, but the surrounding structure still
+    needs a clean start.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <arpa/inet.h>
+
+      int main(void)
+      {
+          struct sockaddr_in6 sa6;
+          struct in6_addr ia6 = IN6ADDR_ANY_INIT;
+
+          memset(&sa6, 0, sizeof sa6);
+          sa6.sin6_family = AF_INET6;
+          sa6.sin6_port = htons(8080);
+          sa6.sin6_addr = in6addr_any;
+
+          int assigned_any = memcmp(&sa6.sin6_addr, &in6addr_any,
+                                    sizeof sa6.sin6_addr) == 0;
+          int initializer_any = memcmp(&ia6, &in6addr_any, sizeof ia6) == 0;
+
+          printf("assigned wildcard: %s\n", assigned_any ? "yes" : "no");
+          printf("initializer wildcard: %s\n", initializer_any ? "yes" : "no");
+          printf("port in network order: %s\n",
+                 sa6.sin6_port == htons(8080) ? "yes" : "no");
+          return 0;
+      }
+    run_expected: |
+      assigned wildcard: yes
+      initializer wildcard: yes
+      port in network order: yes
+    explain_md: |
+      `IN6ADDR_ANY_INIT` builds the all-zero `ia6` at declaration time.
+      `in6addr_any` is copied into the existing `sa6.sin6_addr` field by
+      ordinary structure assignment. `memcmp` compares the raw 16 bytes, so
+      both wildcard checks succeed without converting anything to text.
+    subgoals:
+    - label: Initialize the Standalone Address
+      lines:
+      - 9
+    - label: Fill the IPv6 Endpoint
+      lines:
+      - 11
+      - 12
+      - 13
+      - 14
+    - label: Verify Wildcard and Port
+      lines:
+      - 16
+      - 17
+      - 18
+      - 20
+      - 21
+      - 22
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'sa6 is zeroed by memset: family=0, port=0, address bytes all 0'
+    - sin6_family becomes AF_INET6 and sin6_port becomes 0x1f90 (8080 in network order)
+    - sin6_addr receives a 16-byte copy of in6addr_any, so every address byte is 0
+    - ia6 was created all-zero by IN6ADDR_ANY_INIT; both memcmp checks return 0 (equal)
+  checks:
+  - kind: mcq
+    q: What does in6addr_any represent when assigned to an IPv6 address field?
+    choices:
+    - the IPv6 loopback address also known as ::1
+    - an IPv4 wildcard value widened with four bytes
+    - the IPv6 wildcard address with all sixteen bytes zero
+    - a text string that literally spells the word any
+    answer: 2
+    why: in6addr_any is the all-zero IPv6 unspecified/wildcard address, meaning any local address. ::1
+      is loopback and contains a one bit. It is not an IPv4 value widened in place, and it is not text;
+      it is a 16-byte address object. (b2)
+    concept: in6addr-any
+  - kind: fillblank
+    q: Complete the assignment that binds the existing IPv6 endpoint to any local address.
+    code: |
+      struct sockaddr_in6 sa6;
+      memset(&sa6, 0, sizeof sa6);
+      sa6.sin6_family = AF_INET6;
+      sa6.sin6_addr = ____;
+    answer_text: in6addr_any
+    why: The expression form for an existing field is in6addr_any, which copies the all-zero 16-byte address
+      object. IN6ADDR_ANY_INIT is only an initializer for a declaration, and INADDR_ANY is a 32-bit IPv4
+      value that cannot fill an in6_addr. (b2)
+    concept: any-assignment
+  - kind: fillblank
+    q: Complete the declaration so the standalone IPv6 address starts as the wildcard.
+    code: |
+      struct in6_addr ia6 = ____;
+    answer_text: IN6ADDR_ANY_INIT
+    why: A declaration uses the initializer macro IN6ADDR_ANY_INIT. The lowercase in6addr_any is the object
+      you assign later, not an initializer macro. Using INADDR_ANY here would produce a 32-bit IPv4 value
+      where a struct in6_addr is required. (b2)
+    concept: any-initializer
+  - kind: why-fails
+    q: Why does this line fail to compile?
+    code: |
+      struct sockaddr_in6 sa6 = {0};
+      sa6.sin6_addr.s6_addr = INADDR_ANY;
+    choices:
+    - sockaddr_in6 has no address field that can be assigned at all
+    - INADDR_ANY must be wrapped in htons() before it can be assigned
+    - the structure must be heap-allocated before any field can be set
+    - s6_addr is an array and cannot be assigned whole; INADDR_ANY is IPv4
+    answer: 3
+    why: s6_addr is a 16-byte array inside in6_addr; C does not allow assigning a new value to an entire
+      array with =. INADDR_ANY is also a 32-bit IPv4 wildcard, not 16 bytes. Assigning in6addr_any to
+      the whole sin6_addr structure is the legal move. sockaddr_in6 certainly has an address field, byte
+      order does not make an IPv4 constant into an IPv6 address, and stack allocation is normal. (b2)
+    concept: any-array-assign
+  - kind: choose-better
+    q: 'You need an all-zero IPv6 address in two situations: a new standalone declaration, and an already-declared
+      sin6_addr field. Which choice matches each situation correctly?'
+    choices:
+    - use IN6ADDR_ANY_INIT as the initializer in both situations
+    - use IN6ADDR_ANY_INIT at declaration and in6addr_any assignment afterward
+    - use an in6addr_any assignment as the form in both situations
+    answer: 1
+    why: IN6ADDR_ANY_INIT is an initializer, so it works in the declaration. An existing structure must
+      use assignment with the in6addr_any object. Using the initializer for a later assignment is a syntax
+      error, and using in6addr_any as a declaration initializer is not the required form. (b2)
+    concept: any-form-choice
+  - kind: predict
+    q: Trace the byte writes and the two comparisons. What exact line does the program print?
+    code: |
+      struct in6_addr a = IN6ADDR_ANY_INIT;
+      struct in6_addr b = IN6ADDR_ANY_INIT;
+      b.s6_addr[15] = 1;
+      printf("%d %d\n",
+             memcmp(&a, &in6addr_any, sizeof a) == 0,
+             memcmp(&b, &in6addr_any, sizeof b) == 0);
+    choices:
+    - 1 0
+    - 0 1
+    - 0 0
+    - 1 1
+    answer: 0
+    why: a stays all zero, so it equals in6addr_any and the first comparison is true (1). Setting b's
+      final byte to 1 breaks equality, so the second comparison is false (0). The reversed pair reads
+      the writes backwards; 0 0 ignores the matching a; 1 1 ignores the mutation to b. (b2)
+    concept: any-compare
+  - kind: trace
+    q: Trace the endpoint construction from these field writes. What value belongs in the final target
+      cell?
+    code: |
+      struct sockaddr_in6 sa6;
+      memset(&sa6, 0, sizeof sa6);
+      sa6.sin6_family = AF_INET6;
+      sa6.sin6_port = htons(8080);
+      sa6.sin6_addr = in6addr_any;
+      int is_any = memcmp(&sa6.sin6_addr, &in6addr_any,
+                          sizeof sa6.sin6_addr) == 0;
+    trace:
+      headers:
+      - Step
+      - Line
+      - Field / Object
+      - State
+      - is_any
+      rows:
+      - step: 1
+        line: 2
+        cells:
+        - '1'
+        - '2'
+        - sa6
+        - all bytes zero
+        - '-'
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '3'
+        - sin6_family
+        - AF_INET6
+        - '-'
+      - step: 3
+        line: 4
+        cells:
+        - '3'
+        - '4'
+        - sin6_port
+        - '0x1f90'
+        - '-'
+      - step: 4
+        line: 5
+        cells:
+        - '4'
+        - '5'
+        - sin6_addr
+        - 16 zero bytes
+        - ???
+    target:
+      row: 3
+      col: 4
+    choices:
+    - '0x0000'
+    - '0x0001'
+    - '0x0010'
+    - '0x1f90'
+    answer: 1
+    why: The wildcard bytes match in6addr_any exactly, so memcmp returns 0 and the equality test produces
+      1. 0 would mean the comparison failed or confuse memcmp's equal result with the boolean. 16 is the
+      byte count, not the verdict. 0x1f90 is the byte-swapped port from step 3. (b2)
+    concept: any-trace
+  - kind: fillblank
+    q: The IPv6 setup stores port 8080. Complete the conversion that puts the port into network byte order.
+    code: |
+      struct sockaddr_in6 sa6;
+      sa6.sin6_port = ____(8080);
+    answer_text: htons
+    why: Ports are 16-bit values, so host-to-network short (htons) is the correct direction and width,
+      exactly as with IPv4. ntohs would reverse the direction, htonl is the four-byte form, and assigning
+      8080 directly leaves host byte order on the wire. (ch04 b8, interleaved)
+    concept: port-byte-order
+    from_chapter: ch04
+    from_block: b8
+- id: b3
+  type: model
+  title: Upgrade the Address Structures Field by Field
+  explain_md: |
+    Once the family tag changes, the structure that carries the address must
+    change with it. The structure rules say: instead of
+    `struct sockaddr_in`, use `struct sockaddr_in6`; instead of
+    `struct in_addr`, use `struct in6_addr`; and add "6" to the fields as
+    appropriate.
+
+    The parallel is deliberately regular:
+
+    - `sin_family` becomes `sin6_family`
+    - `sin_port` becomes `sin6_port`
+    - `sin_addr` becomes `sin6_addr`
+    - `in_addr.s_addr` becomes `in6_addr.s6_addr`, a 16-byte array
+
+    There is one deliberate asymmetry: **there is no `sin6_zero` field.**
+    IPv4's `sockaddr_in` carries `sin_zero[8]` padding; `sockaddr_in6` does
+    not have a parallel field. Code that tried to zero `sin_zero` must be
+    deleted, not renamed. Zero the entire structure with `memset` before
+    filling it, and the padding question disappears.
+
+    ### Notional Machine: same contract, wider address
+
+    The kernel receives a pointer plus a family tag. With `AF_INET6`, it
+    treats the bytes as the IPv6 layout: family, port, flow information, a
+    16-byte address, and scope information. The field names are C's way of
+    letting you address those offsets without doing pointer arithmetic.
+    Renaming a field without changing the structure, or changing the
+    structure without renaming the fields, leaves code that either does not
+    compile or writes to the wrong offsets.
+
+    ### Migration habit
+
+    Search for `sockaddr_in` and `in_addr` first. Upgrade the declaration,
+    then fix the member accesses. Treat `sin_zero` as a line to remove. A
+    compiler error naming `sin_addr` inside a `sockaddr_in6` is useful
+    feedback: it means the declaration moved but a field did not.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <arpa/inet.h>
+
+      int main(void)
+      {
+          struct sockaddr_in6 sa6;
+
+          memset(&sa6, 0, sizeof sa6);
+          sa6.sin6_family = AF_INET6;
+          sa6.sin6_port = htons(443);
+          sa6.sin6_addr = in6addr_any;
+
+          printf("IPv6 family: %s\n",
+                 sa6.sin6_family == AF_INET6 ? "yes" : "no");
+          printf("address bytes: %zu\n", sizeof sa6.sin6_addr);
+          printf("address array bytes: %zu\n",
+                 sizeof sa6.sin6_addr.s6_addr);
+          return 0;
+      }
+    run_expected: |
+      IPv6 family: yes
+      address bytes: 16
+      address array bytes: 16
+    explain_md: |
+      The declaration is the IPv6 structure and every member carries the
+      `sin6_` prefix. `sin6_addr` holds a 16-byte `in6_addr`, and its
+      `s6_addr` array is those same 16 bytes. There is no `sin6_zero` line:
+      zeroing the whole structure already clears every byte.
+    subgoals:
+    - label: Declare the IPv6 Structure
+      lines:
+      - 7
+    - label: Clear and Fill IPv6 Fields
+      lines:
+      - 9
+      - 10
+      - 11
+      - 12
+    - label: Inspect the Wider Address
+      lines:
+      - 14
+      - 15
+      - 16
+      - 17
+  viz:
+    kind: ascii-memory
+    steps:
+    - sa6 is one sockaddr_in6 object, wide enough for the IPv6 layout; memset clears all bytes
+    - sin6_family=AF_INET6 and sin6_port=0x01bb (443 in network order) are written
+    - sin6_addr receives the wildcard; its s6_addr array spans 16 bytes
+    - 'there is no sin6_zero field to clear: the memset already covered the whole object'
+  checks:
+  - kind: mcq
+    q: Which structure should replace struct sockaddr_in in an IPv6 endpoint?
+    choices:
+    - the in_addr6 endpoint structure
+    - the generic sockaddr header structure
+    - the sockaddr_in6 endpoint structure
+    - the in6_addr address structure
+    answer: 2
+    why: sockaddr_in6 is the IPv6 endpoint structure parallel to sockaddr_in. in6_addr is only the 16-byte
+      address member inside it. sockaddr is the generic header used for casts, not the concrete IPv6 endpoint.
+      in_addr6 is not the IPv6 endpoint type name. (b3)
+    concept: ipv6-struct
+  - kind: fillblank
+    q: Complete the IPv6 field that stores the address inside sockaddr_in6.
+    code: |
+      struct sockaddr_in6 sa6;
+      sa6.____ = in6addr_any;
+    answer_text: sin6_addr
+    why: The address field is sin6_addr, the IPv6 counterpart of sin_addr. Writing sin_addr on a sockaddr_in6
+      fails because that field belongs to the IPv4 structure. sin6_port is the port and sin6_family is
+      the family tag. (b3)
+    concept: ipv6-address-field
+  - kind: mcq
+    q: Which field exists in sockaddr_in but has no sin6_ counterpart in sockaddr_in6?
+    choices:
+    - the sin_port port field
+    - the sin_addr address field
+    - the sin_family family field
+    - the sin_zero padding field
+    answer: 3
+    why: sin_zero is IPv4 padding, and the IPv6 structure has no sin6_zero field. Port, address, and family
+      all have IPv6 counterparts named sin6_port, sin6_addr, and sin6_family. Do not rename sin_zero;
+      remove it and rely on memset for a clean structure. (b3)
+    concept: no-sin6-zero
+  - kind: order
+    q: Order the 4 correct lines that build a clean IPv6 endpoint for port 8443. One line is a distractor.
+    lines:
+    - sa6.sin6_family = AF_INET6;
+    - memset(&sa6, 0, sizeof sa6);
+    - sa6.sin6_addr = in6addr_any;
+    - memset(&sa6.sin6_zero, 0, sizeof sa6.sin6_zero);
+    - sa6.sin6_port = htons(8443);
+    answer_order:
+    - 1
+    - 0
+    - 4
+    - 2
+    distractor_why:
+      memset(&sa6.sin6_zero, 0, sizeof sa6.sin6_zero);: sockaddr_in6 has no sin6_zero field; the whole-structure
+        memset already clears its bytes.
+    hint: Create and clear the storage before assigning any field, then set family before the port and
+      address.
+    why: 'The dependency order is: declare/clear the whole structure, identify the family, store the port
+      in network order, and store the address. The sin6_zero line is an IPv4 habit and does not compile
+      on sockaddr_in6. (b3)'
+    concept: ipv6-struct-order
+  - kind: spot-bug
+    q: This migration changed the declaration but not every field. Which line produces the first compiler
+      error, and why?
+    code: |
+      struct sockaddr_in6 sa6 = {0};
+      sa6.sin_family = AF_INET6;
+      sa6.sin_port = htons(80);
+      sa6.sin_addr.s_addr = INADDR_ANY;
+    diagnostic_log: |
+      migrate.c:2:8: error: 'struct sockaddr_in6' has no member named 'sin_family'
+      migrate.c:3:8: error: 'struct sockaddr_in6' has no member named 'sin_port'
+      migrate.c:4:8: error: 'struct sockaddr_in6' has no member named 'sin_addr'
+    target_line: 2
+    choices:
+    - 'Line 2: the declaration is IPv6 but the field still uses sin_family'
+    - 'Line 1: a sockaddr_in6 cannot be initialized with {0} at all'
+    - 'Line 3: port 80 is reserved and cannot be stored in this field'
+    - 'Line 4: INADDR_ANY is the correct IPv6 wildcard, so the line is fine'
+    answer: 0
+    why: The compiler reports that sockaddr_in6 has no member sin_family; the IPv6 field is sin6_family.
+      The same rename is missing on lines 3 and 4, which is why they also error. {0} initialization is
+      legal, port 80 is legal for a sockaddr structure, and INADDR_ANY is an IPv4 value, not a valid IPv6
+      wildcard. (b3)
+    concept: missed-field-rename
+  - kind: eipe
+    q: In one sentence, what is the sockaddr_in-to-sockaddr_in6 upgrade FOR?
+    code: |
+      struct sockaddr_in6 sa6;
+      memset(&sa6, 0, sizeof sa6);
+      sa6.sin6_family = AF_INET6;
+      sa6.sin6_addr = in6addr_any;
+    choices:
+    - it makes the address text longer so the kernel can locate the host
+    - it translates an IPv4 address into IPv6 automatically at runtime
+    - it gives the kernel the IPv6 layout and field offsets that match AF_INET6
+    answer: 2
+    why: 'The structure must match the family tag: IPv6 needs the 16-byte address and IPv6 field offsets.
+      Longer text is presentation and is not stored here. The structure change does not translate an address;
+      conversion is the job of inet_pton/inet_ntop. (b3)'
+    concept: struct-purpose
+  - kind: predict
+    q: Trace the two sizeof expressions. What exact line does the program print?
+    code: |
+      struct sockaddr_in6 sa6;
+      printf("%zu %zu\n",
+             sizeof sa6.sin6_addr,
+             sizeof sa6.sin6_addr.s6_addr);
+    choices:
+    - 4 16
+    - 16 16
+    - 16 4
+    - 32 16
+    answer: 1
+    why: sin6_addr is a struct in6_addr holding a 16-byte array, and s6_addr is that same 16-byte array,
+      so both sizes are 16. 4 is the IPv4 address width. 32 would suggest two 16-byte objects. Reversing
+      16 and 4 confuses the array with a 32-bit integer. (b3)
+    concept: ipv6-address-size
+  - kind: mcq
+    q: Inside struct in6_addr, what does the member s6_addr hold?
+    choices:
+    - a pointer to a heap-allocated address string buffer
+    - a 32-bit integer stored in host byte order
+    - a 16-byte array containing the IPv6 address bytes
+    - the port number paired with the IPv6 address
+    answer: 2
+    why: s6_addr is the 16-byte array of the address, the IPv6 counterpart of the 32-bit s_addr value.
+      It is not a pointer, not a 32-bit integer, and not a port. The port lives in sin6_port on the enclosing
+      sockaddr_in6. (b3)
+    concept: s6-addr-array
+- id: b4
+  type: syntax
+  title: Swap the Text and Binary Converters Without Changing the Plan
+  explain_md: |
+    The converter steps replace the old IPv4-only functions:
+
+    - `inet_aton()` or `inet_addr()` becomes `inet_pton()`
+    - `inet_ntoa()` becomes `inet_ntop()`
+
+    The shape of the job stays the same. "Pton" means **presentation to
+    network**: take readable text and write binary bytes. "Ntop" means
+    **network to presentation**: take binary bytes and write readable text.
+    The new part is the family argument, which lets one function serve both
+    IPv4 and IPv6 instead of locking you to IPv4.
+
+    ### Notional Machine: text is not an address
+
+    The machine routes on bytes, not on the characters you type. A call such
+    as `inet_pton(AF_INET6, "2001:db8::1", &a6)` parses the text and writes
+    the 16 binary bytes into `a6`. The reverse call reads those 16 bytes and
+    renders canonical text into a character buffer.
+
+    The return value is part of the contract. `inet_pton` returns `1` on
+    success, `0` when the text is malformed for that family, and `-1` on a
+    system error. Only `1` means the destination is trustworthy. `inet_ntop`
+    returns the destination pointer on success and `NULL` on failure, so the
+    pointer must be checked before printing.
+
+    ### Buffer ownership
+
+    The caller supplies the output buffer and its size. For IPv6 text, the
+    macro `INET6_ADDRSTRLEN` gives enough room for the longest presentation;
+    `INET_ADDRSTRLEN` is the IPv4 counterpart. This is the dual-stack version
+    of the buffer discipline taught with the older functions.
+
+    ### Why this step cannot be skipped
+
+    `inet_aton`, `inet_addr`, and `inet_ntoa` work only with IPv4. Keeping
+    them after changing the family would either reject IPv6 text or write
+    IPv4 bytes into an IPv6-shaped plan. The converter swap is not cosmetic:
+    it is what lets the text edge of the program speak IPv6.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+      #include <arpa/inet.h>
+
+      int main(void)
+      {
+          struct in6_addr a6;
+          char text[INET6_ADDRSTRLEN];
+
+          if (inet_pton(AF_INET6, "2001:db8::1", &a6) != 1) {
+              puts("IPv6 parse failed");
+              return 1;
+          }
+          if (inet_ntop(AF_INET6, &a6, text, sizeof text) == NULL) {
+              puts("IPv6 formatting failed");
+              return 1;
+          }
+          printf("round trip: %s\n", text);
+
+          struct in_addr a4;
+          char text4[INET_ADDRSTRLEN];
+
+          if (inet_pton(AF_INET, "192.0.2.33", &a4) != 1) {
+              puts("IPv4 parse failed");
+              return 1;
+          }
+          if (inet_ntop(AF_INET, &a4, text4, sizeof text4) == NULL) {
+              puts("IPv4 formatting failed");
+              return 1;
+          }
+          printf("IPv4 round trip: %s\n", text4);
+          return 0;
+      }
+    run_expected: |
+      round trip: 2001:db8::1
+      IPv4 round trip: 192.0.2.33
+    explain_md: |
+      `inet_pton` writes 16 network-order bytes for the IPv6 text and four
+      bytes for the IPv4 text. `inet_ntop` renders each binary address back
+      to canonical text using the caller's buffer. The family argument must
+      match the destination type, and the `!= 1` / `== NULL` checks keep
+      malformed input from being used.
+    subgoals:
+    - label: Parse IPv6 Text into Bytes
+      lines:
+      - 7
+      - 8
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+    - label: Render IPv6 Bytes as Text
+      lines:
+      - 15
+      - 16
+      - 17
+      - 18
+    - label: Repeat for IPv4 with the Same Calls
+      lines:
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+  checks:
+  - kind: mcq
+    q: Which replacement handles inet_aton() and inet_addr() for IPv6?
+    choices:
+    - inet_ntop()
+    - getnameinfo()
+    - inet_ntoa()
+    - inet_pton()
+    answer: 3
+    why: inet_pton converts presentation text to binary and handles both families, so it replaces the
+      IPv4-only parsing functions. inet_ntop is the reverse direction. getnameinfo is a name lookup replacement,
+      not text-to-binary parsing. inet_ntoa is itself one of the obsolete functions being replaced. (b4)
+    concept: pton-replacement
+  - kind: fillblank
+    q: Complete the family argument so the call parses an IPv6 address.
+    code: |
+      struct in6_addr a6;
+      int ok = inet_pton(____, "2001:db8::1", &a6);
+    answer_text: AF_INET6
+    why: The family argument tells inet_pton which text grammar and binary width to use; AF_INET6 selects
+      16-byte IPv6 parsing. AF_INET would expect dotted-quad IPv4 text and would reject the colon form.
+      PF_INET is the IPv4 protocol family and not the address-family argument for this conversion. (b4)
+    concept: pton-family
+  - kind: order
+    q: Order the 5 correct lines that parse an IPv6 address and print its canonical text. One line is
+      a distractor.
+    lines:
+    - puts(text);
+    - if (inet_ntop(AF_INET6, &a6, text, sizeof text) == NULL) return 1;
+    - struct in6_addr a6;
+    - inet_ntoa(a6);
+    - if (inet_pton(AF_INET6, "2001:db8::1", &a6) != 1) return 1;
+    - char text[INET6_ADDRSTRLEN];
+    answer_order:
+    - 2
+    - 4
+    - 5
+    - 1
+    - 0
+    distractor_why:
+      inet_ntoa(a6);: inet_ntoa is the obsolete IPv4-only formatter and does not accept an in6_addr.
+    hint: Reserve the binary destination first, then parse, then reserve the text buffer, then format,
+      then print.
+    why: The data flow is binary destination, parse, text buffer, format, output. Putting formatting before
+      a buffer exists would write into unowned memory. The inet_ntoa line is a distractor because it is
+      the function this migration replaces and cannot handle IPv6. (b4)
+    concept: conversion-order
+  - kind: why-fails
+    q: What is the defect in this parsing attempt?
+    code: |
+      struct in6_addr a6;
+      inet_pton(AF_INET6, "2001:db8::zzzz", &a6);
+      char text[INET6_ADDRSTRLEN];
+      inet_ntop(AF_INET6, &a6, text, sizeof text);
+      puts(text);
+    choices:
+    - the return value is ignored, so malformed text leaves a6 unusable but is formatted
+    - inet_pton requires a heap-allocated buffer instead of a stack variable
+    - inet_ntop cannot format any address that was produced by inet_pton
+    - the text buffer is far too small to hold any valid IPv6 address at all
+    answer: 0
+    why: The invalid group zzzz makes inet_pton return 0, meaning the destination was not written with
+      a valid address. The code never checks, so it formats whatever stale bytes a6 contains. inet_pton
+      accepts a caller-provided destination, including a local variable; ntop and pton are designed to
+      round-trip; and INET6_ADDRSTRLEN is sized for the longest IPv6 text. (b4)
+    concept: pton-return-ignored
+  - kind: spot-bug
+    q: A round trip prints an IPv4-looking address instead of the IPv6 address. Which line introduces
+      the defect, and why?
+    code: |
+      struct in6_addr a6;
+      char text[INET6_ADDRSTRLEN];
+      inet_pton(AF_INET6, "::1", &a6);
+      inet_ntop(AF_INET, &a6, text, sizeof text);
+      printf("%s\n", text);
+    diagnostic_log: |
+      expected: ::1
+      observed: 0.0.0.0
+    target_line: 4
+    choices:
+    - 'Line 1: in6_addr is the wrong type for holding an IPv6 address'
+    - 'Line 4: inet_ntop is told AF_INET, so it reads four bytes as an IPv4 address'
+    - 'Line 3: inet_pton should use AF_INET when parsing the loopback address'
+    - 'Line 5: printf cannot print a string that inet_ntop returned'
+    answer: 1
+    why: The family argument controls how many bytes ntop interprets. AF_INET makes it treat the leading
+      four bytes of the 16-byte ::1 value as an IPv4 address, yielding 0.0.0.0. The type is correct, pton
+      correctly used AF_INET6, and printf prints the caller's buffer normally. (b4)
+    concept: ntop-family-mismatch
+  - kind: predict
+    q: Trace the parse and format calls. What exact line does the program print?
+    code: |
+      struct in6_addr a6;
+      char text[INET6_ADDRSTRLEN];
+      int good = inet_pton(AF_INET6, "::1", &a6);
+      int bad = inet_pton(AF_INET6, "not-an-address", &a6);
+      inet_ntop(AF_INET6, &a6, text, sizeof text);
+      printf("%d %d %s\n", good, bad, text);
+    choices:
+    - good is 1, bad is 0, text is not-an-address
+    - good is 0, bad is 1, text is the value ::1
+    - good is 1, bad is 0, text is the value ::1
+    - good is 1, bad is 1, text is the value ::1
+    answer: 2
+    why: Parsing ::1 succeeds (1), parsing malformed text returns 0 without producing a valid address,
+      and formatting the last valid bytes yields ::1. The bad call does not store the text, so 'not-an-address'
+      cannot be printed. Reversing the return values misreads pton's success convention, and 1 1 ignores
+      the malformed input. (b4)
+    concept: pton-return-predict
+  - kind: choose-better
+    q: A program must parse both IPv4 and IPv6 numeric addresses. Which converter strategy is better?
+    choices:
+    - use inet_pton and pass AF_INET or AF_INET6 for the family
+    - keep inet_aton for IPv4 and add a separate IPv6 parser
+    - use inet_ntoa for both families because it prints either form
+    answer: 0
+    why: inet_pton is the dual-stack text-to-binary call; one function with a family argument covers both
+      grammars. Keeping inet_aton forces two code paths and leaves the IPv4 function in a supposedly migrated
+      program. inet_ntoa is the reverse direction and is IPv4-only. (b4)
+    concept: converter-choice
+  - kind: fillblank
+    q: The IPv6 output buffer must hold the longest IPv6 presentation. Which macro supplies that size?
+    code: |
+      char text[____];
+    answer_text: INET6_ADDRSTRLEN
+    why: INET6_ADDRSTRLEN is the macro sized for the longest IPv6 address text, just as INET_ADDRSTRLEN
+      serves IPv4. A literal 4 is far too small, and INET_ADDRSTRLEN is sized for dotted-quad IPv4 rather
+      than the 16-byte IPv6 form. (ch04 b11, interleaved)
+    concept: ipv6-text-buffer
+    from_chapter: ch04
+    from_block: b11
+- id: b5
+  type: design
+  title: Let getaddrinfo Pack the sockaddr for You
+  explain_md: |
+    The first migration step is also the biggest shortcut: try to
+    use `getaddrinfo()` to obtain all the `struct sockaddr` information
+    instead of packing the structures by hand. The reason is leverage. When
+    you hand-pack a `sockaddr_in`, you have already chosen IPv4. When you ask
+    `getaddrinfo()` for candidates, the library does the family-dependent
+    work and hands back a list of already-shaped address records.
+
+    ### The design shift: follow results, not assumptions
+
+    Hand-packing says, "I know the family, so I will build the bytes." A
+    lookup-driven design says, "Tell me which families this name and service
+    support, and I will try the candidates that fit my socket." The second
+    design is what keeps a program IP-version-agnostic. It also eliminates
+    many of the later mechanical steps: once the lookup fills the structure,
+    you do not separately hand-write the wildcard, the address bytes, or the
+    family tag for each candidate.
+
+    Concretely, a forward lookup takes a name or numeric address, a service or
+    port, and a hints record; the hints family field can constrain which
+    address family is returned. The reverse lookup takes an address and
+    produces host and service text.
+
+    ### The legacy lookup pair
+
+    The migration also replaces two older lookup functions:
+
+    - `gethostbyname()` becomes `getaddrinfo()`
+    - `gethostbyaddr()` becomes `getnameinfo()`
+
+    `getaddrinfo()` is called "superior" for the migration because it serves
+    both address families and returns full socket-address information.
+    `getnameinfo()` is its reverse-lookup counterpart. One important caveat applies:
+    `gethostbyaddr()` can still work with IPv6, but new code should use the superior
+    `getnameinfo()`.
+
+    ### What this block does not do
+
+    The block teaches only the migration decision, not the complete call
+    contract: prefer the lookup that returns generic sockaddr records, then
+    consume those records rather than rebuilding them by hand. A later
+    system-calls lesson covers the full argument list and error handling.
+  checks:
+  - kind: mcq
+    q: Which function is the required replacement for gethostbyname()?
+    choices:
+    - the getnameinfo() reverse lookup
+    - the inet_pton() text converter
+    - the gethostbyaddr() legacy lookup
+    - the getaddrinfo() forward lookup
+    answer: 3
+    why: getaddrinfo() is the superior replacement for gethostbyname() because it returns full socket-address
+      candidates for both families. getnameinfo() goes the other direction, from address to name. inet_pton()
+      converts numeric text to binary and does not resolve hostnames. gethostbyaddr() is a reverse lookup,
+      not a replacement for a forward name lookup. (b5)
+    concept: gethostbyname-replacement
+  - kind: mcq
+    q: Why does starting with getaddrinfo() eliminate many of the later migration steps?
+    choices:
+    - it returns packed sockaddr records for supported families, so no structure is hand-built
+    - it rewrites the source file automatically so every call becomes version-neutral
+    - it converts every IPv4 address into an IPv6 address permanently at runtime
+    - it removes the need for ports by letting the lookup choose a service number
+    answer: 0
+    why: getaddrinfo() does the family-dependent packing and returns candidates, so the programmer consumes
+      records instead of manually filling family, wildcard, and address fields. It does not edit source,
+      and it does not translate IPv4 into IPv6; it can return candidates of either family. Ports are still
+      required to select a service. (b5)
+    concept: lookup-leverage
+  - kind: choose-better
+    q: A server must work on IPv4-only, IPv6-only, and dual-stack hosts. Which address-construction strategy
+      is better?
+    choices:
+    - hand-pack a sockaddr_in with AF_INET and one fixed wildcard address
+    - obtain sockaddr candidates with getaddrinfo() and use those matching the host
+    - 'hand-pack both structures and choose one with a compile-time #ifdef switch'
+    answer: 1
+    why: Lookup-driven construction lets the host's supported families drive the choice at runtime. Hand-packing
+      IPv4 limits the server to IPv4. Hand-packing both behind a compile-time switch still produces a
+      single-family binary and misses dual-stack behavior. The migration rule prefers getaddrinfo() for
+      version-agnostic code. (b5)
+    concept: lookup-vs-handpack
+  - kind: eipe
+    q: In one sentence, what is using getaddrinfo() instead of packing sockaddr structures FOR?
+    code: |
+      /* current plan: hand-fill sockaddr_in */
+      sa.sin_family = AF_INET;
+      sa.sin_port = htons(80);
+      sa.sin_addr.s_addr = INADDR_ANY;
+
+      /* migration plan: ask for candidate sockaddr records */
+      getaddrinfo(host, service, &hints, &results);
+    choices:
+    - it prints every returned address so the user can choose one by hand
+    - it guarantees that the lookup returns only genuine IPv6 address records
+    - it makes the program independent of a hard-coded IP version via prepared candidates
+    answer: 2
+    why: 'The purpose is family independence: the lookup prepares candidates and the program follows them
+      instead of hard-coding IPv4 bytes. It is not a printing routine, and it does not force IPv6; it
+      can return IPv4, IPv6, or both depending on the query and hints. (b5)'
+    concept: lookup-purpose
+  - kind: why-fails
+    q: A migration calls getaddrinfo() but then throws away every result whose family is not AF_INET.
+      Why does this remain an IPv4-only program?
+    choices:
+    - getaddrinfo cannot return IPv6 results under any circumstances
+    - the lookup may find IPv6 candidates, but the program rejects them first
+    - the program forgot to call inet_ntoa on each returned result
+    - AF_INET is actually the IPv6 address-family constant here
+    answer: 1
+    why: The value of the lookup is that it can return several families; filtering to AF_INET discards
+      the IPv6 candidates and keeps only IPv4. getaddrinfo can return IPv6 results. inet_ntoa is an obsolete
+      IPv4 formatter and is not needed to consume records. AF_INET is IPv4, not IPv6. (b5)
+    concept: filtered-results
+  - kind: mcq
+    q: Which replacement is recommended for gethostbyaddr() in new code, while noting that gethostbyaddr()
+      can still work with IPv6?
+    choices:
+    - the getaddrinfo() forward lookup
+    - the inet_ntop() text formatter
+    - the getnameinfo() reverse lookup
+    - the gethostbyname() legacy lookup
+    answer: 2
+    why: 'getnameinfo() is the superior reverse lookup: address in, name and service out. getaddrinfo()
+      goes forward from name/service to addresses. inet_ntop() only formats a numeric address and performs
+      no name lookup. gethostbyname() is the forward function being retired, not a reverse replacement.
+      (b5)'
+    concept: gethostbyaddr-replacement
+  - kind: choose-better
+    q: New code needs to turn a socket address into a host and service name. Which call is the better
+      choice?
+    choices:
+    - getnameinfo(), because it is the superior reverse lookup
+    - gethostbyaddr(), because it is the only function that accepts IPv6
+    - inet_pton(), because it converts an address into text
+    answer: 0
+    why: getnameinfo() is recommended for reverse lookups. gethostbyaddr() may still work with IPv6, but
+      the rule still points new code to the superior getnameinfo(); saying it is the only IPv6-capable
+      option contradicts that caveat. inet_pton() parses text into binary and does not produce host or
+      service names. (b5)
+    concept: reverse-lookup-choice
+- id: b6
+  type: design
+  title: Quarantine the IP-Version Choice in One Helper
+  explain_md: |
+    The helper rule is a design rule: any place that hard-codes
+    something related to the IP version should be wrapped in a helper
+    function. This is how a migration stays maintainable after the first
+    compile succeeds.
+
+    Without a helper, family-specific choices spread through the program:
+    one function builds an IPv4 structure, another branches on a constant,
+    and a third silently assumes `AF_INET`. When the next change arrives,
+    nobody knows which sites still encode the old assumption. A helper gives
+    that decision a name and a single home.
+
+    ### What belongs behind the helper
+
+    The family constant, the address-structure choice, and the wildcard form
+    are version-specific decisions. Ports and byte order are not; they are
+    common to both families. A good helper has a narrow, testable contract:
+    "give me the endpoint for this family and port" or "give me the preferred
+    family for this build." The helper may branch internally, but the branch
+    exists once, not at every call site.
+
+    ### The Notional Machine: one decision becomes one jump
+
+    At runtime the helper receives its inputs, selects a family-specific
+    path, and returns a result in a common shape. Callers no longer contain a
+    hidden branch; they call one named operation. If the helper takes the
+    desired family as a parameter, tests can drive both paths without
+    recompiling the entire program.
+
+    ### The failure mode to avoid
+
+    A helper that ignores its input and always returns `AF_INET` is worse
+    than no helper: it looks generic while preserving the IPv4 assumption.
+    Encapsulation must actually carry the decision, not hide a constant.
+  checks:
+  - kind: mcq
+    q: What is the purpose of wrapping IP-version-specific choices in a helper function?
+    choices:
+    - to make the program print fewer addresses than it used to before
+    - to convert IPv4 addresses into IPv6 addresses automatically at runtime
+    - to remove the need to check the return values of every function call
+    - to keep the family-dependent decision in one auditable place, not at every site
+    answer: 3
+    why: The helper centralizes the version decision so it can be audited, tested, and changed once. It
+      does not reduce output, translate addresses, or remove error handling; those are separate concerns.
+      (b6)
+    concept: helper-purpose
+  - kind: choose-better
+    q: A program chooses AF_INET or AF_INET6 in twelve different functions. Which design is better?
+    choices:
+    - repeat the same if/else in all twelve functions so each is self-contained
+    - put the choice in one helper that callers use and pass the desired family in
+    - delete the family choice entirely and always select AF_INET
+    answer: 1
+    why: One helper gives the version decision a single home and lets callers stay family-neutral. Repeating
+      the branch duplicates the assumption and invites drift. Always using AF_INET abandons the migration
+      entirely. (b6)
+    concept: helper-centralize
+  - kind: eipe
+    q: In one sentence, what is this helper FOR?
+    code: |
+      int endpoint_family(int prefer_ipv6)
+      {
+          return prefer_ipv6 ? AF_INET6 : AF_INET;
+      }
+      int family = endpoint_family(1);
+    choices:
+    - it stores the service port number in network byte order for the caller
+    - it parses an IPv6 address from presentation text for the caller
+    - it turns a caller's version preference into the matching family constant
+    answer: 2
+    why: The helper maps a preference to a family constant, keeping that decision out of call sites. It
+      does not touch ports, and it does not parse text; inet_pton owns parsing. (b6)
+    concept: helper-purpose-code
+  - kind: why-fails
+    q: Why does this helper fail to deliver version-agnostic behavior?
+    code: |
+      int endpoint_family(int prefer_ipv6)
+      {
+          (void)prefer_ipv6;
+          return AF_INET;
+      }
+    choices:
+    - it ignores the preference and always selects IPv4
+    - it returns an integer value instead of a structure
+    - it cannot be called more than one time by any caller
+    - AF_INET is actually the IPv6 family constant
+    answer: 0
+    why: The parameter is discarded, so every caller receives the IPv4 family no matter what it asked
+      for. Returning an integer is exactly what a family constant is; repeat calls are fine. AF_INET is
+      IPv4, so the last choice reverses the constants. (b6)
+    concept: helper-ignores-input
+  - kind: fillblank
+    q: Complete the helper so a caller that prefers IPv6 receives the IPv6 family constant.
+    code: |
+      int family = prefer_ipv6 ? ____ : AF_INET;
+    answer_text: AF_INET6
+    why: The true branch must supply the IPv6 address family, AF_INET6; the false branch already supplies
+      IPv4. PF_INET is the IPv4 protocol family, INADDR_ANY is an IPv4 wildcard value, and in6addr_any
+      is an IPv6 wildcard object, not a family constant. (b6)
+    concept: helper-fill-family
+  - kind: mcq
+    q: Which item is genuinely IP-version-specific and therefore belongs behind the helper boundary?
+    choices:
+    - calling htons() on a service port number
+    - the choice between AF_INET and the AF_INET6 tag
+    - checking that a function returned an error code
+    - zeroing a whole structure with memset before use
+    answer: 1
+    why: The family constant differs between IPv4 and IPv6, so it is the decision the helper isolates.
+      htons and memset are common to both families. Return-value checking is general defensive programming,
+      not a version choice. (b6)
+    concept: helper-boundary
+  - kind: choose-better
+    q: Which helper signature is more useful for a dual-stack program?
+    choices:
+    - int endpoint_family(int prefer_ipv6), which chooses from its input
+    - int preferred_family(void), which always returns AF_INET6
+    - struct in_addr endpoint_address(void), which always builds an IPv4 address
+    answer: 0
+    why: Taking the preference as input makes both family paths reachable and testable. A no-argument
+      helper that always returns one constant merely hides a new assumption. Returning an IPv4 address
+      type cannot represent the IPv6 path. (b6)
+    concept: helper-parameterize
+- id: b7
+  type: design
+  title: Retire IPv4 Broadcast and Adopt IPv6 Multicast
+  explain_md: |
+    The broadcast step is short but absolute: `INADDR_BROADCAST` no longer works, so use
+    IPv6 multicast instead. This is not a rename. Broadcast and multicast are
+    different delivery ideas, and the IPv4 constant cannot be transplanted
+    into an IPv6 address field.
+
+    `INADDR_BROADCAST` is a 32-bit IPv4 value. An IPv6 address is 16 bytes.
+    Assigning the old constant to `sin6_addr` fails at the type level, and
+    even a widened zero pattern would not mean "broadcast" on an IPv6
+    network. IPv6 reaches a group of listeners with a multicast address
+    instead of a broadcast address.
+
+    ### Notional Machine: one packet, many interested receivers
+
+    With broadcast, the sender emits one packet and the local link delivers
+    it broadly. With multicast, the sender emits one packet addressed to a
+    group; hosts that joined that group receive it. The routing and
+    subscription rules differ, but the migration lesson is concrete: choose
+    the IPv6 multicast mechanism rather than carrying an IPv4-only constant
+    forward.
+
+    ### Migration move
+
+    Find every `INADDR_BROADCAST` use. Delete the assignment, choose the
+    appropriate IPv6 multicast address for the application, and store it as
+    a normal 16-byte IPv6 address. Do not keep a dead "broadcast" branch just
+    because the old code compiled.
+  checks:
+  - kind: mcq
+    q: What replacement is required because INADDR_BROADCAST no longer works?
+    choices:
+    - the IPv6 loopback address ::1
+    - the IN6ADDR_ANY_INIT wildcard macro
+    - an IPv6 multicast group address
+    - a wider htonl() byte-order call
+    answer: 2
+    why: The migration replaces IPv4 broadcast with IPv6 multicast. Loopback reaches only the local host,
+      IN6ADDR_ANY_INIT is a wildcard initializer rather than a group address, and no byte-order conversion
+      can turn a 32-bit broadcast constant into an IPv6 multicast address. (b7)
+    concept: broadcast-replacement
+  - kind: why-fails
+    q: Why can this assignment not serve as an IPv6 broadcast migration?
+    code: |
+      struct sockaddr_in6 sa6 = {0};
+      sa6.sin6_addr = INADDR_BROADCAST;
+    choices:
+    - sockaddr_in6 has no address field that can be assigned
+    - INADDR_BROADCAST must first be wrapped in an htons() call
+    - the structure must first be initialized with IN6ADDR_ANY_INIT
+    - INADDR_BROADCAST is a 32-bit IPv4 value, not a 16-byte in6_addr
+    answer: 3
+    why: 'The types do not match: the constant is 32-bit IPv4, while sin6_addr is a 16-byte in6_addr structure.
+      sockaddr_in6 does have sin6_addr. htons changes byte order, not width or meaning. Wildcard initialization
+      is unrelated to selecting a broadcast substitute. (b7)'
+    concept: broadcast-type-mismatch
+  - kind: choose-better
+    q: An IPv6 service needs to send one message to every host that has joined its group. Which approach
+      matches the migration guidance?
+    choices:
+    - keep INADDR_BROADCAST and cast it to an IPv6 pointer
+    - address the packet to an IPv6 multicast group instead
+    - send the packet separately to the 127.0.0.1 loopback
+    answer: 1
+    why: IPv6 multicast is the replacement for IPv4 broadcast when reaching a group of interested receivers.
+      Casting the old constant cannot change its width or make IPv6 treat it as broadcast. The loopback
+      address reaches only the local host, not the group. (b7)
+    concept: multicast-choice
+  - kind: eipe
+    q: In one sentence, what is replacing INADDR_BROADCAST with IPv6 multicast FOR?
+    code: |
+      /* old IPv4 plan */
+      sa.sin_addr.s_addr = INADDR_BROADCAST;
+
+      /* new IPv6 plan */
+      /* choose an IPv6 multicast group address instead */
+    choices:
+    - it preserves the exact same 32-bit broadcast value in a wider field
+    - it converts broadcast traffic into local loopback traffic only
+    - it reaches a group of IPv6 listeners using a mechanism IPv6 supports
+    answer: 2
+    why: The purpose is to use IPv6's group-delivery mechanism rather than an IPv4-only constant. The
+      old 32-bit value is not preserved; that is the point of the replacement. Multicast is not loopback,
+      since loopback never leaves the local host. (b7)
+    concept: multicast-purpose
+  - kind: spot-bug
+    q: A migration leaves one broadcast assignment behind. Which line produces the compiler error, and
+      why?
+    code: |
+      struct sockaddr_in6 sa6 = {0};
+      sa6.sin6_family = AF_INET6;
+      sa6.sin6_port = htons(9999);
+      sa6.sin6_addr = INADDR_BROADCAST;
+    diagnostic_log: |
+      migrate.c:4:20: error: incompatible types when assigning to type
+      'struct in6_addr' from type 'in_addr_t' {aka 'unsigned int'}
+    target_line: 4
+    choices:
+    - 'Line 4: a 32-bit IPv4 broadcast value is assigned to a 16-byte in6_addr'
+    - 'Line 1: a sockaddr_in6 cannot be zero-initialized with {0} at all'
+    - 'Line 2: AF_INET6 is not allowed together with any port number'
+    - 'Line 3: port 9999 is outside the valid 16-bit port number range'
+    answer: 0
+    why: The compiler reports an incompatible assignment from a 32-bit integer type to struct in6_addr.
+      The fix is not a cast but a real IPv6 multicast address. Zero initialization is legal, AF_INET6
+      can be paired with a port, and 9999 is a valid 16-bit port. (b7)
+    concept: broadcast-compile-error
+  - kind: mcq
+    q: Why is IPv6 multicast the conceptual replacement for IPv4 broadcast?
+    choices:
+    - IPv6 multicast is just another name for the all-zero wildcard address
+    - IPv6 multicast delivers to a group of interested receivers, not to all hosts
+    - IPv6 multicast is a text notation for an IPv4 broadcast address
+    - IPv6 multicast sends every packet back to the original sender only
+    answer: 1
+    why: Multicast is group delivery and is the IPv6 mechanism the migration rule points to. It is not
+      the wildcard, which means any local address; it is not text notation for IPv4; and it is not a sender-only
+      echo. (b7)
+    concept: multicast-concept
+  - kind: choose-better
+    q: You are reviewing an IPv6 migration and find an INADDR_BROADCAST assignment that still compiles
+      only because of an unsafe cast. What should you do?
+    choices:
+    - replace it with an appropriate IPv6 multicast address and remove the cast
+    - leave it alone, because compiling is the whole migration goal
+    - change the cast to a pointer to struct sockaddr_in6 instead
+    answer: 0
+    why: A cast can silence the type error without producing a valid IPv6 group address, so the migration
+      is still wrong. The rule says broadcast no longer works and multicast is the replacement. Changing
+      the cast type does not fix the 32-bit value's meaning or width. (b7)
+    concept: broadcast-cast-review
+- id: b8
+  type: algorithm
+  title: Execute the Migration Plan in Dependency Order
+  explain_md: |
+    The twelve migration items form an ordered plan, not an unordered bag of
+    replacements. Order matters because some steps remove the need for
+    others, while some changes make later changes compile.
+
+    Start with `getaddrinfo()` if you can. It prepares the sockaddr records
+    and can eliminate many of the hand-packing steps. Then contain remaining
+    version choices in helpers so the rest of the migration has one place to
+    change. Only after that do the mechanical swaps: family constants,
+    wildcard, structures, fields, converters, legacy lookups, and finally
+    broadcast.
+
+    ### A safe working order
+
+    1. Prefer lookup-driven address construction.
+    2. Put remaining family decisions behind helpers.
+    3. Change `AF_INET`/`PF_INET` to their IPv6 forms.
+    4. Replace `INADDR_ANY` forms with `in6addr_any`/`IN6ADDR_ANY_INIT`.
+    5. Upgrade `sockaddr_in`/`in_addr` and their fields.
+    6. Replace old text converters with `inet_pton`/`inet_ntop`.
+    7. Replace legacy lookups and retire broadcast.
+
+    ### Notional Machine: compile after each dependency layer
+
+    Each layer changes the types that the next layer sees. If the declaration
+    becomes `sockaddr_in6` first, the compiler immediately points at every
+    old `sin_` field that still needs renaming. If the converter swap happens
+    first, the compiler can still type-check the surrounding endpoint.
+    Migrating in dependency layers turns the compiler into a guide instead of
+    a wall of unrelated errors.
+
+    ### The habit that survives the migration
+
+    Search for the old API, decide its replacement from the plan, make
+    the smallest coherent change, compile, and test. "Find every old call"
+    without an order leads to mixed families. "Change everything at once"
+    makes the first error hard to localize. The plan supplies both the
+    inventory and the dependency order.
+  checks:
+  - kind: order
+    q: Order the 6 correct migration actions from the earliest design decision to the final cleanup. One
+      line is a distractor.
+    lines:
+    - Replace INADDR_BROADCAST with IPv6 multicast
+    - Upgrade sockaddr_in/in_addr to sockaddr_in6/in6_addr and rename fields
+    - Use getaddrinfo() to obtain sockaddr data instead of hand-packing
+    - Change every port to 443
+    - Change AF_INET and PF_INET to their IPv6 forms
+    - Replace inet_aton/inet_addr/inet_ntoa with inet_pton/inet_ntop
+    - Replace INADDR_ANY with in6addr_any or IN6ADDR_ANY_INIT
+    answer_order:
+    - 2
+    - 4
+    - 6
+    - 1
+    - 5
+    - 0
+    distractor_why:
+      Change every port to 443: Port numbers select services and are unrelated to the IP-version migration;
+        changing them breaks the service contract.
+    hint: Start with the lookup that can eliminate hand-packing, then isolate family choices, then change
+      constants, wildcard, structures, converters, and finally broadcast.
+    why: 'The dependency order follows the migration leverage: lookup first, then family decisions, then
+      the family constants, wildcard, structures/fields, converters, and broadcast cleanup. Ports are
+      not version-specific, so the port line is a distractor. (b8)'
+    concept: migration-order
+  - kind: mcq
+    q: Which action comes first because it can eliminate many later steps?
+    choices:
+    - replace every INADDR_BROADCAST assignment
+    - change every inet_ntoa call to inet_ntop
+    - use getaddrinfo() to get sockaddr information
+    - rename every sin_ field to its sin6_ form
+    answer: 2
+    why: The first item is to use getaddrinfo() instead of packing structures by hand; it keeps the code
+      version-agnostic and removes many subsequent steps. Broadcast replacement, converter swaps, and
+      field renames are later mechanical steps. (b8)
+    concept: first-step
+  - kind: choose-better
+    q: Two teams migrate the same program. Which plan is better?
+    choices:
+    - team A replaces every IPv4 name globally, then compiles only once at the end
+    - team B starts with getaddrinfo(), isolates family choices, then migrates and tests by layer
+    - team C leaves every lookup alone and only changes the service port number
+    answer: 1
+    why: Team B follows the migration leverage and dependency order, so each compile reports the next
+      coherent layer of errors. A global replace makes unrelated errors hard to attribute. Changing only
+      the port does not migrate the address family at all. (b8)
+    concept: migration-strategy
+  - kind: why-fails
+    q: A migration upgrades every structure and converter to IPv6 but leaves gethostbyname() in the lookup
+      path. Why is the program still not fully migrated?
+    choices:
+    - gethostbyname cannot even compile in any modern C program today
+    - the structure upgrade automatically changes the old call's return type
+    - gethostbyname is the correct replacement for the getnameinfo call
+    - the lookup still uses the legacy IPv4 path, so results can stay IPv4-only
+    answer: 3
+    why: 'The migration replaces gethostbyname with getaddrinfo for a reason: the old call remains tied
+      to the legacy IPv4-oriented lookup model. Leaving it in place can keep the program''s name path
+      on IPv4 even when the structures are IPv6-ready. It can compile, and the structure upgrade does
+      not rewrite the old function''s behavior. gethostbyname is not a reverse-lookup replacement. (b8)'
+    concept: lookup-left-behind
+  - kind: predict
+    q: Trace the completed endpoint construction. What exact line does the program print?
+    code: |
+      struct sockaddr_in6 sa6;
+      memset(&sa6, 0, sizeof sa6);
+      sa6.sin6_family = AF_INET6;
+      sa6.sin6_port = htons(8080);
+      sa6.sin6_addr = in6addr_any;
+      printf("family=%s port=%d any=%s\n",
+             sa6.sin6_family == AF_INET6 ? "AF_INET6" : "other",
+             ntohs(sa6.sin6_port),
+             memcmp(&sa6.sin6_addr, &in6addr_any,
+                    sizeof sa6.sin6_addr) == 0 ? "yes" : "no");
+    choices:
+    - family=AF_INET6 port=8080 any=yes
+    - family=AF_INET6 port=8080 any=no
+    - family=other port=8080 any=yes
+    - family=AF_INET6 port=32896 any=yes
+    answer: 0
+    why: The family field holds AF_INET6, ntohs converts the stored network-order port back to 8080 for
+      printing, and the wildcard comparison succeeds. any=no would mean the address copy failed. family=other
+      would mean the family was not stored. Port 32896 is what printing without ntohs would show on a
+      little-endian host, the classic byte-order slip. (b8)
+    concept: migrated-endpoint-predict
+  - kind: trace
+    q: Trace the final endpoint build. What value belongs in the target cell?
+    code: |
+      struct sockaddr_in6 sa6;
+      memset(&sa6, 0, sizeof sa6);
+      sa6.sin6_family = AF_INET6;
+      sa6.sin6_port = htons(443);
+      sa6.sin6_addr = in6addr_any;
+    trace:
+      headers:
+      - Step
+      - Line
+      - Object
+      - State
+      - Wildcard?
+      rows:
+      - step: 1
+        line: 2
+        cells:
+        - '1'
+        - '2'
+        - sa6
+        - all bytes zero
+        - '-'
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '3'
+        - sin6_family
+        - AF_INET6
+        - '-'
+      - step: 3
+        line: 4
+        cells:
+        - '3'
+        - '4'
+        - sin6_port
+        - '0x01bb'
+        - '-'
+      - step: 4
+        line: 5
+        cells:
+        - '4'
+        - '5'
+        - sin6_addr
+        - 16 zero bytes
+        - ???
+    target:
+      row: 3
+      col: 4
+    choices:
+    - no (wildcard mismatch)
+    - yes (wildcard match)
+    - 0x01bb (network port)
+    - 443 (host-order port)
+    answer: 1
+    why: Assigning in6addr_any copies the all-zero wildcard into sin6_addr, so yes is the verdict. no
+      would mean the wildcard copy failed. 0x01bb is the network-order port from the port row, and 443
+      is its host-order value; neither describes the address. (b8)
+    concept: final-endpoint-trace
+  - kind: eipe
+    q: In one sentence, what is following the ordered migration sequence FOR?
+    code: |
+      getaddrinfo(...);          /* first: let lookup shape the records */
+      family = endpoint_family(...); /* then: one decision point */
+      /* then constants, wildcard, structs, converters, broadcast */
+    choices:
+    - it guarantees that the program will never need any testing at all
+    - it makes every IPv6 address text shorter than it was before the change
+    - it makes each change type-check against the previous layer and exposes new errors
+    answer: 2
+    why: Dependency-ordered changes let the compiler check one coherent layer at a time, which localizes
+      errors and prevents mixed-family states. No ordering removes the need to test, and the migration
+      order does not change address text length. (b8)
+    concept: order-purpose
+  - kind: spot-bug
+    q: This program was mostly migrated, but one old converter survived. Which line produces the compiler
+      error, and why?
+    code: |
+      struct in6_addr a6;
+      char text[INET6_ADDRSTRLEN];
+      inet_pton(AF_INET6, "2001:db8::1", &a6);
+      inet_ntoa(a6);
+      printf("%s\n", text);
+    diagnostic_log: |
+      migrate.c:4:15: error: incompatible type for argument 1 of 'inet_ntoa'
+      expected 'struct in_addr' but argument is of type 'struct in6_addr'
+    target_line: 4
+    choices:
+    - 'Line 1: in6_addr is the wrong type for holding an IPv6 address'
+    - 'Line 3: inet_pton cannot parse the sample address 2001:db8::1'
+    - 'Line 4: inet_ntoa is IPv4-only and expects struct in_addr, not in6_addr'
+    - 'Line 5: printf cannot print an address text buffer directly'
+    answer: 2
+    why: The compiler says inet_ntoa expects struct in_addr but received struct in6_addr. The migration
+      step is to use inet_ntop(AF_INET6, ...) and pass the text buffer. The type is correct, pton accepts
+      the sample address, and printf prints the buffer normally once it is filled. (b8)
+    concept: missed-ntoa
+  - kind: mcq
+    q: After a successful getaddrinfo()-driven migration, which hand-packing work often disappears?
+    choices:
+    - choosing a service port number for the program to use directly
+    - checking that the program's output is actually correct in every case
+    - converting host byte order to network order for every field
+    - manually filling family, wildcard, and address fields in a sockaddr record
+    answer: 3
+    why: The lookup prepares family-shaped sockaddr records, so the program consumes them instead of hand-filling
+      each field. Port selection is still an application decision, testing is still required, and byte-order
+      rules for values you do set yourself do not vanish. (b8)
+    concept: eliminated-work

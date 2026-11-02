@@ -22,7 +22,9 @@
 # Step 6: Write 'packs/bgnet/ch07/test.yaml' (mastery gates and certification criteria)
 #
 # [POST-GENERATION TESTING PROTOCOL (MUST TEST AFTER CREATING YAMLS)]
-# 1. Block checks & questions: each item carries 1.1–1.10.
+# 1. Block checks & questions: each item carries 1.1–1.10, including uniform choice lengths,
+#    one-word/token fillblank answers (or a stated format), and order stems that state the
+#    number of correct lines.
 # 2. Quiz stanza (if quiz: present / quiz.yaml):
 #    - Count 30–50.
 #    - Levels intro + core + advanced all present.
@@ -77,6 +79,9 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   (runner protocol) excerpts are appended to this prompt; treat them as
   binding. All other `docs/SRS.md` references below name their section.
 - `prompts/ASK_USER.md` — interrogate the user per that file first.
+- `prompts/checks_after_chapter_creation.md` — MANDATORY post-chapter checklist:
+  after creating or editing the chapter pack, read and verify every applicable
+  item in that file before declaring the chapter complete.
 - `books/<slug>/raw_chapters/<id>.txt` — SOURCE CHAPTER TEXT: The raw, extracted
   chapter text lives here on disk (created via `python main.py extract --book <slug>`).
   The full text is also appended directly at the bottom of this prompt.
@@ -342,6 +347,12 @@ learning science, cognitive psychology, and computing education research (CER):
   (e.g. "B traps address/value confusion: `&var` is where it lives, not what
   it holds"). A distractor you cannot attach to a named misconception MUST be
   cut — filler options are worse than fewer options.
+- **Choice-Length Uniformity (MUST)**: all choices in one set MUST be roughly
+  the same length and grammatical form. The correct answer MUST NOT be
+  identifiable because it is much longer or shorter than the distractors.
+  Aim for a max/min character ratio ≤1.3 and keep the correct option within
+  20% of the longest distractor. Rewrite all options into parallel phrasing
+  rather than padding only the correct answer.
 - **Answer Position Randomization (MUST)**: NEVER default all questions or multiple questions in sequence to `answer: 0`. The correct answer MUST be varied and distributed across all valid choice positions (0, 1, 2, and 3) uniformly throughout the chapter blocks. Any pack where 100% or the vast majority of choice checks have `answer: 0` is defective and will be rejected.
 - **Self-Contained Questions & Zero External References (CRITICAL MUST)**:
   Every question stem (`q:`) in block checks and main quiz questions MUST be 100% self-contained.
@@ -363,6 +374,9 @@ learning science, cognitive psychology, and computing education research (CER):
 - Blanks MUST be load-bearing tokens (`&`, `*`, format spec, operator, keyword),
   exactly one per check, with the full program visible in `code`. The `why`
   MUST state the rule that determines the token (not "the answer is &").
+- The answer MUST be one word/token. If a multi-word expression or a line is
+  unavoidable, the stem MUST state the exact answer format, e.g.
+  "Answer format: `res->field`" or "Answer format: one line of C code".
 - Never blank two interdependent tokens in one check; never blank names the
   learner could not derive (no trivia).
 - `answer_text` MUST NOT be `?` or `help` (reserved: the app intercepts them
@@ -386,6 +400,10 @@ learning science, cognitive psychology, and computing education research (CER):
   (distractors omitted). Distractors MUST be authentic near-misses from the
   chapter (missing `&`, wrong format, off-by-one, swapped operands) — each
   with a `distractor_why` naming the bug class.
+- **State the task size (MUST)**: the stem MUST say how many correct lines to
+  place, or say that all displayed lines are used. If a distractor is present,
+  say so and give the correct count, e.g. "Order the 5 correct lines; one line
+  is a distractor."
 - **Pool Scrambling (MUST)**: In all `order` checks, `lines` MUST NOT be in sequential execution order, and `answer_order` MUST NOT be `[0, 1, 2, ...]`. The lines MUST be author-scrambled so the learner performs deliberate sequencing.
 - Provide `hint` that orients without giving order ("find the line that
   creates storage first"). The block's `why` MUST explain the ordering
@@ -729,18 +747,19 @@ learning science, cognitive psychology, and computing education research (CER):
 
 ## 8. Post-Generation Testing & Verification Protocol (MUST execute after writing YAMLs)
 
-After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or monolithic), the AI agent MUST rigorously verify and test the generated files against this inspection checklist:
+After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or monolithic), the AI agent MUST read `prompts/checks_after_chapter_creation.md` and rigorously verify and test the generated files against that checklist and the inspection checklist below:
 
 ### 1. Block Checks & Questions (1.1–1.10)
 - **1.1 Positively-worded stem**: `q:` is clearly and positively stated without confusing negative phrasing.
 - **1.2 Choice count**: 2–4 options per check (3 preferred).
+- **1.2b Choice-length uniformity**: options are parallel in length and form; the correct answer is not the obvious longest/shortest (max/min ratio ≤1.3; correct within 20% of the longest distractor).
 - **1.3 Answer bounds**: `answer:` is a valid 0-based index (0..len(choices)-1).
 - **1.4 Answer randomization**: Correct answers are uniformly distributed across 0, 1, 2, and 3 (never all 0).
 - **1.5 100% self-contained**: Code is embedded directly via `code: |`; ZERO external references to book examples/listings/figures (e.g. NEVER write "in Example 7.2" or "in Listing 3").
 - **1.6 Elaborated why**: Provides the core principle + explicit misconception diagnosis for every distractor.
 - **1.7 Exact vocabularies**: `kind:` is exactly in (`mcq`, `predict`, `why-fails`, `fillblank`, `order`, `trace`, `spot-bug`, `eipe`, `choose-better`).
-- **1.8 Scrambled Parsons (`order`)**: Lines scrambled in `lines:`, paired distractors excluded from `answer_order:`, non-sequential order.
-- **1.9 Program completion (`fillblank`)**: Single load-bearing token, program visible in `code:`, answer not reserved `?` or `help`.
+- **1.8 Scrambled Parsons (`order`)**: Lines scrambled in `lines:`, paired distractors excluded from `answer_order:`, non-sequential order, and the stem states the number of correct lines (or that all displayed lines are used).
+- **1.9 Program completion (`fillblank`)**: Single load-bearing token, program visible in `code:`, answer not reserved `?` or `help`; one-word/token answers, with an explicit answer-format note when a multi-word expression or line is unavoidable.
 - **1.10 Line formatting**: Prose ≤120 columns; code lines carry no width cap.
 
 ### 2. Quiz Stanza (if `quiz:` present / `quiz.yaml`)

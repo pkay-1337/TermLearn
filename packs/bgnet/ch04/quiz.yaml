@@ -1,0 +1,693 @@
+quiz:
+- kind: mcq
+  level: intro
+  q: Which of these is a valid IPv4 address in the dots-and-numbers presentation form?
+  choices:
+  - 192.0.2.111 — valid dotted IPv4
+  - ::ffff:192.0.2.33 — mapped IPv6
+  - 192.0.2.999 — invalid IPv4 octet
+  - 2001:db8::1 — native IPv6
+  answer: 0
+  why: IPv4 is four decimal octets separated by dots, and each octet must fit in a byte; 192.0.2.111 does.
+    192.0.2.999 contains an impossible octet value. 2001:db8::1 is IPv6, and ::ffff:192.0.2.33 is the
+    IPv4-mapped IPv6 spelling. (b1)
+  concept: ipv4-form
+- kind: fillblank
+  level: core
+  q: Fill the number of bits held by each hexadecimal group between the colons of an IPv6 address.
+  code: |
+    /* Each colon-separated group is ____ bits. */
+    const char *example = "2001:0db8:c9d2:aee5:73e3:934a:a5ae:9551";
+  answer_text: '16'
+  why: IPv6 has eight colon-separated groups adding up to 128 bits, so each group carries 16 bits. Choosing
+    8 confuses a byte with a two-byte group; choosing 32 describes the whole IPv4 address, not one IPv6
+    group. (b2)
+  concept: ipv6-group-width
+- kind: mcq
+  level: core
+  q: Which spelling is the correct compressed form of 2001:0db8:0000:0000:0000:0000:0000:0001?
+  choices:
+  - '2001:db8::1::'
+  - 2001:db8::1
+  - 2001.db8.0.1
+  - '2001:db8:1::'
+  answer: 1
+  why: 'Dropping leading zeros gives 2001:db8, the long zero run collapses to ::, and the final group
+    is 1, producing 2001:db8::1. Placing 1 before the :: changes which groups are zero. Two :: markers
+    cannot both identify a zero run. Dots are IPv4 punctuation, not IPv6. (b2)'
+  concept: ipv6-compression-quiz
+- kind: mcq
+  level: intro
+  q: Which address is the IPv4 loopback, meaning the local machine?
+  choices:
+  - 192.0.2.1 is a documentation address
+  - 0.0.0.0 is the unspecified wildcard address
+  - 127.0.0.1 is the native IPv4 loopback
+  - ::1 is the native IPv6 loopback address
+  answer: 2
+  why: IPv4 loopback is 127.0.0.1; its IPv6 counterpart is ::1. 192.0.2.1 belongs to the documentation
+    range, and 0.0.0.0 is a wildcard-style unspecified address rather than the loopback. (b2)
+  concept: loopback-quiz
+- kind: predict
+  level: core
+  q: Trace the array access. What exact line does the program print?
+  code: |
+    unsigned char b[4] = {203, 0, 113, 9};
+    printf("%u.%u.%u.%u\n",
+           (unsigned)b[0], (unsigned)b[1],
+           (unsigned)b[2], (unsigned)b[3]);
+  choices:
+  - 203.0.113.9, printed in index order
+  - cb007109, printed as compact hexadecimal
+  - 9.113.0.203, printed in reverse index order
+  answer: 0
+  why: The printf arguments consume the array in index order 0,1,2,3, and the dots are literal text between
+    them, so the output is 203.0.113.9. Reversing the order mistakes little-endian byte storage for array
+    indexing. The compact hex form is a different representation entirely. (b1)
+  concept: dotted-output
+- kind: trace
+  level: advanced
+  q: Trace the /27 mask byte by byte. What value belongs in the final result cell?
+  code: |
+    unsigned char ip[4]   = {192, 0, 2, 130};
+    unsigned char mask[4] = {255, 255, 255, 224};
+    unsigned char net[4];
+    for (int i = 0; i < 4; i++)
+        net[i] = ip[i] & mask[i];
+  trace:
+    headers:
+    - Step
+    - Byte
+    - Address
+    - Mask
+    - Result
+    rows:
+    - step: 1
+      line: 1
+      cells:
+      - '1'
+      - '0'
+      - '192'
+      - '255'
+      - '192'
+    - step: 2
+      line: 2
+      cells:
+      - '2'
+      - '1'
+      - '0'
+      - '255'
+      - '0'
+    - step: 3
+      line: 3
+      cells:
+      - '3'
+      - '2'
+      - '2'
+      - '255'
+      - '2'
+    - step: 4
+      line: 4
+      cells:
+      - '4'
+      - '3'
+      - '130'
+      - '224'
+      - ???
+  target:
+    row: 3
+    col: 4
+  choices:
+  - the value 0
+  - the value 224
+  - the value 130
+  - the value 128
+  answer: 3
+  why: 130 is 10000010 and 224 is 11100000; AND keeps 10000000, which is 128. The network is 192.0.2.128.
+    130 traps skipping the mask; 0 would require a zero mask byte; 224 is the mask, not the result. (b3)
+  concept: subnet-trace-quiz
+- kind: mcq
+  level: core
+  q: The netmask 255.255.255.240 corresponds to which prefix length, and how many addresses does that
+    leave?
+  choices:
+  - /28, leaving 16 addresses
+  - /27, leaving 32 addresses
+  - /29, leaving 8 addresses
+  - /24, leaving 256 addresses
+  answer: 0
+  why: 240 is 11110000, four host bits, and 24 + 4 = 28 network bits; four host bits give 2^4 = 16 addresses.
+    /27 would end in 224 and /29 in 248. /24 would end in 0. (b3)
+  concept: mask-prefix-quiz
+- kind: why-fails
+  level: advanced
+  q: A configuration file offers 255.255.0.255 as a subnet mask. Why is this not a valid contiguous netmask?
+  choices:
+  - it contains too many 1-bits to fit within a single 32-bit netmask value
+  - its 1-bits are split by a zero run, so the network bits do not form one prefix
+  - a netmask may only use the values 255 and 0 in each byte position of the mask
+  - the first byte must be 255 for every valid netmask used on the public Internet
+  answer: 1
+  why: A valid netmask is a single run of 1-bits followed by a single run of 0-bits; 255.255.0.255 has
+    a block of 1s, a block of 0s, then another 1, so it cannot describe one network prefix. The value
+    still fits in 32 bits, so the width charge is wrong. Masks such as 255.255.255.252 use values other
+    than 0 and 255, and /8-style masks can start below 255. (b3)
+  concept: netmask-contiguity-quiz
+- kind: fillblank
+  level: intro
+  q: Fill the number of network bits named by the CIDR suffix in 192.168.0.0/16.
+  code: |
+    /* 192.168.0.0/____ means 16 leading network bits. */
+    const char *cidr = "192.168.0.0/16";
+  answer_text: '16'
+  why: In CIDR notation the number after the slash is the count of leading network bits. Here that number
+    is 16. That leaves 16 host bits for the network. Reading the suffix as a host count would invert the
+    meaning. (b3)
+  concept: cidr-read
+- kind: mcq
+  level: intro
+  q: Which well-known port is assigned to HTTP?
+  choices:
+  - 23, used by telnet
+  - 25, used by SMTP
+  - 80, used by HTTP
+  - 666, used by a game
+  answer: 2
+  why: HTTP is port 80. Port 23 is telnet, 25 is SMTP, and 666 was DOOM. Those are real service ports,
+    but none of them is the web service. (b4)
+  concept: http-port
+- kind: mcq
+  level: intro
+  q: Which protocols use port numbers to identify a service?
+  choices:
+  - Ethernet only, at the link layer
+  - DNS only, as an application service
+  - IP only, at the network layer
+  - TCP and UDP, as transport protocols
+  answer: 3
+  why: The port is used by TCP (stream sockets) and, coincidentally, by UDP (datagram sockets). IP routes
+    using addresses, not ports. Ethernet is a link-layer technology, and DNS is an application-level service
+    that itself rides transport ports. (b4)
+  concept: port-protocols-quiz
+- kind: why-fails
+  level: core
+  q: A server wants to answer HTTP and SMTP on the same IP and assigns both to port 80. Why does this
+    design fail to separate the services?
+  choices:
+  - the endpoint pair (IP, port) is identical, so bytes cannot be attributed to one service
+  - port 80 is reserved exclusively for SMTP, so HTTP cannot share it with mail
+  - the OS will automatically move the second service to port 25 without asking
+  - the two services need different IP addresses before they can use separate ports
+  answer: 0
+  why: Ports separate services on one IP; reusing the same (IP, port) for both destroys that distinction.
+    Different IPs are not required, which is the point of ports. Port 80 is HTTP, not SMTP. The OS does
+    not silently reassign a conflicting service to another well-known port. (b4)
+  concept: endpoint-clash-quiz
+- kind: mcq
+  level: advanced
+  q: What is special about binding a port number below 1024?
+  choices:
+  - it is reserved for IPv6 addresses only
+  - it usually requires special OS privileges
+  - it is impossible on modern operating systems
+  - it is the only range available to ordinary users
+  answer: 1
+  why: Ports under 1024 are often considered special and usually require special privileges to use. They
+    are not IPv6-only, nor impossible; ordinary users can still use high ports. The final option reverses
+    the privilege rule. (b4)
+  concept: privileged-port-quiz
+- kind: predict
+  level: core
+  q: Trace the two conversions. What does the program print on any host?
+  code: |
+    unsigned short port = 0x1f90;
+    printf("%u\n", (unsigned)ntohs(htons(port)));
+  choices:
+  - 36895, the half-swapped value
+  - 8080, the original port value
+  - 0, the result of a failed conversion
+  answer: 1
+  why: 0x1f90 is 8080. htons moves it to network order and ntohs moves it back; because the functions
+    are inverses, the original 8080 prints. 36895 is the half-swapped value that would appear if only
+    one direction were correct. Zero is not produced by a byte-order round trip. (b5, b6)
+  concept: roundtrip-quiz
+- kind: trace
+  level: advanced
+  q: Trace little-endian storage. Which byte is stored first for the value 0xa1b2?
+  code: |
+    unsigned char mem[2];
+    unsigned short value = 0xa1b2;
+    /* assume the host is little-endian */
+  trace:
+    headers:
+    - Step
+    - Item
+    - High Byte
+    - Low Byte
+    - First Stored
+    rows:
+    - step: 1
+      line: 1
+      cells:
+      - '1'
+      - value a1b2
+      - a1
+      - b2
+      - ???
+    - step: 2
+      line: 2
+      cells:
+      - '2'
+      - big-endian order
+      - a1
+      - b2
+      - a1
+  target:
+    row: 0
+    col: 4
+  choices:
+  - byte 2b
+  - byte a1
+  - byte b2
+  - word a1b2
+  answer: 2
+  why: Little-endian stores the least significant byte first, so b2 comes first. a1 is the big-endian
+    first byte. a1b2 is the whole value, not one byte. 2b would reverse nibbles, which endianness never
+    does. (b5, b6)
+  concept: little-endian-trace-quiz
+- kind: mcq
+  level: core
+  q: Which byte ordering does the network use for multi-byte values on the wire?
+  choices:
+  - the sender's own native byte order
+  - the receiver's own native byte order
+  - little-endian byte order on the wire
+  - big-endian byte order on the wire
+  answer: 3
+  why: 'Network Byte Order is big-endian: the most significant byte goes first. Native host order may
+    be little-endian on Intel-style machines, which is exactly why conversions exist. Sending or receiving
+    in a native order would make communication depend on machine type. (b5, b6)'
+  concept: network-order-quiz
+- kind: order
+  level: core
+  q: Order the 3 correct statements that prepare a two-byte port for transmission; two lines are distractors.
+  lines:
+  - unsigned short wire = htons(port);
+  - unsigned short port = 443;
+  - send(fd, &wire, sizeof wire, 0);
+  - unsigned short wire = ntohs(port);
+  - printf("%u\n", (unsigned)wire);
+  answer_order:
+  - 1
+  - 0
+  - 2
+  distractor_why:
+    unsigned short wire = ntohs(port);: ntohs converts incoming network data to host order; this value
+      is leaving the host, so htons is required.
+    printf("%u\n", (unsigned)wire);: Printing is not part of preparing and sending the bytes; it is an
+      unrelated observation step.
+  why: 'The data flow is: establish the host-order port, convert it to network order, then write the two
+    wire bytes with send. Using ntohs reverses the direction, and the printf line is not part of the transmission
+    path. (b5, b6)'
+  concept: conversion-order-quiz
+- kind: fillblank
+  level: core
+  q: Fill the function that converts a four-byte value from network order back to host order.
+  code: |
+    unsigned long received = 0x01020304UL;
+    unsigned long host = ________(received);
+  answer_text: ntohl
+  why: 'Network to host, long: n + to + h + l. htonl goes host-to-network, while ntohs is only two bytes
+    wide. (b5, b6)'
+  concept: ntohl-quiz
+- kind: mcq
+  level: advanced
+  q: A program needs to byte-swap a 64-bit integer with standard socket API conversions. What is true?
+  choices:
+  - there are no standard 64-bit variants in the sockets API
+  - use htonl() twice and the result is a correct 64-bit swap
+  - 64-bit values are always stored in network order already
+  - use htonll(), which is standard on every platform
+  answer: 0
+  why: The sockets API has no standard 64-bit variants and points to other options elsewhere. htonll is
+    not offered as a portable standard here. Two 32-bit conversions do not swap the halves correctly as
+    a single 64-bit operation. Endianness is not automatically fixed by width. (b5, b6)
+  concept: no-64bit-quiz
+- kind: mcq
+  level: intro
+  q: In struct addrinfo hints, what does ai_family = AF_INET request?
+  choices:
+  - a hostname lookup that returns no address
+  - an IPv4 address result from the lookup
+  - an IPv6 address result from the lookup
+  - a UDP-only result from the lookup
+  answer: 1
+  why: AF_INET is the IPv4 family. AF_INET6 requests IPv6, and AF_UNSPEC accepts either. Socket type is
+    selected by ai_socktype, not ai_family. (b7)
+  concept: af-inet-quiz
+- kind: mcq
+  level: core
+  q: How does getaddrinfo deliver multiple candidate results?
+  choices:
+  - as a file descriptor the program reads until it reaches EOF
+  - as a fixed-size array whose length is stored in ai_addrlen
+  - as a linked list linked through the ai_next field
+  - as a single struct that overwrites itself on every lookup
+  answer: 2
+  why: 'The results form a linked list: ai_next points to the next candidate, with NULL ending the chain.
+    ai_addrlen is the size of one address structure, not an array length. A single overwriting struct
+    and a readable descriptor are not the lookup contract. (b7)'
+  concept: addrinfo-list-quiz
+- kind: eipe
+  level: core
+  q: In one sentence, what is setting hints.ai_family = AF_UNSPEC FOR?
+  code: |
+    struct addrinfo hints = {0};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    /* getaddrinfo(..., &hints, &results) */
+  choices:
+  - it forces the lookup to reject every IPv6 candidate
+  - it selects the TCP transport instead of the UDP transport
+  - it tells the kernel to perform Network Address Translation
+  - it lets the lookup return either IPv4 or IPv6 candidates
+  answer: 3
+  why: AF_UNSPEC leaves the family unspecified so either version may be returned. Rejecting IPv6 would
+    require AF_INET. Transport choice is ai_socktype, and NAT is a firewall function unrelated to this
+    hint. (b7)
+  concept: unspec-purpose-quiz
+- kind: mcq
+  level: core
+  q: What byte order must sin_port use in a struct sockaddr_in?
+  choices:
+  - network byte order, usually produced by a call to htons()
+  - little-endian byte order always, regardless of the machine architecture
+  - the same byte order as the sin_zero padding field in the structure
+  - host byte order, because the structure is local to the running program
+  answer: 0
+  why: sin_port is a transport port placed into an address structure that will be used on the wire, so
+    it must be in Network Byte Order; htons is the two-byte conversion. Host order would make the peer
+    read reversed halves. There is no little-endian-only rule, and sin_zero is padding, not a byte-order
+    field. (b8)
+  concept: sin-port-quiz
+- kind: fillblank
+  level: intro
+  q: Fill the family constant for an IPv4 struct sockaddr_in.
+  code: |
+    struct sockaddr_in ina;
+    memset(&ina, 0, sizeof ina);
+    ina.sin_family = __________;
+  answer_text: AF_INET
+  why: A sockaddr_in describes an IPv4 endpoint, so its family is AF_INET. AF_INET6 would require sockaddr_in6,
+    and AF_UNSPEC is a lookup hint rather than a completed address family. (b8)
+  concept: sin-family-quiz
+- kind: spot-bug
+  level: advanced
+  q: A program formats an IPv6 address into a five-byte buffer. Which line causes the AddressSanitizer
+    stack-buffer-overflow?
+  code: |
+    struct in6_addr a6;
+    char tiny[5];
+    inet_ntop(AF_INET6, &a6, tiny, sizeof tiny);
+    printf("%s\n", tiny);
+  diagnostic_log: |
+    ==31415==ERROR: AddressSanitizer: stack-buffer-overflow on address 0x7ffd0a2b3c40
+    WRITE of size 16 at 0x7ffd0a2b3c40 thread T0
+        #0 0x7f1c in inet_ntop
+        #1 0x40123a in main /tmp/prog.c:3
+    Address 0x7ffd0a2b3c40 is located in stack of thread T0 at offset 0 in frame
+        #0 0x4011d0 in main /tmp/prog.c:2
+  target_line: 3
+  choices:
+  - 'Line 2: the buffer is declared with automatic storage on the stack'
+  - 'Line 3: inet_ntop needs room for the full IPv6 text, not five bytes'
+  - 'Line 4: printf writes into tiny as well as reading from it'
+  - 'Line 1: struct in6_addr is too small to hold a full IPv6 address'
+  answer: 1
+  why: The overflow happens in inet_ntop while formatting the 16-byte IPv6 address into a buffer that
+    is far too small; the reported write is at line 3. in6_addr is exactly 128 bits and is the input,
+    not the overflow. Automatic storage is normal. printf reads tiny; it does not write the address into
+    it. (b11)
+  concept: ntop-overflow-quiz
+- kind: mcq
+  level: intro
+  q: What problem does struct sockaddr_storage solve when a call may return an address of unknown family?
+  choices:
+  - it performs the byte-order conversion automatically for the caller
+  - it replaces struct sockaddr_in for all IPv4 calls in the program
+  - it is large enough to hold either an IPv4 or IPv6 specific address structure
+  - it stores the hostname string returned by the getaddrinfo lookup call
+  answer: 2
+  why: The storage structure is sized for both specific layouts, and ss_family tells you which one arrived.
+    Hostname text lives in ai_canonname, byte order still needs conversion functions, and sockaddr_in
+    is still the direct IPv4 layout. (b9)
+  concept: storage-purpose-quiz
+- kind: mcq
+  level: core
+  q: How many bytes does struct in6_addr hold?
+  choices:
+  - 32 bytes
+  - 4 bytes
+  - 8 bytes
+  - 16 bytes
+  answer: 3
+  why: in6_addr holds s6_addr[16], which is 128 bits. Four bytes is the IPv4 in_addr value; 8 and 32 do
+    not match either address width. (b9)
+  concept: in6-size-quiz
+- kind: predict
+  level: advanced
+  q: Trace the return-value check. What does the program print when the address text is valid?
+  code: |
+    struct in_addr a4;
+    int rc = inet_pton(AF_INET, "198.51.100.7", &a4);
+    printf("%s\n", rc > 0 ? "ok" : "fail");
+  choices:
+  - ok, because inet_pton returned a positive value for valid text
+  - fail, because inet_pton returned a negative value for invalid text
+  - 0, because the program prints the raw return value from inet_pton
+  - 198.51.100.7, because the program prints the parsed address value
+  answer: 0
+  why: A valid numeric IPv4 text makes inet_pton return a value greater than 0, so the conditional prints
+    ok. fail would require a malformed address or a system error. The raw return value is not printed
+    by this code, and the numeric address is stored in a4 rather than printed. (b10)
+  concept: pton-valid-quiz
+- kind: mcq
+  level: core
+  q: Which historical IPv4-only conversion functions are obsolete?
+  choices:
+  - inet_pton and inet_ntop, the current replacements
+  - inet_addr and inet_aton, the obsolete IPv4-only pair
+  - htons and htonl, the byte-order conversions
+  - getaddrinfo and freeaddrinfo, the lookup pair
+  answer: 1
+  why: inet_addr and inet_aton are the obsolete IPv4-only text-to-binary functions. inet_pton/ntop are
+    the current replacements. htons/htonl are byte-order conversions, not address parsers, and getaddrinfo
+    is the name-lookup API. (b10, b11)
+  concept: obsolete-apis-quiz
+- kind: mcq
+  level: advanced
+  q: Which buffer-size macro is appropriate for inet_ntop when formatting an IPv6 address?
+  choices:
+  - sizeof(struct in6_addr), the binary address size
+  - INET_ADDRSTRLEN, the IPv4 text-size macro
+  - INET6_ADDRSTRLEN, the IPv6 text-size macro
+  - AF_INET6, the IPv6 address family constant
+  answer: 2
+  why: INET6_ADDRSTRLEN is the macro for the largest IPv6 address string; INET_ADDRSTRLEN is for IPv4
+    text. AF_INET6 is a family constant, not a text size, and sizeof(in6_addr) is 16 bytes of binary address,
+    not enough for the punctuation and hex digits. (b11)
+  concept: ntop-buffer-quiz
+- kind: why-fails
+  level: core
+  q: A code review flags inet_aton() in a new dual-stack program. Why must it be replaced?
+  choices:
+  - it performs a DNS lookup that may block the program
+  - it writes the address in host byte order instead of network order
+  - it requires a connected socket before it can parse any address
+  - it is obsolete and IPv4-only, so it cannot parse IPv6 text
+  answer: 3
+  why: inet_aton is obsolete and IPv4-only; a dual-stack program needs inet_pton with an explicit family.
+    It does not do DNS, it produces the address in network order, and it does not need a socket. (b10)
+  concept: obsolete-aton-quiz
+- kind: mcq
+  level: intro
+  q: Which host address belongs to a private IPv4 range?
+  choices:
+  - 10.0.0.5, inside the 10.0.0.0/8 private range
+  - 192.0.2.33, inside a documentation range
+  - 8.8.8.8, a public DNS resolver address
+  - 203.0.113.9, inside a documentation range
+  answer: 0
+  why: 10.x.x.x is one of the common private ranges. 192.0.2.33 and 203.0.113.9 belong to documentation
+    ranges used in examples. 8.8.8.8 is an ordinary public-style address, not a private one. (b12)
+  concept: private-quiz
+- kind: mcq
+  level: core
+  q: What is the 192.0.2.x network reserved for?
+  choices:
+  - the IPv4 loopback address range on a local machine
+  - documentation and make-believe address ranges for examples
+  - the private network address range behind every home firewall
+  - IPv6-to-IPv4 gateway address ranges on the public Internet
+  answer: 1
+  why: 192.0.2.x is a documentation range for make-believe real addresses. IPv4 loopback is 127.0.0.1.
+    Home private networks commonly use 192.168.x.x or 10.x.x.x. IPv6-to-IPv4 gateways are a separate concept
+    beyond this guide's scope. (b12)
+  concept: doc-range-quiz
+- kind: choose-better
+  level: advanced
+  q: A small office has one public IPv4 address and ten computers. Which addressing plan is better?
+  choices:
+  - assign every computer a 192.0.2.x documentation address and announce it publicly
+  - give every computer the same single public address so each is directly reachable
+  - give the computers private addresses and let the firewall translate them through one public IP
+  answer: 2
+  why: Private addresses plus NAT let ten hosts share one public address while the firewall tracks flows.
+    Duplicating the public address makes replies ambiguous. The 192.0.2.x block is documentation space
+    and is not a deployable public plan. (b12)
+  concept: nat-plan-quiz
+- kind: mcq
+  level: core
+  q: Which IPv6 prefix is used for private-style addressing?
+  choices:
+  - 127.0.0.1, which is the IPv4 loopback address
+  - ::1, which is the IPv6 loopback address
+  - fdXX:, which is the IPv6 private-style prefix
+  - 192.168., which is the IPv4 private-style prefix
+  answer: 2
+  why: IPv6 private-style addresses start with fdXX (or possibly fcXX in the future) per RFC 4193. ::1
+    is IPv6 loopback, 192.168. is an IPv4 private range, and 127.0.0.1 is IPv4 loopback. (b12)
+  concept: ipv6-private-quiz
+- kind: eipe
+  level: advanced
+  q: In one sentence, what is this pair of calls FOR?
+  code: |
+    inet_pton(AF_INET, text, &binary);
+    /* ... store binary in a sockaddr_in ... */
+    inet_ntop(AF_INET, &binary, text_out, sizeof text_out);
+  choices:
+  - it converts between printable address text and binary network-order bytes both ways
+  - it resolves hostnames with DNS and caches the results for later lookups
+  - it translates private addresses to public addresses at the network firewall
+  answer: 0
+  why: 'The pair moves between presentation and network forms: pton makes binary from text, ntop makes
+    text from binary. Neither performs DNS name resolution. NAT is a firewall function, not an address-formatting
+    function. (b10, b11)'
+  concept: conversion-pair-quiz
+- kind: mcq
+  level: intro
+  q: What is the fully padded spelling of 2001:db8:ab00::?
+  choices:
+  - 2001:0db8:ab00:0000:0000:0000:0000:00ff
+  - 2001:0db8:ab00:0000:0000:0000:0001:0000
+  - 2001:0db8:ab00:0000:0000:0000:0000:0001
+  - 2001:0db8:ab00:0000:0000:0000:0000:0000
+  answer: 3
+  why: 'The compressed form has eight groups total; after 2001, db8, and ab00, the :: stands for the remaining
+    five all-zero groups, so every one of those groups is 0000. The options with a final 1, 00ff, or a
+    0001 in the wrong group change the value. (b2)'
+  concept: expand-ipv6-quiz
+- kind: mcq
+  level: core
+  q: How many addresses are available on a network whose mask is 255.255.255.252?
+  choices:
+  - It yields four total addresses
+  - It yields sixteen total addresses
+  - It yields one total address
+  - It yields two total addresses
+  answer: 0
+  why: 252 is 11111100, leaving two host bits and 2^2 = 4 addresses. One would require no host bits; two
+    is a common but incorrect subtraction shortcut not used here; sixteen would require four host bits
+    (mask 240). (b3)
+  concept: four-addresses-quiz
+- kind: fillblank
+  level: intro
+  q: Fill the IPv6 prefix used to write the IPv4 address 192.0.2.33 in mapped form.
+  code: |
+    const char *mapped = "________192.0.2.33";
+  answer_text: '::ffff:'
+  why: 'The IPv4-compatibility notation is ::ffff: before the dotted IPv4 address. A bare :: does not
+    mark the mapped form, and ffff:: places the marker in the wrong position. (b2)'
+  concept: mapped-prefix-quiz
+- kind: trace
+  level: core
+  q: Trace the converted port in memory. After htons(0x1f90) on a little-endian host, which byte is stored
+    first?
+  code: |
+    unsigned short port = 0x1f90;
+    unsigned short wire = htons(port);
+    /* wire now holds the two bytes in network order */
+  trace:
+    headers:
+    - Step
+    - Value
+    - First Byte
+    - Second Byte
+    rows:
+    - step: 1
+      line: 1
+      cells:
+      - '1'
+      - host 0x1f90
+      - '90'
+      - 1f
+    - step: 2
+      line: 2
+      cells:
+      - '2'
+      - wire after htons
+      - ???
+      - '90'
+  target:
+    row: 1
+    col: 2
+  choices:
+  - first byte f1
+  - first byte 1f
+  - first byte 90
+  - the word 0x1f90
+  answer: 1
+  why: htons reorders the value into network order, so the most significant byte 1f is stored first and
+    90 second. 90 is the host-order first byte before conversion. 0x1f90 is the whole value, not one byte.
+    f1 swaps nibbles, which byte order does not do. (b5, b6)
+  concept: htons-trace-quiz
+- kind: mcq
+  level: advanced
+  q: Why is CASTING a sockaddr_in pointer to sockaddr safe, but CASTING an arbitrary struct to sockaddr
+    unsafe?
+  choices:
+  - the cast copies the sockaddr_in fields into a new generic sockaddr object
+  - sockaddr is larger than every other structure, so no cast can overflow it
+  - sockaddr_in has a parallel layout with matching leading bytes and equal size
+  - any pointer cast is safe in C as long as the pointer is not NULL
+  answer: 2
+  why: The safety comes from the intentional parallel layout, not from casting in general. C does not
+    bless arbitrary pointer reinterpretation. A cast produces a pointer, not a copy. sockaddr is not advertised
+    as larger than every structure — sockaddr_storage is the deliberately large storage type. (b8)
+  concept: cast-safety-quiz
+- kind: mcq
+  level: core
+  q: What is the purpose of the sin_zero field in struct sockaddr_in?
+  choices:
+  - it holds the network mask for the IPv4 address
+  - it records the port number in host byte order
+  - it stores the hostname string for the address
+  - it pads the structure to the size of struct sockaddr
+  answer: 3
+  why: sin_zero is padding that makes sockaddr_in the same size as the generic sockaddr, and zero it with
+    memset. Hostname text lives outside this structure, the netmask is not part of the endpoint, and the
+    port belongs in sin_port in network order. (b8)
+  concept: sin-zero-quiz
+- kind: mcq
+  level: advanced
+  q: Which task can inet_ntop NOT perform?
+  choices:
+  - resolve the hostname www.example.com into an IP address
+  - write an address string into a caller-provided buffer
+  - format an IPv4 binary address as dotted decimal
+  - format an IPv6 binary address as hexadecimal with colons
+  answer: 0
+  why: These conversion functions work only with numeric addresses and perform no nameserver lookup; getaddrinfo
+    handles hostnames. Formatting IPv4, formatting IPv6, and writing into a caller buffer are exactly
+    what inet_ntop does. (b11)
+  concept: ntop-no-dns-quiz

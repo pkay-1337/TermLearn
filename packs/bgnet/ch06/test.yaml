@@ -1,0 +1,150 @@
+test:
+  gates:
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    min_quiz: 70
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    min_quiz: 80
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    - b10
+    - b11
+    - b12
+    - b13
+    min_quiz: 85
+  final_checks:
+  - kind: order
+    q: Order the complete server path from lookup to the first accepted connection. One line is a distractor.
+    lines:
+    - fill server hints with AF_UNSPEC, SOCK_STREAM, and AI_PASSIVE
+    - call getaddrinfo() for the local port
+    - create the socket from the chosen record
+    - bind the socket to the record's address and length
+    - listen with a backlog
+    - accept one pending connection
+    - use the listening descriptor for send and recv
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    distractor_why:
+      use the listening descriptor for send and recv: The listener owns the queue; the descriptor returned
+        by accept() is the connected channel for data.
+    why: The mastery path is hints, lookup, socket, bind, listen, accept, then data on the accepted descriptor.
+      The final line confuses the listener with the connected handle. (b2, b5, b8, b9)
+    concept: final-server-path
+  - kind: choose-better
+    q: A new program must resolve a host name and run on both IPv4 and IPv6. Which lookup design is better?
+    choices:
+    - call gethostbyname() and hand-pack a sockaddr_in for the result
+    - call getaddrinfo() and walk the returned records, trying each candidate
+    - call gethostbyname() twice and keep only the IPv4 answer
+    answer: 1
+    why: getaddrinfo returns family-tagged records for both families and removes manual packing; walking
+      and trying candidates handles unreachable addresses. gethostbyname is IPv4-oriented, and calling
+      it twice does not produce a dual-stack design. (b1, b3, b7)
+    concept: final-lookup-design
+  - kind: spot-bug
+    q: The server checks socket() but never checks accept(). Which line causes the later failure, and
+      why?
+    code: |
+      new_fd = accept(sockfd, (struct sockaddr *)&their_addr, &addr_size);
+      recv(new_fd, buf, sizeof buf, 0);
+      send(new_fd, "ok", 2, 0);
+    diagnostic_log: |
+      accept returned -1 with errno EINTR
+      recv: Bad file descriptor
+      send: Bad file descriptor
+    target_line: 1
+    choices:
+    - 'Line 1: accept() failed, but its -1 was used as a descriptor'
+    - 'Line 2: recv() needs the peer address'
+    - 'Line 3: send() must run before recv()'
+    - 'Line 1: accept() must be called before listen()'
+    answer: 0
+    why: The diagnostic shows accept returned -1, so every later call receives an invalid descriptor.
+      The fix is to check the return and handle the error before using new_fd. recv on a connected stream
+      socket needs no peer address, and send does not have to precede recv. (b9)
+    concept: final-accept-check
+  - kind: trace
+    q: Trace the partial-send loop. What value belongs in the target cell for total after the final update?
+    code: |
+      int total = 0;
+      total += send(sockfd, msg + total, 8 - total, 0); /* 3 */
+      total += send(sockfd, msg + total, 8 - total, 0); /* 3 */
+      total += send(sockfd, msg + total, 8 - total, 0); /* 2 */
+    trace:
+      headers:
+      - Step
+      - Line
+      - send return
+      - total
+      rows:
+      - step: 1
+        line: 2
+        cells:
+        - '1'
+        - '2'
+        - '3'
+        - '3'
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '3'
+        - '3'
+        - '6'
+      - step: 3
+        line: 4
+        cells:
+        - '3'
+        - '4'
+        - '2'
+        - ???
+    target:
+      row: 2
+      col: 3
+    choices:
+    - '2'
+    - '6'
+    - '8'
+    - '0'
+    answer: 2
+    why: total was 6 and the final send adds 2, reaching the eight-byte message length. The value 2 is
+      only the final return, 6 is the previous total, and 0 is the initial value. (b10)
+    concept: final-send-trace
+  - kind: why-fails
+    q: A program calls shutdown(sockfd, SHUT_RDWR) and returns from the function without close(). Why
+      is the descriptor still open?
+    choices:
+    - shutdown changes direction usability but does not remove the descriptor from the process table
+    - shutdown automatically duplicates the descriptor before changing it
+    - shutdown only works on unconnected datagram sockets
+    answer: 0
+    why: Descriptor release is close()'s job. shutdown changes which directions may be used, leaving the
+      handle allocated. It does not duplicate the handle, and it is valid on connected stream sockets.
+      (b12)
+    concept: final-shutdown

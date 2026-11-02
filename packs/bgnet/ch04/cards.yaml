@@ -1,0 +1,65 @@
+cards:
+  - {front: "How many bytes make up an IPv4 address?", back: "Four bytes, called four octets, which is 32 bits total.", concept: ipv4-width}
+  - {front: "What is the dotted-quad presentation form?", back: "Four decimal octets separated by dots, such as 192.0.2.111.", concept: ipv4-form}
+  - {front: "WHY did the IPv4 address space run out?", back: "Explosive growth in connected devices plus huge early blocks allocated to large organizations; stopgaps only delayed exhaustion.", concept: ipv4-exhaustion}
+  - {front: "How many bits does an IPv6 address use?", back: "128 bits, written as eight 16-bit groups.", concept: ipv6-width}
+  - {front: "WHY is 2^128 so much larger than 2^32 despite only 96 more bits?", back: "The difference is in the exponent, not in a simple count: 2^128 is about 79 million billion trillion times the IPv4 space.", concept: ipv6-capacity}
+  - {front: "How many hexadecimal groups appear in a fully written IPv6 address?", back: "Eight groups, each 16 bits, separated by colons.", concept: ipv6-groups}
+  - {front: "What does :: do in an IPv6 address?", back: "It replaces a run of all-zero 16-bit groups, making the address shorter while preserving its value.", concept: ipv6-compression}
+  - {front: "WHEN may leading zeros be dropped inside an IPv6 group?", back: "Always for presentation: 0db8 becomes db8 and 0051 becomes 51 without changing the value.", concept: ipv6-leading-zeros}
+  - {front: "What is the IPv6 loopback address?", back: "::1, meaning this machine I am running on now; the IPv4 counterpart is 127.0.0.1.", concept: ipv6-loopback}
+  - {front: "What does the spelling ::ffff:192.0.2.33 represent?", back: "An IPv4-compatible/mapped IPv6 form that carries the IPv4 address 192.0.2.33 in its final 32 bits.", concept: ipv4-mapped}
+  - {front: "What are the network and host portions of an IP address?", back: "The network portion names the network; the host portion identifies a host on it. Zeroing the host bits names the network.", concept: subnet-parts}
+  - {front: "What did Class A, B, and C networks mean historically?", back: "Class A used one byte of network and three of host, Class B two and two, and Class C three bytes of network and one of host.", concept: address-classes}
+  - {front: "How does a netmask reveal the network number?", back: "Bitwise-AND the IP address with the mask: 192.0.2.12 AND 255.255.255.0 gives 192.0.2.0.", concept: netmask-and}
+  - {front: "WHY must a netmask be a run of 1-bits followed by 0-bits?", back: "The 1-bits mark a contiguous network prefix; a split pattern cannot describe one prefix.", concept: netmask-contiguity}
+  - {front: "What does 255.255.255.252 mean as a prefix and host capacity?", back: "It is /30: two host bits remain, allowing four addresses.", concept: host-bits}
+  - {front: "What does the /30 in 192.0.2.12/30 mean?", back: "It names 30 leading network bits in the address, the CIDR prefix length.", concept: cidr-meaning}
+  - {front: "How many bits is a port number?", back: "16 bits, ranging from 0 to 65535.", concept: port-width}
+  - {front: "Which layer uses the port number, and which protocols?", back: "The Host-to-Host Transport layer: TCP and UDP both use ports.", concept: port-layer}
+  - {front: "What is the hotel analogy for IP address and port?", back: "The IP address is the hotel street address; the port is the room number that reaches a specific service.", concept: port-analogy}
+  - {front: "What are the well-known ports for HTTP, telnet, SMTP, and DOOM?", back: "HTTP 80, telnet 23, SMTP 25, and DOOM 666.", concept: well-known-ports}
+  - {front: "WHY are ports below 1024 special?", back: "They are conventionally privileged, usually requiring special OS privileges to bind.", concept: privileged-ports}
+  - {front: "How does big-endian store the two-byte value b34f?", back: "Most significant byte first: b3, then 4f.", concept: big-endian}
+  - {front: "How does little-endian store the two-byte value b34f?", back: "Least significant byte first: 4f, then b3.", concept: little-endian}
+  - {front: "What is Network Byte Order?", back: "Big-endian order — the most significant byte first — the convention used on the wire.", concept: network-byte-order}
+  - {front: "What is Host Byte Order?", back: "The machine's native order: little-endian on Intel-compatible CPUs, big-endian on a Motorola 68k, and variable on PowerPC.", concept: host-byte-order}
+  - {front: "WHY always run values through byte-order conversion even if the host might already be big-endian?", back: "Assume host order is not right; the conversion normalizes to network order and keeps code portable across machines.", concept: conversion-rule}
+  - {front: "Which function converts a host short to network order?", back: "htons() — host to network short.", concept: htons}
+  - {front: "Which function converts a host long to network order?", back: "htonl() — host to network long.", concept: htonl}
+  - {front: "Which function converts a network short to host order?", back: "ntohs() — network to host short.", concept: ntohs}
+  - {front: "Which function converts a network long to host order?", back: "ntohl() — network to host long.", concept: ntohl}
+  - {front: "WHEN do you convert to network order, and when to host order?", back: "Convert to network order before values go out on the wire; convert to host order as they come in off the wire.", concept: conversion-direction}
+  - {front: "Which conversion widths does the sockets API standardize?", back: "short (two bytes) and long (four bytes); unsigned variants work too.", concept: conversion-widths}
+  - {front: "Are there standard 64-bit byte-order functions in the sockets API?", back: "No; there are no standard 64-bit variants; other libraries may offer options.", concept: no-64bit}
+  - {front: "What C type is a socket descriptor?", back: "A plain int.", concept: socket-descriptor-type}
+  - {front: "What is struct addrinfo for?", back: "It prepares address-lookup hints and carries the results returned by getaddrinfo().", concept: addrinfo-purpose}
+  - {front: "Which addrinfo field selects IPv4, IPv6, or either?", back: "ai_family: AF_INET, AF_INET6, or AF_UNSPEC for either.", concept: ai-family}
+  - {front: "WHY use AF_UNSPEC in a lookup?", back: "It keeps the code IP-version-agnostic by accepting whichever family the lookup can provide.", concept: ai-unspec}
+  - {front: "Which addrinfo field selects stream or datagram?", back: "ai_socktype: SOCK_STREAM or SOCK_DGRAM.", concept: ai-socktype}
+  - {front: "How is the addrinfo result list linked?", back: "Through ai_next; a NULL value marks the end of the candidate list.", concept: ai-next}
+  - {front: "What does ai_addr point to?", back: "A struct sockaddr — actually a sockaddr_in or sockaddr_in6 underneath — holding the candidate address.", concept: ai-addr}
+  - {front: "Which fields does struct sockaddr expose?", back: "sa_family (AF_xxx) and sa_data[14], the opaque protocol address bytes.", concept: sockaddr-fields}
+  - {front: "Which fields does struct sockaddr_in expose for IPv4?", back: "sin_family, sin_port, sin_addr (a struct in_addr), and sin_zero[8] padding.", concept: sockaddr-in-fields}
+  - {front: "WHY can a sockaddr_in pointer be cast to a sockaddr pointer?", back: "They are parallel layouts: compatible leading family bytes and equal overall size, so the same memory can be read either way.", concept: sockaddr-cast}
+  - {front: "What should you do with sin_zero before using a sockaddr_in?", back: "Set it to all zeros with memset(); it exists only to pad the structure to sockaddr's size.", concept: sin-zero}
+  - {front: "What byte order does sin_port require?", back: "Network Byte Order, produced by htons() for the two-byte port.", concept: sin-port}
+  - {front: "What is inside struct in_addr?", back: "A uint32_t s_addr holding the four-byte IPv4 address in Network Byte Order.", concept: in-addr}
+  - {front: "Which fields does struct sockaddr_in6 expose?", back: "sin6_family, sin6_port, sin6_flowinfo, sin6_addr, and sin6_scope_id.", concept: sockaddr-in6-fields}
+  - {front: "What is inside struct in6_addr?", back: "unsigned char s6_addr[16], the 16-byte (128-bit) IPv6 address.", concept: in6-addr}
+  - {front: "WHY does struct sockaddr_storage exist?", back: "Some calls may return either an IPv4 or IPv6 address; storage is large enough for both and exposes ss_family so you can cast correctly.", concept: sockaddr-storage}
+  - {front: "Which field of sockaddr_storage tells you the address family?", back: "ss_family; compare it with AF_INET or AF_INET6 before casting.", concept: ss-family}
+  - {front: "Are IPv6 flow information and scope ID explained in this pack?", back: "No; those fields are deliberately postponed as beyond this starter guide.", concept: deferred-ipv6-fields}
+  - {front: "What does inet_pton() convert?", back: "Presentation text to network binary: a numeric IPv4/IPv6 string into a struct in_addr or in6_addr.", concept: inet-pton}
+  - {front: "What does inet_pton() return on success, malformed text, and system error?", back: "Greater than 0 on success, 0 for malformed text, and -1 for a system error.", concept: pton-returns}
+  - {front: "WHY must you check that inet_pton() returned greater than 0?", back: "Zero means the address text was malformed and the destination cannot be trusted.", concept: pton-guard}
+  - {front: "Which old IPv4-only parsing functions are obsolete?", back: "inet_addr() and inet_aton(); they do not work with IPv6.", concept: obsolete-inet-addr}
+  - {front: "What does inet_ntop() convert?", back: "Network binary to presentation text: an in_addr or in6_addr into a printable address string.", concept: inet-ntop}
+  - {front: "Which macros size the output buffers for inet_ntop()?", back: "INET_ADDRSTRLEN for IPv4 and INET6_ADDRSTRLEN for IPv6.", concept: addrstrlen-macros}
+  - {front: "Which historical formatting function is obsolete and IPv4-only?", back: "inet_ntoa(); it does not work with IPv6.", concept: obsolete-inet-ntoa}
+  - {front: "Do inet_pton/inet_ntop perform DNS lookups?", back: "No; they handle numeric addresses only. Use getaddrinfo() for hostnames.", concept: conversion-no-dns}
+  - {front: "What does NAT do?", back: "A firewall translates internal IP addresses to external addresses, letting private hosts share public addresses transparently.", concept: nat}
+  - {front: "Which common IPv4 ranges are private?", back: "10.x.x.x, 192.168.x.x, and 172.y.x.x where y is 16 through 31, per RFC 1918.", concept: private-ranges}
+  - {front: "What is the 192.0.2.x range for?", back: "Documentation examples and make-believe real addresses; it is not a public deployment range.", concept: documentation-range}
+  - {front: "Which IPv6 prefix is used for private-style addressing?", back: "fdXX: (or perhaps fcXX: in the future) per RFC 4193.", concept: ipv6-private}
+  - {front: "WHY do NAT and IPv6 generally not mix?", back: "IPv6 has so many addresses that NAT should not be needed; the IPv6-to-IPv4 gateway case is beyond this guide's scope.", concept: ipv6-nat}

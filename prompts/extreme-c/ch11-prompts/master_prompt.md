@@ -20,6 +20,8 @@
 # Step 6: Write 'packs/extreme-c/ch11/test.yaml' (mastery gates and certification criteria)
 #
 # [POST-GENERATION TESTING PROTOCOL (MUST TEST AFTER CREATING YAMLS)]
+# 0. MANDATORY: read prompts/checks_after_chapter_creation.md and verify every
+#    applicable item in it before declaring the chapter complete.
 # 1. Block checks & questions: each item carries 1.1–1.10.
 # 2. Quiz stanza (if quiz: present / quiz.yaml):
 #    - Count 30–50.

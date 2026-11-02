@@ -1,0 +1,14 @@
+meta:
+  book: bgnet
+  chapter_id: ch04
+  title: "IP Addresses, structs, and Data Munging"
+  source_ref: "Ch.3 'IP Addresses, struct s, and Data Munging' (Beej's Guide to Network Programming)"
+  level: core
+  prereqs: [ch03]
+objectives:
+  - "Decode and write IPv4 dotted-quad and IPv6 hexadecimal/compressed addresses, including loopback and IPv4-mapped forms, and explain why IPv6 carries vastly more addresses"
+  - "Compute a network address from an IP address plus a netmask or CIDR prefix, and state how many host bits (and usable hosts) remain"
+  - "Explain the 16-bit port number, name well-known service ports, and choose port-based addressing to separate services that share one IP address"
+  - "Predict big-endian versus little-endian byte storage and select htons/htonl/ntohs/ntohl correctly for data leaving or entering the wire"
+  - "Fill and read struct sockaddr_in, struct sockaddr_in6, struct in_addr/in6_addr, and struct sockaddr_storage, casting through struct sockaddr safely and zeroing padding"
+  - "Convert addresses between presentation text and network binary with inet_pton/inet_ntop, validate their return values, and classify private, documentation, and NAT-translated address ranges"

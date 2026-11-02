@@ -1,0 +1,457 @@
+labs:
+- id: lab1
+  title: Serve One Accepted Connection
+  instruction_md: |-
+    ### What You Are Building
+    You are writing the server's per-client routine: send a fixed greeting to
+    one accepted connection, making sure every byte is sent, then close the
+    connection cleanly.
+
+    ## Goal
+
+    Practice the child side of a fork-per-connection server: send a complete greeting on an accepted
+    stream descriptor and close it.
+
+    ## What you must implement
+
+    Complete `serve_one(int conn_fd)` in `session.c` :
+
+    1. Send the 14-byte string `"Hello, world!\n"` completely. A single `send()` may accept fewer bytes,
+    so loop until every byte is sent. 2. If `send()` returns `0` or `-1` , close the descriptor and
+    return `-1` . 3. On success, close `conn_fd` and return `14` .
+
+    `session.h` , `main.c` , and `test_runner.c` are complete. Do not edit them.
+
+    ## Why the loop matters
+
+    `send()` reports how many bytes the kernel accepted, not whether the whole message was sent. The
+    test runner reads until the connection closes, so a short send leaves the greeting incomplete and
+    the test fails.
+
+    ## Verify
+
+    - `t` (test) compiles and runs the unit runner. The untouched starter returns `-1` , so the tests
+    fail first. - After implementing the function, every assertion must PASS. - `r` (run) prints the
+    greeting received from the served connection.
+  files:
+  - path: session.h
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #ifndef SESSION_H
+      #define SESSION_H
+
+      /* Send "Hello, world!\n" completely on conn_fd, then close it.
+       * Return the number of bytes sent, or -1 on error. */
+      int serve_one(int conn_fd);
+
+      #endif
+  - path: session.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include "session.h"
+      #include <sys/socket.h>
+      #include <unistd.h>
+
+      int serve_one(int conn_fd)
+      {
+          (void)conn_fd;
+          /* TODO: send the 14-byte greeting completely, then close conn_fd. */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <sys/socket.h>
+      #include <unistd.h>
+      #include "session.h"
+
+      int main(void)
+      {
+          int sv[2];
+          char buf[64];
+          ssize_t n;
+          int rc;
+
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+              return 1;
+          }
+          rc = serve_one(sv[0]);
+          if (rc < 0) {
+              close(sv[1]);
+              return 1;
+          }
+          n = recv(sv[1], buf, sizeof buf - 1, 0);
+          if (n < 0) {
+              n = 0;
+          }
+          buf[n] = '\0';
+          printf("served: %s", buf);
+          close(sv[1]);
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <unistd.h>
+      #include "session.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      int main(void)
+      {
+          int sv[2];
+          char buf[64];
+          ssize_t n;
+          int rc;
+
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+              return 2;
+          }
+          rc = serve_one(sv[0]);
+          check(rc == 14, "serve_one returns 14");
+          if (rc == 14) {
+              n = recv(sv[1], buf, sizeof buf - 1, 0);
+              if (n < 0) {
+                  n = 0;
+              }
+              buf[n] = '\0';
+              check(strcmp(buf, "Hello, world!\n") == 0, "greeting matches");
+              n = recv(sv[1], buf, sizeof buf, 0);
+              check(n == 0, "connection is closed");
+          } else {
+              close(sv[1]);
+          }
+          if (failures == 0) {
+              puts("all session tests passed");
+          } else {
+              printf("%d session tests failed\n", failures);
+          }
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 session.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 session.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      served: Hello, world!
+    expect_exit: 0
+  hints:
+  - The child owns the accepted descriptor; the greeting is a fixed 14-byte message.
+  - Track how many bytes have been sent and pass only the remaining slice to send().
+  - Loop while total is less than 14; close conn_fd before returning success or failure.
+  lang: c
+- id: lab2
+  title: Reap Ready Children Without Blocking
+  instruction_md: |-
+    ### What You Are Building
+    You are writing cleanup code that runs when children exit. It collects
+    every child that has already finished without waiting for a child that is
+    still running, so the server never gets stuck.
+
+    ## Goal
+
+    Implement the reaping loop used by a `SIGCHLD` handler: collect every exited child that is ready,
+    but never block waiting for a child that is still running.
+
+    ## What you must implement
+
+    Complete `reap_children(void)` in `reap.c` :
+
+    1. Save the current `errno` value. 2. Loop with `waitpid(-1, NULL, WNOHANG)` . 3. Count each
+    positive return. 4. Stop when the return is `0` or `-1` . 5. Restore the saved `errno` and return
+    the count.
+
+    `reap.h` , `main.c` , and `test_runner.c` are complete. Do not edit them.
+
+    ## Why WNOHANG and errno matter
+
+    Without `WNOHANG` , the handler would block waiting for another child. Saving and restoring `errno`
+    prevents the handler from corrupting the interrupted code's error state. The test runner leaves
+    three zombies ready before calling your function, so a correct loop returns `3` .
+
+    ## Verify
+
+    - `t` (test) fails first because the starter returns `-1` . - After implementing the loop, every
+    assertion must PASS. - `r` (run) prints the number of children reaped.
+  files:
+  - path: reap.h
+    content: |
+      #define _POSIX_C_SOURCE 200809L
+      #ifndef REAP_H
+      #define REAP_H
+
+      /* Reap every exited child that is currently ready without blocking.
+       * Return the number of children reaped, or -1 on an unexpected error. */
+      int reap_children(void);
+
+      #endif
+  - path: reap.c
+    content: |
+      #define _POSIX_C_SOURCE 200809L
+      #include "reap.h"
+      #include <sys/wait.h>
+      #include <errno.h>
+      #include <stddef.h>
+
+      int reap_children(void)
+      {
+          /* TODO: save errno, loop waitpid(-1, NULL, WNOHANG), count reaps,
+           * restore errno, and return the count. */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200809L
+      #include <stdio.h>
+      #include <unistd.h>
+      #include <sys/wait.h>
+      #include "reap.h"
+
+      int main(void)
+      {
+          pid_t pid;
+          siginfo_t info;
+          int count;
+
+          pid = fork();
+          if (pid == -1) {
+              return 1;
+          }
+          if (pid == 0) {
+              _exit(0);
+          }
+          if (waitid(P_PID, (id_t)pid, &info, WEXITED | WNOWAIT) == -1) {
+              return 1;
+          }
+          count = reap_children();
+          printf("reaped %d child\n", count);
+          return count == 1 ? 0 : 1;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200809L
+      #include <stdio.h>
+      #include <unistd.h>
+      #include <sys/wait.h>
+      #include <errno.h>
+      #include "reap.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      int main(void)
+      {
+          pid_t pids[3];
+          siginfo_t info;
+          int i;
+          int count;
+          int rc;
+
+          for (i = 0; i < 3; i++) {
+              pids[i] = fork();
+              if (pids[i] == -1) {
+                  return 2;
+              }
+              if (pids[i] == 0) {
+                  _exit(0);
+              }
+          }
+          for (i = 0; i < 3; i++) {
+              if (waitid(P_PID, (id_t)pids[i], &info, WEXITED | WNOWAIT) == -1) {
+                  return 2;
+              }
+          }
+          count = reap_children();
+          check(count == 3, "reap_children returns 3");
+          errno = 0;
+          rc = (int)waitpid(-1, NULL, WNOHANG);
+          check(rc == -1 && errno == ECHILD, "no children remain");
+          if (failures == 0) {
+              puts("all reap tests passed");
+          } else {
+              printf("%d reap tests failed\n", failures);
+          }
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 reap.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 reap.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      reaped 1 child
+    expect_exit: 0
+  hints:
+  - A positive waitpid return is a reaped PID; zero means no child is ready.
+  - Use -1 as the PID argument so the loop reaps any child, and WNOHANG so it never blocks.
+  - Save errno before the loop, count positive returns, restore errno, and return the count.
+  lang: c
+- id: lab3
+  title: Build an IPv6 Datagram Destination
+  instruction_md: |-
+    ### What You Are Building
+    You are filling out a destination label for an IPv6 datagram: set the
+    address family, convert the port to network byte order, and turn the text
+    IP address into the 16-byte binary form `sendto` needs.
+
+    ## Goal
+
+    Prepare the address structure a datagram talker passes to `sendto()` . This lab focuses on the IPv6
+    family, network-order port, and binary address conversion.
+
+    ## What you must implement
+
+    Complete `fill_ipv6_destination()` in `datagram.c` :
+
+    1. Reject a NULL `addr` , `ip` , or `port` with `-1` . 2. Clear the whole `struct sockaddr_in6` with
+    `memset` . 3. Set `sin6_family` to `AF_INET6` . 4. Convert the decimal port string with `atoi` ,
+    cast to `uint16_t` , and store it with `htons()` . 5. Parse `ip` with
+    `inet_pton(AF_INET6, ip, &addr->sin6_addr)` . 6. Return `0` on success and `-1` if the address does
+    not parse.
+
+    `datagram.h` , `main.c` , and `test_runner.c` are complete. Do not edit them.
+
+    ## Why the family and byte order matter
+
+    An IPv6 datagram destination must be tagged `AF_INET6` so the kernel interprets the 16-byte address
+    correctly. The port field is stored in network byte order, so `htons()` is required even though the
+    address bytes from `inet_pton()` are already in network order.
+
+    ## Verify
+
+    - `t` (test) fails first because the starter returns `-1` . - After implementing the function, every
+    assertion must PASS. - `r` (run) prints the family, port, and canonical address text.
+  files:
+  - path: datagram.h
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #ifndef DATAGRAM_H
+      #define DATAGRAM_H
+
+      #include <netinet/in.h>
+
+      /* Fill an IPv6 destination for sendto():
+       * clear the structure, set AF_INET6, parse port as a decimal string,
+       * and parse ip with inet_pton(). Return 0 on success, -1 on bad input. */
+      int fill_ipv6_destination(struct sockaddr_in6 *addr,
+                                const char *ip, const char *port);
+
+      #endif
+  - path: datagram.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include "datagram.h"
+
+      int fill_ipv6_destination(struct sockaddr_in6 *addr,
+                                const char *ip, const char *port)
+      {
+          (void)addr;
+          (void)ip;
+          (void)port;
+          /* TODO: clear the structure, set AF_INET6, convert the port with
+           * htons(), and parse the address with inet_pton(). */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <arpa/inet.h>
+      #include "datagram.h"
+
+      int main(void)
+      {
+          struct sockaddr_in6 addr;
+          char text[INET6_ADDRSTRLEN];
+
+          if (fill_ipv6_destination(&addr, "2001:db8::1", "4950") != 0) {
+              return 1;
+          }
+          if (inet_ntop(AF_INET6, &addr.sin6_addr, text, sizeof text) == NULL) {
+              return 1;
+          }
+          printf("family: IPv6\n");
+          printf("port: %d\n", ntohs(addr.sin6_port));
+          printf("address: %s\n", text);
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include "datagram.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      int main(void)
+      {
+          struct sockaddr_in6 addr;
+          struct in6_addr expected;
+
+          check(fill_ipv6_destination(&addr, "2001:db8::1", "4950") == 0,
+                "valid address and port are accepted");
+          check(addr.sin6_family == AF_INET6, "family is AF_INET6");
+          check(ntohs(addr.sin6_port) == 4950, "port is 4950");
+          check(inet_pton(AF_INET6, "2001:db8::1", &expected) == 1,
+                "expected address parses");
+          check(memcmp(&addr.sin6_addr, &expected, sizeof expected) == 0,
+                "address bytes match");
+          check(fill_ipv6_destination(&addr, "not-an-address", "4950") == -1,
+                "bad address is rejected");
+          check(fill_ipv6_destination(NULL, "2001:db8::1", "4950") == -1,
+                "NULL destination is rejected");
+          if (failures == 0) {
+              puts("all datagram tests passed");
+          } else {
+              printf("%d datagram tests failed\n", failures);
+          }
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 datagram.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 datagram.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      family: IPv6
+      port: 4950
+      address: 2001:db8::1
+    expect_exit: 0
+  hints:
+  - Clear the whole structure before assigning fields so padding and unused fields are zero.
+  - The port is a decimal string; convert it, cast to uint16_t, then apply htons().
+  - inet_pton() returns 1 on success, so reject any other return value.
+  lang: c

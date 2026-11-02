@@ -1,0 +1,148 @@
+test:
+  gates:
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    min_quiz: 70
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    min_quiz: 80
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    min_quiz: 85
+  final_checks:
+  - kind: order
+    q: Order the 7 correct lines of the complete fork-per-connection server path; one line is a distractor.
+    lines:
+    - shape server hints and call getaddrinfo
+    - create a socket, set reuse, and bind
+    - call listen with a backlog
+    - accept one pending client
+    - fork a child process
+    - parent closes new_fd and loops back
+    - child closes sockfd and serves new_fd
+    - parent uses new_fd for the conversation
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    distractor_why:
+      parent uses new_fd for the conversation: The child owns the accepted connection; the parent closes
+        its copy and returns to accept.
+    why: |-
+      The server resolves the local service, creates and binds a socket, listens, accepts, forks, and
+      splits descriptor ownership. Using new_fd in the parent confuses the two roles. (b2, b3)
+    concept: final-server-path
+  - kind: choose-better
+    q: A datagram service must exchange several messages with one peer. Which design is better?
+    choices:
+    - connect the UDP socket once, then send and recv
+    - call sendto and recvfrom for every message
+    - call listen and accept before each message
+    answer: 0
+    why: |-
+      A connected datagram socket fixes the peer once and simplifies repeated sends and receives.
+      Repeating sendto works but is noisier, and listen/accept do not apply to UDP. (b9)
+    concept: final-connected-design
+  - kind: spot-bug
+    q: The parent uses new_fd after fork and the listener stalls. Which line is the defect?
+    code: |
+      new_fd = accept(sockfd, NULL, NULL);
+      pid = fork();
+      if (pid == 0) {
+          close(sockfd);
+          serve(new_fd);
+          _exit(0);
+      }
+      recv(new_fd, buf, sizeof buf, 0);
+    diagnostic_log: |
+      parent: recv blocks forever
+      parent: listening queue stops growing
+      child: served one connection
+    target_line: 7
+    choices:
+    - 'Line 7: parent keeps new_fd open and blocks'
+    - 'Line 4: child closes the listener'
+    - 'Line 5: child serves new_fd'
+    - 'Line 1: accept returns a descriptor'
+    answer: 0
+    why: |-
+      The parent should close new_fd and return to accept after fork. Blocking in recv on the child's
+      connection stops the listener and retains an unnecessary descriptor. (b3)
+    concept: final-parent-bug
+  - kind: trace
+    q: Trace the partial reap loop. What value belongs in the target cell for reaped?
+    code: |
+      int reaped = 0;
+      reaped += waitpid(-1, NULL, WNOHANG) > 0; /* 7 */
+      reaped += waitpid(-1, NULL, WNOHANG) > 0; /* 8 */
+      reaped += waitpid(-1, NULL, WNOHANG) > 0; /* 0 */
+    trace:
+      headers:
+      - Step
+      - waitpid return
+      - reaped
+      rows:
+      - step: 1
+        line: 2
+        cells:
+        - '1'
+        - '7'
+        - '1'
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '8'
+        - '2'
+      - step: 3
+        line: 4
+        cells:
+        - '3'
+        - '0'
+        - ???
+    target:
+      row: 2
+      col: 2
+    choices:
+    - the value 2 (unchanged)
+    - the value 3 (new child)
+    - the value 0 (reset)
+    - the value 8 (second PID)
+    answer: 0
+    why: |-
+      The comparison `waitpid(...) > 0` is false for a zero return, so the final update adds 0 and reaped
+      stays 2. The values 7 and 8 were earlier child PIDs, and reaped is never reset. (b4)
+    concept: final-reap-trace
+  - kind: why-fails
+    q: |-
+      A connected UDP client calls sendto() with a second server address. Why does that not reach the
+      second server?
+    choices:
+    - the socket is connected to one peer address
+    - sendto is not allowed on datagram sockets
+    - the second server has no listening queue
+    answer: 0
+    why: |-
+      A connected datagram socket is fixed to its peer, so a different destination conflicts with that
+      state. sendto is a valid datagram call, and UDP servers do not use a listening queue. (b9)
+    concept: final-connected-limit

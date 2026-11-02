@@ -1,0 +1,15 @@
+meta:
+  book: bgnet
+  chapter_id: ch08
+  title: Slightly Advanced Techniques
+  source_ref: Ch.7 'Slightly Advanced Techniques' (Beej's Guide to Network Programming)
+  level: advanced
+  prereqs:
+  - ch07
+objectives:
+- Explain blocking versus non-blocking sockets and handle EAGAIN or EWOULDBLOCK portably
+- Monitor several descriptors with poll() by maintaining pollfd arrays and checking revents
+- Monitor several descriptors with select() by copying a master fd_set before each call
+- Send every byte with a sendall loop and reassemble length-prefixed packets from partial receives
+- Choose text, raw, or portable binary serialization and pack integers, floats, and struct fields
+- Enable IPv4 UDP broadcast with SO_BROADCAST and select a subnet or global broadcast address

@@ -1,5 +1,5 @@
 cards:
-  - front: "Which two IPC techniques are pull-based according to the chapter?"
+  - front: "Which two IPC techniques are pull-based, meaning messages sit in a shared user-space medium until a process fetches them?"
     back: "Shared memory and the filesystem (on disk or in memory); every other listed technique is push-based."
     concept: "pull-based-ipc-membership"
 

@@ -1,13 +1,11 @@
-# single-concept study blocks for Chapter 20 — Socket Programming (ch23)
-# rewritten: book-faithful, verbatim examples only, ch22 interleaved refs
 blocks:
 - id: b1
   type: model
   title: Classify Socket Programming Inside the Push-Based IPC Family
   explain_md: |
-    The chapter opens with a **review** of socket programming, and the review is
+    This section opens with a **review** of socket programming, and the review is
     itself a load-bearing mental model — read it as the contract the rest of the
-    chapter builds on.
+    material builds on.
 
     **Where sockets sit in the IPC taxonomy.** There are two categories of IPC
     techniques: **pull-based** techniques demand an accessible medium (a shared
@@ -21,7 +19,7 @@ blocks:
     **The blocking note.** Pushed data always arrives in a buffer *inside the
     kernel*, reachable through a descriptor. The receiver can either **block**
     until new data appears on that descriptor or **poll** it without blocking;
-    the chapter fixes one setting: *in this chapter all push-based techniques
+    the design fixes one setting: *in this design all push-based techniques
     use the blocking approach*.
 
     **What makes socket programming special among push techniques.** Sockets
@@ -64,7 +62,7 @@ blocks:
     kind: ascii-memory
     steps:
     - 'TAXONOMY: IPC techniques split into pull-based (needs a medium) and push-based (needs a channel) - sockets are push-based'
-    - 'BLOCKING RULE: pushed bytes land in a kernel buffer behind a descriptor; this chapter uses blocking I/O only (no polling)'
+    - 'BLOCKING RULE: pushed bytes land in a kernel buffer behind a descriptor; this design uses blocking I/O only (no polling)'
     - 'SD vs FD: file descriptor = medium (file) OR channel (pipe); socket descriptor = ALWAYS a channel -> seek-style file ops do not apply'
     - 'CHANNELS: connection-oriented => stream channel <=> stream socket; connection-less => datagram channel <=> datagram socket'
     - 'VARIETIES MATRIX: (UDS | network) x (stream | datagram) = 4 kinds the calculator project must all support'
@@ -72,53 +70,48 @@ blocks:
   checks:
   - kind: why-fails
     level: intro
-    q: The calculator client pushes a request over its channel, but the calculator server process is not up yet,
-      so the request never arrives. Why does the same request written into a shared regular file survive this scenario?
+    q: The calculator client pushes a request over its channel, but the calculator server process is not up yet, so the request never arrives. Why does the same request written into a shared regular file survive this scenario?
     choices:
     - Push-based delivery only works when the receiver is a child of the sender, and the server was spawned independently
-    - Push-based messages are handed to the receiver through a kernel buffer that belongs to the receiving process while
-      it runs; a receiver that is down at delivery time forfeits the message
+    - Push-based messages are handed to the receiver through a kernel buffer that belongs to the receiving process while it runs; a receiver that is down at delivery time forfeits the message
     - Files push messages too, but regular files queue them with a higher priority, so kernels never drop them
     - The channel destroyed itself after the push timeout, and files have no push timeout to expire
     answer: 1
     why: |
       Push-based techniques deliver messages to the receiver end automatically,
       which requires the receiver to exist: its kernel-side buffer is where the
-      pushed message lands. The chapter states the consequence directly — in
+      pushed message lands. The consequence is direct: in
       push-based IPC the receiver must be up and running at delivery time, and
       if it is down the incoming message may be lost. Pull-based media (file,
       shared memory) keep the stored bytes regardless, so a late-starting
       reader still finds the request waiting in the medium.
       Options A, C, and D invent existence, priority, and timeout rules the
-      chapter never states.
+      no rule states.
     concept: push-delivery-needs-live-receiver
   - kind: eipe
     level: intro
-    q: In one sentence, what property of sockets separates them from the other push-based IPC techniques of the
-      previous chapter (signals, pipes, message queues)?
+    q: In one sentence, what property of sockets separates them from other push-based IPC techniques such as signals, pipes, and message queues?
     choices:
-    - A single socket object represents a two-way channel, so one object serves both reading and writing on the same
-      channel
+    - A single socket object represents a two-way channel, so one object serves both reading and writing on the same channel
     - Sockets move data without a kernel buffer, using memory that both processes share directly
     - Sockets never block, which lets processes exchange messages while continuing to run
     - Sockets guarantee delivery even when the receiving process has already exited
     answer: 0
     why: |
-      The chapter's defining sentence is that sockets are special objects that
+      The defining rule is that sockets are special objects that
       represent two-way channels: a single socket object can be used to both
       read from and write to the same channel, giving the two processes at its
       two ends two-way communication. Signals, pipes, and message queues from
-      the previous chapter need two objects (or two channel instances,
+      the earlier discussion need two objects (or two channel instances,
       bidirectional communication = two instances) to talk both ways.
       Options B, C, and D contradict the kernel-buffer, blocking, and
       delivery-fate rules of push-based IPC.
     concept: socket-object-two-way-channel
   - kind: mcq
     level: core
-    q: Which statement about socket descriptors (SDs) versus file descriptors (FDs) matches the chapter's review?
+    q: Which statement about socket descriptors (SDs) versus file descriptors (FDs) is correct?
     choices:
-    - An FD can stand for a medium (a regular file) or for a channel (a POSIX pipe), while a socket descriptor always
-      stands for a channel
+    - An FD can stand for a medium (a regular file) or for a channel (a POSIX pipe), while a socket descriptor always stands for a channel
     - A socket descriptor can be re-pointed at a regular file with dup2, because the two kinds are interchangeable
     - Seek-type file operations work on socket descriptors but not on file descriptors tied to pipes
     - FDs and SDs are different objects, so read() and write() must be called with different signatures on each
@@ -132,7 +125,7 @@ blocks:
       supported for socket descriptors — and this is also true for a file
       descriptor when it represents a channel. Option B invents re-pointing;
       option C reverses the real rule; option D is contradicted by the shared
-      I/O API the same chapter relies on.
+      I/O API the shared I/O API.
     concept: sd-versus-fd-reach
   - kind: trace
     level: core
@@ -172,7 +165,7 @@ blocks:
     - The same as the network variety, TCP, since transport naming follows the channel kind rather than the family
     answer: 1
     why: |
-      The chapter states that a network stream socket is usually a TCP socket
+      This section states that a network stream socket is usually a TCP socket
       and a network datagram socket is usually a UDP socket, because most of
       the time those transports sit underneath. UDS sockets offering stream or
       datagram channels have no specific names at all — there is no underlying
@@ -182,14 +175,13 @@ blocks:
     concept: four-variety-naming-matrix
   - kind: choose-better
     level: core
-    q: The calculator client and server will both run on one Linux host over which you also have SSH access for
-      remote testing. Which socket variety should the deployment prefer, and why does the chapter rank it this way?
+    q: The calculator client and server will both run on one Linux host; SSH access exists for remote testing, but no client crosses the host boundary. Which socket variety should the deployment prefer, and why?
     choices:
     - |
       /* network (TCP) sockets - uniformly usable, so pick them even for one host */
       int sd = socket(AF_INET, SOCK_STREAM, 0);
     - |
-      /* UDS - all processes on one machine, so the chapter prefers it: faster, less overhead */
+      /* UDS - all processes on one machine, so this section prefers it: faster, less overhead */
       int sd = socket(AF_UNIX, SOCK_STREAM, 0);
     answer: 1
     why: |
@@ -201,17 +193,16 @@ blocks:
       Option A wastes the single-host advantage; the port/address machinery of
       network sockets buys nothing for two processes on one host.
     concept: single-host-prefers-uds
-
 - id: b2
   type: design
   title: Architect the Calculator Project Hierarchy and Reusable Libraries
   explain_md: |
-    The chapter deliberately runs sockets through a **real client-server
+    This material deliberately runs sockets through a **real client-server
     project** — the calculator — and the section exists because "it is a
     lengthy example" needing grounding: a firm grasp of the project's shape
     before any socket call is shown.
 
-    **Four project goals** the book states for the example:
+    **Four project goals** the design states for the example:
 
     - **Observe a fully functional example** with simple, well-defined
       functionalities.
@@ -248,7 +239,7 @@ blocks:
       counterparts: *unix_stream_calc_client*, *unix_datagram_calc_client*,
       *tcp_calc_client*, *udp_calc_client* under `/client/...`.
 
-    **Build and run** (Shell Boxes 20-2..20-4): `mkdir -p build; cd build;
+    **Build and run:** `mkdir -p build; cd build;
     cmake ..; make`. Bring the server up in one terminal and the client in
     another. The stream client shows its command line:
 
@@ -263,25 +254,57 @@ blocks:
     protocol, sends them, waits for the response, and prints the result.
   diagram:
     kind: flow
-    caption: "Calculator project: thin skins over shared cores"
+    caption: 'Calculator project: thin skins over shared cores'
     nodes:
-    - {id: SRVM, label: "4 server mains (skins)"}
-    - {id: CLIM, label: "4 client mains (skins)"}
-    - {id: SRVC, label: "libsrvcore.a (server core)"}
-    - {id: CLIC, label: "libclicore.a (client core)"}
-    - {id: CSER, label: "libcalcser.a (protocol)"}
-    - {id: SVC, label: "libcalcsvc.a (service)"}
+    - id: SRVM
+      label: 4 server mains (skins)
+    - id: CLIM
+      label: 4 client mains (skins)
+    - id: SRVC
+      label: libsrvcore.a (server core)
+    - id: CLIC
+      label: libclicore.a (client core)
+    - id: CSER
+      label: libcalcser.a (protocol)
+    - id: SVC
+      label: libcalcsvc.a (service)
     edges:
-    - {from: SRVM, to: SRVC}
-    - {from: CLIM, to: CLIC}
-    - {from: SRVC, to: CSER}
-    - {from: SRVC, to: SVC}
-    - {from: CLIC, to: CSER}
+    - from: SRVM
+      to: SRVC
+    - from: CLIM
+      to: CLIC
+    - from: SRVC
+      to: CSER
+    - from: SRVC
+      to: SVC
+    - from: CLIC
+      to: CSER
     steps:
-    - {focus: [SRVM, CLIM], note: "eight executables, but every main is a thin transport-specific skin (family, type, address)"}
-    - {focus: [SRVM, CLIM, SRVC, CLIC], note: "the machinery lives in common static libraries: server cores share libsrvcore.a, client cores libclicore.a"}
-    - {focus: [SRVM, CLIM, SRVC, CLIC, CSER], note: "both cores sit on the serializer - libcalcser.a dictates the application protocol between client and server"}
-    - {focus: [SRVM, CLIM, SRVC, CLIC, CSER, SVC], note: "libcalcsvc.a holds the standalone stateful calculation logic, different from the server process, linked by every server"}
+    - focus:
+      - SRVM
+      - CLIM
+      note: eight executables, but every main is a thin transport-specific skin (family, type, address)
+    - focus:
+      - SRVM
+      - CLIM
+      - SRVC
+      - CLIC
+      note: 'the machinery lives in common static libraries: server cores share libsrvcore.a, client cores libclicore.a'
+    - focus:
+      - SRVM
+      - CLIM
+      - SRVC
+      - CLIC
+      - CSER
+      note: both cores sit on the serializer - libcalcser.a dictates the application protocol between client and server
+    - focus:
+      - SRVM
+      - CLIM
+      - SRVC
+      - CLIC
+      - CSER
+      - SVC
+      note: libcalcsvc.a holds the standalone stateful calculation logic, different from the server process, linked by every server
   viz:
     kind: ascii-memory
     steps:
@@ -293,16 +316,15 @@ blocks:
   checks:
   - kind: mcq
     level: intro
-    q: Which pairing of directory and library, as the chapter describes the hierarchy, is correct?
+    q: The calculator source tree separates `calcser`, `calcsvc`, `srvcore`, and `clicore`. Which pairing of directory and library is correct?
     choices:
-    - "/calcser holds the serializer/deserializer sources; it builds into libcalcser.a and dictates the application
-      protocol used between client and server"
-    - "/calcsvc holds transport code for all four server skins; it builds into libsrvcore.a and links every server"
-    - "/server/srvcore contains the calculator's arithmetic engine; it builds into libcalcsvc.a and is socket-agnostic"
-    - "/client/clicore contains the client command-line parser only for UDS clients; TCP clients get their own copy"
+    - /calcser holds the serializer/deserializer sources; it builds into libcalcser.a and dictates the application protocol used between client and server
+    - /calcsvc holds transport code for all four server skins; it builds into libsrvcore.a and links every server
+    - /server/srvcore contains the calculator's arithmetic engine; it builds into libcalcsvc.a and is socket-agnostic
+    - /client/clicore contains the client command-line parser only for UDS clients; TCP clients get their own copy
     answer: 0
     why: |
-      The chapter's hierarchy maps /calcser to the serializer/deserializer
+      This section's hierarchy maps /calcser to the serializer/deserializer
       library, calls it the library that *dictates the application protocol*
       between the calculator client and server, and says it eventually builds
       into the static library file libcalcser.a. Option B misassigns the
@@ -313,18 +335,15 @@ blocks:
     concept: hierarchy-library-mapping
   - kind: why-fails
     level: intro
-    q: Two processes can be connected by a socket and can transmit data back and forth, yet the chapter says an
-      application protocol is still a "very important feature" that ordinary socket programming examples lack.
-      Why is the connection alone not enough for the calculator client and server to work?
+    q: Two processes can be connected by a socket and can transmit bytes back and forth, yet a well-defined application protocol is still required. Why is the connection alone not enough for the calculator client and server to work?
     choices:
     - Sockets transmit at most one message per process pair, so a protocol is needed to multiplex requests
-    - Being connected and transmitting data only means bytes can flow; without a well-defined application protocol
-      the two parties cannot understand each other
+    - Being connected and transmitting data only means bytes can flow; without a well-defined application protocol the two parties cannot understand each other
     - The kernel drops unprotocolled sockets after their first successful exchange by design
     - Application protocols exist to encrypt the byte stream; without one the transmission stays in plaintext
     answer: 1
     why: |
-      The book states it plainly: "without a well-defined application
+      The rule is plain: "without a well-defined application
       protocol, the two parties cannot communicate. They can be connected and
       transmit data because that's the functionality that the socket
       programming offers, but they cannot understand each other." Connecting
@@ -332,12 +351,11 @@ blocks:
       which ordinary examples skip because they show only simple, one-time
       communication scenarios.
       Options A, C, and D invent multiplexing, kernel eviction, and encryption
-      rules that the chapter never claims.
+      rules that no rule claims.
     concept: connection-without-protocol-failure
   - kind: predict
     level: intro
-    q: "You bring up the UDS stream server in terminal 1 and the UDS stream client in terminal 2. Reproduce the
-      client's console: what does the client print for the very first request 3++4?"
+    q: 'You bring up the UDS stream server in terminal 1 and the UDS stream client in terminal 2. Reproduce the client''s console: what does the client print for the very first request 3++4?'
     code: |
       ? (type quit to exit) 3++4
       <line A: the client announces the send>
@@ -357,7 +375,7 @@ blocks:
       req(1) > status: OK, result: 7.000000
     answer: 1
     why: |
-      Shell Box 20-4 shows the exact console: the first request is req(0)
+      The exact console is: the first request is req(0)
       (IDs start at zero), the client prints "The req(0) is sent.", and the
       reply line reads "req(0) > status: OK, result: 7.000000" — status OK
       plus the result formatted with six decimals (3 + 4 = 7).
@@ -368,10 +386,10 @@ blocks:
     level: core
     q: 'Arrange the steps of building and exercising the calculator project from a clean checkout:'
     lines:
-    - git clone <repo>, then cd into the ch20 example root
+    - git clone <repo>, then cd into the calculator project root
     - mkdir -p build, cd build, cmake .., make
-    - './server/unix/stream/unix_stream_calc_server (terminal 1)'
-    - './client/unix/stream/unix_stream_calc_client (terminal 2)'
+    - ./server/unix/stream/unix_stream_calc_server (terminal 1)
+    - ./client/unix/stream/unix_stream_calc_client (terminal 2)
     - '? (type quit to exit) 3++4 ... mem ... 5++4'
     - rm -rf build, cmake --fresh ..
     answer_order:
@@ -381,21 +399,17 @@ blocks:
     - 3
     - 4
     distractor_why:
-      rm -rf build, cmake --fresh ..: The denylisted clean-rebuild line is a distractor - the chapter's flow builds once
-        with cmake .. and make; nothing in the sequence re-cleans freshly cloned sources.
+      rm -rf build, cmake --fresh ..: The denylisted clean-rebuild line is a distractor - this section's flow builds once with cmake .. and make; nothing in the sequence re-cleans freshly cloned sources.
     why: |
       The build/run section walks exactly this order: clone and enter the
-      project (Shell Box 20-1 shows clone + tree), build with CMake — mkdir
-      -p build; cd build; cmake ..; make (Shell Box 20-2) — then run the
-      server first in one terminal (Shell Box 20-3), start the client in
-      another, and only then type requests, ending with quit (Shell Box
-      20-4). The server must be up before the client connects.
+      project, build with CMake — mkdir
+      -p build; cd build; cmake ..; make — then run the
+      server first in one terminal, start the client in
+      another, and only then type requests, ending with quit. The server must be up before the client connects.
     concept: build-run-sequence
   - kind: choose-better
     level: core
-    q: The chapter could have taught each socket variety with a throwaway demo program. Instead the calculator
-      project pulls common code into srvcore and clicore libraries. Which design does the book argue for, and what
-      does it say that buys?
+    q: Instead of writing a separate throwaway demo for each socket variety, the calculator project extracts common code into `srvcore` and `clicore`. Which design is intended, and what benefit does that extraction provide?
     choices:
     - |
       /* one throwaway main per socket type - each demo self-contained */
@@ -406,7 +420,7 @@ blocks:
       /* client/*,main.c call stream_client_loop()/datagram_client_loop() from libclicore */
     answer: 1
     why: |
-      The source-hierarchy section is explicit about the goal: "if you are
+      The project's goal is explicit: "if you are
       going to support various types of sockets, together with various types
       of channels, it is better to extract the common part and write it once"
       — that is the approach the calculator project takes. Writing the common
@@ -415,15 +429,14 @@ blocks:
       channels, which is exactly what libraries like libsrvcore.a and
       libclicore.a carry.
       Option A duplicates listener and connector logic four times and hides
-      exactly the common boundaries the chapter wants you to see.
+      exactly the common boundaries the design makes visible.
     concept: extract-common-parts-goal
-
 - id: b3
   type: syntax
   title: 'Speak the Calculator Protocol: Requests, Responses, and the # / $ Grammar'
   explain_md: |
     Any two processes that communicate must obey an **application protocol** —
-    custom, like the calculator's, or well-known like HTTP. The chapter calls
+    custom, like the calculator's, or well-known like HTTP. The protocol calls
     its protocol **the calculator protocol** and fixes three structural facts
     about it:
 
@@ -433,12 +446,12 @@ blocks:
     - It is **textual**: only alphanumerical characters plus a few other
       characters are valid — the messages are human-readable.
 
-    **Request message** (Code Box 20-1, `calcser/calc_proto_req.h`) — four
+    **Request message** (request header, `calcser/calc_proto_req.h`) — four
     fields: **request ID** (`id`, int32), **method** (`method_t`), and two
     operands (`operand1`, `operand2`, both double). Every request has a unique
     ID and **the server uses this ID to relate a response to its corresponding
     request**. The `method_t` enumeration lists the operations — a `NONE`
-    sentinel plus the nine methods the chapter counts: `GETMEM`, `RESMEM`,
+    sentinel plus the nine methods the protocol defines: `GETMEM`, `RESMEM`,
     `ADD`, `ADDM`, `SUB`, `SUBM`, `MUL`, `MULM`, `DIV`.
 
     **Memory methods.** The calculator keeps an internal memory, so addition,
@@ -451,15 +464,15 @@ blocks:
     internal memory — that is why it has no `DIVM` variant.
 
     To create a request with ID `1000`, method `ADD`, operands `1.5` and
-    `5.6`, the client fills a `calc_proto_req_t` object (Code Box 20-2). The
-    serializer then produces the wire message (Code Box 20-3):
+    `5.6`, the client fills a `calc_proto_req_t` object (request object). The
+    serializer then produces the wire message (request wire format):
 
         1000#ADD#1.5#5.6$
 
     The **`#` character is the field delimiter** and the **`$` character is
     the message separator**; "each request message has exactly four fields".
 
-    **Response message** (Code Boxes 20-4..20-6) — three fields: `req_id`,
+    **Response message** — three fields: `req_id`,
     `status`, `result`. The response `req_id` names the request being
     answered. `status_t` is an int with the protocol's constants:
     `STATUS_OK 0`, `STATUS_INVALID_REQUEST 1`, `STATUS_INVALID_METHOD 2`,
@@ -471,14 +484,33 @@ blocks:
     lang: c
     adapted: false
     subgoals:
-    - label: "Include-guard and only standard dependency (<stdint.h>)"
-      lines: [1, 2, 3]
-    - label: "method_t enum: NONE sentinel plus the nine protocol methods"
-      lines: [5, 6, 7, 8, 9, 10, 11, 12]
-    - label: "Request object: four fields for id, method, operand1, operand2"
-      lines: [14, 15, 16, 17, 18, 19]
-    - label: "Name-string converters the serializer relies on"
-      lines: [21, 22]
+    - label: Include-guard and only standard dependency (<stdint.h>)
+      lines:
+      - 1
+      - 2
+      - 3
+    - label: 'method_t enum: NONE sentinel plus the nine protocol methods'
+      lines:
+      - 5
+      - 6
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+    - label: 'Request object: four fields for id, method, operand1, operand2'
+      lines:
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+    - label: Name-string converters the serializer relies on
+      lines:
+      - 21
+      - 22
     code: |
       #ifndef CALC_PROTO_REQ_H
       #define CALC_PROTO_REQ_H
@@ -504,6 +536,7 @@ blocks:
       const char* method_to_str(method_t);
 
       #endif
+    explain_md: '`calc_proto_req_t` is the request object: a 32-bit request id, a `method_t` enum, and two `double` operands. `str_to_method` and `method_to_str` translate between the enum and the wire names the serializer uses. Keeping the object separate from its serialized form lets the same request travel over any channel.'
   viz:
     kind: ascii-memory
     steps:
@@ -514,8 +547,7 @@ blocks:
   checks:
   - kind: predict
     level: intro
-    q: The client fills a request object with id 42, method SUB, operand1 9.5, operand2 4.0. Per Code Box 20-3's
-      grammar, what exactly does the client-side serializer put on the wire?
+    q: The request wire grammar is `<id>#<method>#<operand1>#<operand2>$`, where `#` separates fields and `$` ends the message. The client fills a request object with id 42, method SUB, operand1 9.5, operand2 4.0. What exact text does the client-side serializer put on the wire?
     code: |
       struct calc_proto_req_t req;
       req.id = 42;
@@ -524,13 +556,13 @@ blocks:
       req.operand2 = 4.0;
       /* client-side serialization -> ??? */
     choices:
-    - "42#SUB#9.5#4.0"
-    - "42#SUB#9.5#4.0$"
-    - "42#SUB#9.5#4.0#"
-    - "SUB#42#9.5#4.0$"
+    - 42#SUB#9.5#4.0
+    - 42#SUB#9.5#4.0$
+    - 42#SUB#9.5#4.0#
+    - SUB#42#9.5#4.0$
     answer: 1
     why: |
-      The request wire format from Code Box 20-3 is id, method, operand1,
+      The request wire format is id, method, operand1,
       operand2 joined by the field delimiter # and terminated by the message
       separator $. So 42 -> method string SUB -> 9.5 -> 4.0 with a trailing $
       gives exactly 42#SUB#9.5#4.0$. Option A forgets the separator, option C
@@ -546,7 +578,7 @@ blocks:
     - It names the transport (UDS, TCP, or UDP) the request must travel on
     answer: 1
     why: |
-      The chapter states: "Every request has a unique ID and the server uses
+      The rule is: "Every request has a unique ID and the server uses
       this ID to relate a response to its corresponding request." The
       response carries the same number back as its req_id field, so a client
       that fires several requests can attribute each reply. Option C confuses
@@ -557,19 +589,15 @@ blocks:
     level: core
     from_chapter: ch22
     from_block: b4
-    q: "The calculator protocol chooses '#' as the field delimiter and '$' as the message separator on a
-      textual, variable-length channel. Connecting this to the partitioning methods of the previous chapter: which
-      technique does the protocol use, and what constraint does its delimiter choice have to satisfy?"
+    q: The calculator protocol chooses `#` as the field delimiter and `$` as the message separator on a textual, variable-length channel. Which framing technique does it use, and what constraint must its delimiter choice satisfy?
     choices:
     - Length-prefix framing; the 4-byte prefix must count the '$' and '#' bytes so receivers read whole messages
     - Finite-state machine framing; '#' and '$' must both encode state transitions that the kernel verifies per packet
-    - Delimiter framing; the delimiter characters must be chosen wisely so they stay distinguishable from the actual
-      message content
+    - Delimiter framing; the delimiter characters must be chosen wisely so they stay distinguishable from the actual message content
     - Fixed-length struct overlay; as long as every message is 21 bytes, the receiver can map bytes onto a C struct
     answer: 2
     why: |
-      Chapter 19's partitioning methods list delimiter/separator, length
-      prefix, and FSM framing, and warn that the delimiter "must be chosen
+      The three framing methods are delimiter/separator, length prefix, and FSM framing; the delimiter "must be chosen
       depending on the content, so that it is easily distinguishable from the
       actual content". The calculator protocol is exactly the delimiter
       method - '#' splits fields within a message and '$' separates whole
@@ -577,8 +605,7 @@ blocks:
       never contain '#' or '$', or the deserializer would cut in the wrong
       place. Options A, B, and D attach the protocol to the other framing
       methods it does not use.
-      (From Chapter 19, block b4: Frame Variable-Length Messages with
-      Partitioning Methods - review that block before answering.)
+      The three framing methods are delimiter, length prefix, and FSM framing.
     concept: delimiter-choice-content-constraint
   - kind: fillblank
     level: core
@@ -591,7 +618,7 @@ blocks:
       #define STATUS_INVALID_OPERAND 3
       #define STATUS_DIV_BY_ZERO ____
       #define STATUS_INTERNAL_ERROR 20
-    answer_text: "4"
+    answer_text: '4'
     why: |
       The response header defines STATUS_DIV_BY_ZERO as 4. When the calculator
       service sees a division by zero, the server replies with this status so
@@ -601,31 +628,30 @@ blocks:
     concept: status-div-by-zero-constant
   - kind: trace
     level: core
-    q: "Fill the wire-grammar trace: for each request the server receives, which response status travels back,
-      and how does that appear on the wire?"
+    q: 'Fill the wire-grammar trace: for each request the server receives, which response status travels back, and how does that appear on the wire?'
     trace:
       headers:
       - Incoming request
       - Status constant
       - Serialized status field
       rows:
-      - - "1000#ADD#1.5#5.6$"
+      - - 1000#ADD#1.5#5.6$
         - STATUS_OK
         - ???
-      - - "1001#DIV#10.0#0.0$"
+      - - 1001#DIV#10.0#0.0$
         - STATUS_DIV_BY_ZERO
         - ???
-      - - "1002#FOO#1.0#2.0$"
+      - - 1002#FOO#1.0#2.0$
         - STATUS_INVALID_METHOD
         - ???
     target:
       row: 2
       col: 2
     choices:
-    - "2"
-    - "20"
-    - "0"
-    - "3"
+    - '2'
+    - '20'
+    - '0'
+    - '3'
     answer: 0
     why: |
       Statuses leave the serializer as their numeric values: OK serializes to
@@ -640,7 +666,7 @@ blocks:
     concept: status-wire-trace
   - kind: order
     level: core
-    q: 'Arrange the lines into the request data flow of one calculator transaction, per the protocol chapter:'
+    q: 'Arrange the lines into the request data flow of one calculator transaction, from the client''s request object to the client reading the response fields:'
     lines:
     - client fills struct calc_proto_req_t (id, method, operand1, operand2)
     - serializer emits id#method#op1#op2$
@@ -655,9 +681,7 @@ blocks:
     - 3
     - 4
     distractor_why:
-      the client prints the raw ASCII bytes of its request struct to the terminal: Distractor - the client prints the
-        serialized MESSAGE it composed per the protocol, never the raw fields of the C struct; that would leak no '$'
-        separator and no field delimiters.
+      the client prints the raw ASCII bytes of its request struct to the terminal: Distractor - the client prints the serialized MESSAGE it composed per the protocol, never the raw fields of the C struct; that would leak no '$' separator and no field delimiters.
     why: |
       The protocol defines both message shapes so a serializer on one side and
       a deserializer on the other can talk: the request object's four fields
@@ -669,18 +693,15 @@ blocks:
     concept: transaction-field-flow-order
   - kind: mcq
     level: advanced
-    q: Why does the method_t enumeration include GETMEM and RESMEM as protocol methods, while DIV deliberately has
-      no DIVM sibling?
+    q: Why does the method_t enumeration include GETMEM and RESMEM as protocol methods, while DIV deliberately has no DIVM sibling?
     choices:
     - GETMEM and RESMEM exist so the server can calibrate network latency, and DIV cannot run over datagram channels
-    - Memory operations let a client read and reset the calculator's internal memory, while division cannot be
-      performed on the internal memory, so it never gets a memory variant
-    - GETMEM and RESMEM are status-report debug methods, and DIV lacks a memory variant only because its result is
-      always fractional
+    - Memory operations let a client read and reset the calculator's internal memory, while division cannot be performed on the internal memory, so it never gets a memory variant
+    - GETMEM and RESMEM are status-report debug methods, and DIV lacks a memory variant only because its result is always fractional
     - They are placeholders reserved for future calculator protocols with more arithmetic methods
     answer: 1
     why: |
-      The chapter explains: the calculator has an internal memory, "we also
+      The calculator has an internal memory, "we also
       have a special method for reading and resetting the calculator's
       internal memory" (GETMEM/RESMEM serve that), and "the division method
       cannot be performed on the internal memory, so we don't have any other
@@ -689,14 +710,13 @@ blocks:
       Options A, C, and D invent calibration, debug-reporting, and
       placeholder rationales the protocol never defines.
     concept: memory-method-variant-rationale
-
 - id: b4
   type: algorithm
   title: 'Drive the Serializer Library: One Class, Two Sides, Four Functions'
   explain_md: |
     Serialization and deserialization live in their own library,
     `libcalcser.a`, wrapped in a single class with `calc_proto_ser_t` as its
-    attribute structure (Code Box 20-7, `calcser/calc_proto_ser.h`). The
+    attribute structure (serializer header, `calcser/calc_proto_ser.h`). The
     public API has four groups:
 
     1. **Lifecycle**: `calc_proto_ser_new()` / `calc_proto_ser_delete()`
@@ -711,7 +731,7 @@ blocks:
        into a `buffer_t` to send.
     3. **A pair for the client process**: `calc_proto_ser_client_serialize()`
        packs a request object; `calc_proto_ser_client_deserialize()` parses a
-       response message. The chapter's orientation rule: *on the client side
+       response message. The orientation rule: *on the client side
        we serialize requests and deserialize responses; on the server side we
        deserialize requests and serialize responses*.
     4. **Three callbacks**, registered with setters and called through
@@ -730,7 +750,7 @@ blocks:
     `ERROR_UNKNOWN 220`.
 
     **How deserialization really works** (the private functions stay in the
-    code base, as the book says they are beyond the book's scope): the
+    code base, as the design says they are beyond the scope): the
     deserializer keeps incoming bytes in its fixed-length **ring buffer** and
     hunts for **`$`, the message separator**. Whenever it finds a `$`, it
     calls the function pointer passed in — for the server that is
@@ -740,35 +760,98 @@ blocks:
     accumulate for the next chunk.
   diagram:
     kind: flow
-    caption: "One class, two sides: the request/response journey"
+    caption: 'One class, two sides: the request/response journey'
     nodes:
-    - {id: REQ, label: "request object", shape: io}
-    - {id: CSER, label: "client_serialize"}
-    - {id: W1, label: "bytes on the channel", shape: io}
-    - {id: SDES, label: "server_deserialize"}
-    - {id: RCB, label: "req_cb -> service"}
-    - {id: SRES, label: "response object", shape: io}
-    - {id: SSER, label: "server_serialize"}
-    - {id: W2, label: "bytes on the channel", shape: io}
-    - {id: CDES, label: "client_deserialize"}
-    - {id: CCB, label: "resp_cb", shape: io}
+    - id: REQ
+      label: request object
+      shape: io
+    - id: CSER
+      label: client_serialize
+    - id: W1
+      label: bytes on the channel
+      shape: io
+    - id: SDES
+      label: server_deserialize
+    - id: RCB
+      label: req_cb -> service
+    - id: SRES
+      label: response object
+      shape: io
+    - id: SSER
+      label: server_serialize
+    - id: W2
+      label: bytes on the channel
+      shape: io
+    - id: CDES
+      label: client_deserialize
+    - id: CCB
+      label: resp_cb
+      shape: io
     edges:
-    - {from: REQ, to: CSER}
-    - {from: CSER, to: W1, label: "buffer_t"}
-    - {from: W1, to: SDES}
-    - {from: SDES, to: RCB, label: "fires req_cb"}
-    - {from: RCB, to: SRES, label: "computed"}
-    - {from: SRES, to: SSER}
-    - {from: SSER, to: W2, label: "buffer_t"}
-    - {from: W2, to: CDES}
-    - {from: CDES, to: CCB, label: "fires resp_cb"}
+    - from: REQ
+      to: CSER
+    - from: CSER
+      to: W1
+      label: buffer_t
+    - from: W1
+      to: SDES
+    - from: SDES
+      to: RCB
+      label: fires req_cb
+    - from: RCB
+      to: SRES
+      label: computed
+    - from: SRES
+      to: SSER
+    - from: SSER
+      to: W2
+      label: buffer_t
+    - from: W2
+      to: CDES
+    - from: CDES
+      to: CCB
+      label: fires resp_cb
     steps:
-    - {focus: [REQ], note: "the client builds a request object per the # / $ grammar"}
-    - {focus: [REQ, CSER], note: "orientation rule: on the CLIENT side we serialize REQUESTS"}
-    - {focus: [REQ, CSER, W1], note: "the packed bytes travel in buffer_t{data, len} across the channel"}
-    - {focus: [REQ, CSER, W1, SDES, RCB], note: "on the SERVER side we deserialize requests; req_cb fires with the parsed request"}
-    - {focus: [REQ, CSER, W1, SDES, RCB, SRES, SSER], note: "the service computes; on the server side we serialize RESPONSES"}
-    - {focus: [REQ, CSER, W1, SDES, RCB, SRES, SSER, W2, CDES, CCB], note: "bytes cross back; on the client side we deserialize responses and resp_cb reports the result"}
+    - focus:
+      - REQ
+      note: 'the client builds a request object per the # / $ grammar'
+    - focus:
+      - REQ
+      - CSER
+      note: 'orientation rule: on the CLIENT side we serialize REQUESTS'
+    - focus:
+      - REQ
+      - CSER
+      - W1
+      note: the packed bytes travel in buffer_t{data, len} across the channel
+    - focus:
+      - REQ
+      - CSER
+      - W1
+      - SDES
+      - RCB
+      note: on the SERVER side we deserialize requests; req_cb fires with the parsed request
+    - focus:
+      - REQ
+      - CSER
+      - W1
+      - SDES
+      - RCB
+      - SRES
+      - SSER
+      note: the service computes; on the server side we serialize RESPONSES
+    - focus:
+      - REQ
+      - CSER
+      - W1
+      - SDES
+      - RCB
+      - SRES
+      - SSER
+      - W2
+      - CDES
+      - CCB
+      note: bytes cross back; on the client side we deserialize responses and resp_cb reports the result
   viz:
     kind: ascii-memory
     steps:
@@ -781,17 +864,15 @@ blocks:
   checks:
   - kind: mcq
     level: intro
-    q: Which pair of serializer functions does the server process need, per the chapter's client/server split?
+    q: Which pair of serializer functions does the server process need for incoming requests and outgoing responses?
     choices:
     - calc_proto_ser_client_serialize() and calc_proto_ser_client_deserialize()
-    - calc_proto_ser_server_deserialize() for incoming requests and calc_proto_ser_server_serialize() for outgoing
-      responses
-    - calc_proto_ser_server_serialize() for incoming requests and calc_proto_ser_server_deserialize() for outgoing
-      responses
+    - calc_proto_ser_server_deserialize() for incoming requests and calc_proto_ser_server_serialize() for outgoing responses
+    - calc_proto_ser_server_serialize() for incoming requests and calc_proto_ser_server_deserialize() for outgoing responses
     - Both sides call the same four functions in the same roles, because the library is symmetric
     answer: 1
     why: |
-      The API chapter is explicit: "on the client side, we serialize the
+      The API contract is explicit: "on the client side, we serialize the
       request object and we deserialize the response message. Meanwhile on
       the server side, we deserialize the request message and we serialize
       the response object." The server therefore needs the server_deserialize
@@ -802,8 +883,7 @@ blocks:
     concept: server-serializer-function-pair
   - kind: predict
     level: core
-    q: The server has already received "1000#ADD#1.5" plus "#5.6" with no '$' in sight. The next chunk arrives
-      carrying "5#200#SUB#9#3$". What do the deserializer and the caller see after this call?
+    q: The server has already received "1000#ADD#1.5" plus "#5.6" with no '$' in sight. The next chunk arrives carrying "5#200#SUB#9#3$". What do the deserializer and the caller see after this call?
     code: |
       /* chunk history fed to calc_proto_ser_server_deserialize():
          1) "1000#ADD#1.5"   2) "#5.6"       (ring buffer retains all)
@@ -830,8 +910,7 @@ blocks:
     level: core
     q: In one sentence, why does the error callback receive the request ID together with the error code?
     choices:
-    - The ID lets the receiver connect the failed deserialization to the specific request being handled and respond
-      appropriately, while error_code says what was wrong
+    - The ID lets the receiver connect the failed deserialization to the specific request being handled and respond appropriately, while error_code says what was wrong
     - The ID is the request's checksum, and error_code verifies it against the ring buffer's length
     - The ID selects which thread should receive the error; error_code throttles retransmissions
     - The ID numbers the error types; error_code numbers the request that may retry
@@ -843,27 +922,25 @@ blocks:
       invalid request or invalid operand codes - has to be attributed to the
       message that failed it. Carrying req_id alongside error_code keeps the
       error traceable to a concrete exchange without inventing new callback
-      shapes. Options B, C, and D invent roles no declaration or chapter
-      passage supports.
+      shapes. Options B, C, and D invent roles no declaration supports.
     concept: error-callback-carries-req-id
   - kind: trace
     level: core
-    q: Trace the ring buffer across three feedings. In the target cell, state the buffer's conclusion after the
-      third chunk.
+    q: Trace the ring buffer across three feedings. In the target cell, state the buffer's conclusion after the third chunk.
     trace:
       headers:
       - Chunk fed
-      - "'$' seen yet?"
+      - '''$'' seen yet?'
       - Deserializer conclusion
       rows:
-      - - "\"1000#ADD\""
-        - no
+      - - '"1000#ADD"'
+        - false
         - bytes retained, no request yet
-      - - "\"#1.5#5.6\""
-        - no
+      - - '"#1.5#5.6"'
+        - false
         - buffer holds 1000#ADD#1.5#5.6, still waiting
-      - - "\"$\""
-        - yes
+      - - '"$"'
+        - true
         - ???
     target:
       row: 2
@@ -871,14 +948,13 @@ blocks:
     choices:
     - the buffer empties and the parser reports req not found for the third time
     - the parser scans for '#' next and stops, since a message separator alone carries no fields
-    - the parser extracts the frame 1000#ADD#1.5#5.6, splits fields on '#', revives the request object, and notifies
-      the registered observer
+    - the parser extracts the frame 1000#ADD#1.5#5.6, splits fields on '#', revives the request object, and notifies the registered observer
     - the parser wraps the message and injects a synthetic request ID 0 because the frame arrived without an ID
     answer: 2
     why: |
-      Code Box 20-9's server_deserialize delegates to the private
+      server_deserialize delegates to the private
       _deserialize machinery with _parse_req_and_notify as the parse function.
-      The chapter describes that machine: the ring buffer "tries to find $ as
+      The deserializer works like this: the ring buffer "tries to find $ as
       the message separator", and whenever it finds one, "it calls the
       function pointer ... The _parse_req_and_notify function tries to
       extract the fields and resurrect the request object. Then, it notifies
@@ -888,18 +964,16 @@ blocks:
     concept: ring-buffer-dollar-hit-consequence
   - kind: why-fails
     level: advanced
-    q: A teammate wants to parse each incoming chunk immediately, splitting every '#' he sees into fields the moment
-      a chunk arrives. Why does the chapter's ring-buffer-then-'$'-only machinery reject that instinct?
+    q: A teammate wants to parse each incoming chunk immediately, splitting every `#` into fields the moment a chunk arrives. Why does the ring-buffer design wait for the `$` terminator before reviving a request object?
     choices:
-    - Fields are only meaningful once a whole terminated message exists; a chunk can end in the middle of any field,
-      so early parsing would revive garbage and notify the observer with a half-built request
+    - Fields are only meaningful once a whole terminated message exists; a chunk can end in the middle of any field, so early parsing would revive garbage and notify the observer with a half-built request
     - The ring buffer hashes every chunk; splitting before the hash is computed desynchronizes the checksum
     - Immediate parsing would bypass the deserializer's thread pool, and POSIX callbacks require it
     - Splitting on '#' is reserved for the response path only; request paths must wait for the server's next write
     answer: 0
     why: |
       The deserializer's whole design exists because message length varies and
-      delivery arrives in chunks of arbitrary size. The book says the
+      delivery arrives in chunks of arbitrary size. The project says the
       deserializer "uses a ring buffer with a fixed length and tries to find $
       as the message separator" and only then resurrects an object and
       notifies. Parsing before a '$' means the bytes in hand may be a torn
@@ -907,7 +981,7 @@ blocks:
       revived from them would be a half-built duplicate that could fire the
       request callback with wrong fields.
       Options B, C, and D invent checksums, thread pools, and asymmetries the
-      chapter never mentions.
+      no rule mentions.
     concept: deferred-parse-until-terminator
   - kind: order
     level: advanced
@@ -941,17 +1015,16 @@ blocks:
     q: What is the ring_buffer_size argument to calc_proto_ser_ctor for?
     choices:
     - It sets how many requests may sit unaccepted in the server's listen backlog
-    - It sizes the fixed-length accumulator the deserializer uses to hold incoming bytes until a '$' terminator
-      shows up
+    - It sizes the fixed-length accumulator the deserializer uses to hold incoming bytes until a '$' terminator shows up
     - It caps how many responses the error callback may queue before failing hard
     - It chooses the serializer's precision when printing double operands on the wire
     answer: 1
     why: |
-      The API section says the deserializer "uses a ring buffer with a fixed
+      The constructor contract says the deserializer "uses a ring buffer with a fixed
       length" and the constructor signature is calc_proto_ser_ctor(ser,
-      owner_obj, ring_buffer_size). The chapter adds two concrete uses:
-      256 on the server side per Code Box 20-19 and 128 on the client side per
-      Code Box 20-22. The backlog is a listen() parameter and unrelated;
+      owner_obj, ring_buffer_size). Two concrete uses are:
+      256 on the server side per client_handler and 128 on the client side per
+      stream_client_loop. The backlog is a listen() parameter and unrelated;
       callbacks are registered after construction; double formatting is
       sprintf's job inside the serializer, throttled by no constructor size.
     concept: ring-size-ctor-role
@@ -961,7 +1034,7 @@ blocks:
   explain_md: |
     The third common part of the project is the **calculation service** — the
     core functionality of the calculator — declared in
-    `calcsvc/calc_service.h` (Code Box 20-12):
+    `calcsvc/calc_service.h` (service header):
 
     ```c
     static const int CALC_SVC_OK = 0;
@@ -976,7 +1049,7 @@ blocks:
     int calc_service_div(struct calc_service_t*, double, double, double*);
     ```
 
-    Two deliberate design facts follow (both book statements):
+    Two deliberate design facts follow (both design statements):
 
     - **Transport-blind and dependency-free.** "The input arguments are pure
       C types, and it is in no way dependent on IPC-related or
@@ -992,7 +1065,7 @@ blocks:
       unique for each client", so "for every client, we need to have a
       specific service object. These objects are known as **stateful**
       service objects." That is exactly why the stream server's handler
-      (Code Box 20-19) and the datagram loop (Code Box 20-25) each build a
+      (client_handler) and the datagram loop (serve_forever) each build a
       fresh service object alongside the fresh serializer.
 
     Note how the interface also shapes error reporting: `add`, `sub`, and
@@ -1004,21 +1077,48 @@ blocks:
     keeping service errors and wire statuses in separate namespaces.
   diagram:
     kind: flow
-    caption: "Stateless singleton or per-client service objects"
+    caption: Stateless singleton or per-client service objects
     nodes:
-    - {id: ST, label: "per-client state needed?", shape: decision}
-    - {id: SGL, label: "one singleton object", shape: io}
-    - {id: OBJ, label: "one object per client", shape: io}
-    - {id: MEM, label: "calculator memory", shape: io}
+    - id: ST
+      label: per-client state needed?
+      shape: decision
+    - id: SGL
+      label: one singleton object
+      shape: io
+    - id: OBJ
+      label: one object per client
+      shape: io
+    - id: MEM
+      label: calculator memory
+      shape: io
     edges:
-    - {from: ST, to: SGL, label: "stateless"}
-    - {from: ST, to: OBJ, label: "stateful"}
-    - {from: OBJ, to: MEM}
+    - from: ST
+      to: SGL
+      label: stateless
+    - from: ST
+      to: OBJ
+      label: stateful
+    - from: OBJ
+      to: MEM
     steps:
-    - {focus: [ST], note: "the interface carries the stateless-vs-stateful doctrine"}
-    - {focus: [ST, SGL], note: "no state to remember between a client's requests -> a singleton service object is enough"}
-    - {focus: [ST, SGL, OBJ], note: "the calculator remembers memory values per client -> a dedicated object for every client"}
-    - {focus: [ST, SGL, OBJ, MEM], note: "that is why the stream thread and the datagram loop each build a fresh calc_service_t; note div returns int + double* (its error channel), unlike add/sub/mul"}
+    - focus:
+      - ST
+      note: the interface carries the stateless-vs-stateful doctrine
+    - focus:
+      - ST
+      - SGL
+      note: no state to remember between a client's requests -> a singleton service object is enough
+    - focus:
+      - ST
+      - SGL
+      - OBJ
+      note: the calculator remembers memory values per client -> a dedicated object for every client
+    - focus:
+      - ST
+      - SGL
+      - OBJ
+      - MEM
+      note: that is why the stream thread and the datagram loop each build a fresh calc_service_t; note div returns int + double* (its error channel), unlike add/sub/mul
   viz:
     kind: ascii-memory
     steps:
@@ -1030,19 +1130,18 @@ blocks:
   checks:
   - kind: mcq
     level: intro
-    q: Which listing matches Code Box 20-12's service interface as the chapter presents it?
+    q: The service interface declares `calc_service_add`, `calc_service_sub`, and `calc_service_mul` as functions returning `double` with a final `bool_t mem` parameter, and `calc_service_div` as returning an `int` error code with a `double*` result parameter. Which declaration set matches that interface?
     choices:
-    - add/sub/mul return double and take a bool_t mem flag, while div returns an int error code and writes its result
-      through a double* parameter
+    - add/sub/mul return double and take a bool_t mem flag, while div returns an int error code and writes its result through a double* parameter
     - All four operations return int error codes, and the quotient travels inside a request callback
     - add/sub/mul take serializer objects so the service can serialize its own results
     - The service struct embeds a socket descriptor so servers avoid per-client contexts
     answer: 0
     why: |
-      Code Box 20-12 declares calc_service_add/sub/mul as double-returning
+      The service header declares calc_service_add/sub/mul as double-returning
       functions whose last argument is bool_t mem, while calc_service_div
       returns int and receives a double* for the result - the division
-      needs its own error channel. The chapter stresses the service "is in
+      needs its own error channel. The service is "is in
       no way dependent on IPC-related or serialization-related classes or
       types", killing option C, and nothing about socket descriptors
       appears in the interface, killing option D. Option B hides the
@@ -1050,13 +1149,10 @@ blocks:
     concept: service-interface-shape
   - kind: why-fails
     level: core
-    q: Why does calc_service_div return an int and hand the quotient out through a double* parameter, when its
-      sibling operations simply return double?
+    q: Why does calc_service_div return an int and hand the quotient out through a double* parameter, when its sibling operations simply return double?
     choices:
-    - Division is the only operation whose operator symbol differs in ASCII, so the interface marks it for the
-      deserializer
-    - Division can fail - the server needs a way to detect the failure (CALC_SVC_ERROR_DIV_BY_ZERO) while the double*
-      carries the quotient only when the call succeeded, so the server can answer with STATUS_DIV_BY_ZERO
+    - Division is the only operation whose operator symbol differs in ASCII, so the interface marks it for the deserializer
+    - Division can fail - the server needs a way to detect the failure (CALC_SVC_ERROR_DIV_BY_ZERO) while the double* carries the quotient only when the call succeeded, so the server can answer with STATUS_DIV_BY_ZERO
     - Returning double from div would leak kernel memory, so POSIX requires pointer-style outputs
     - The int return counts how many instructions the division took, letting the profiler measure hot paths
     answer: 1
@@ -1089,19 +1185,19 @@ blocks:
         - 5.0
         - 5.0 (ADDM folds the memory in and updates it)
       - - get_mem()
-        - "???"
+        - ???
         - unchanged by reads
     target:
       row: 3
       col: 1
     choices:
-    - "5.0, because the ADDM call stored the folded result into the calculator's internal memory"
-    - "0.0, because plain add calls zero the memory before every computation"
-    - "10.0, because get_mem re-executes the last ADDM with the operands cached"
-    - "2.0, because memory only tracks the first operand of memory-taking calls"
+    - 5.0, because the ADDM call stored the folded result into the calculator's internal memory
+    - 0.0, because plain add calls zero the memory before every computation
+    - 10.0, because get_mem re-executes the last ADDM with the operands cached
+    - 2.0, because memory only tracks the first operand of memory-taking calls
     answer: 0
     why: |
-      Code Box 20-12's doctrine: ADD "simply adds two float numbers" and
+      The service doctrine is: ADD "simply adds two float numbers" and
       leaves the internal memory untouched, while the ADDM variant "adds
       those two numbers together with the value stored in the internal
       memory, and finally it updates the value in the memory for further
@@ -1112,20 +1208,19 @@ blocks:
     concept: service-memory-call-trace
   - kind: choose-better
     level: core
-    q: Two clients A and B issue interleaved requests over one server. Which service-object design matches the
-      chapter's stateful doctrine for THIS calculator?
+    q: Two clients A and B issue interleaved requests over one server. The calculator keeps a separate accumulator for each client. Which service-object design matches that stateful contract?
     choices:
     - |
       /* one singleton service object shared by the handlers */
       svc = calc_service_new(); ctor(svc);
       /* handlers A and B call svc->add(...) directly */
     - |
-      /* one stateful service object per client, per Code Box 20-19 */
+      /* one stateful service object per client, per client_handler */
       client A: svc_A = calc_service_new(); ctor(svc_A);
       client B: svc_B = calc_service_new(); ctor(svc_B);
     answer: 1
     why: |
-      The chapter draws the line explicitly: services that need no context
+      The rule is explicit: services that need no context
       across requests "can use a singleton service object" (stateless), but
       when "handling the current request demands knowing something from the
       previous requests ... for every client, we need to have a specific
@@ -1133,18 +1228,16 @@ blocks:
       unique for each client" - these are the "stateful service objects".
       A singleton would let A's ADDM fold B's operands onto A's remembered
       memory. That is why client_handler constructs calc_service_new() +
-      ctor per accepted client (Code Box 20-19) and serve_forever does so
-      per datagram (Code Box 20-25).
+      ctor per accepted client (client_handler) and serve_forever does so
+      per datagram (serve_forever).
       Option A is exactly the contamination the doctrine rules out.
     concept: stateful-per-client-service-choice
   - kind: eipe
     level: core
-    q: In one sentence, why does the service expose add/sub/mul with a bool_t mem argument instead of separate plain
-      and memory-taking functions for each operation?
+    q: In one sentence, why does the service expose add/sub/mul with a bool_t mem argument instead of separate plain and memory-taking functions for each operation?
     choices:
     - To save network bytes, since boolean arguments compress better than function names on the wire
-    - One implementation serves both protocol variants - the method obtained from the request (ADD versus ADDM)
-      maps onto the same arithmetic with the flag deciding whether the internal memory folds into the operation
+    - One implementation serves both protocol variants - the method obtained from the request (ADD versus ADDM) maps onto the same arithmetic with the flag deciding whether the internal memory folds into the operation
     - Because C forbids declaring two functions with the same name and different arity
     - Because the serializer requires every method to have a boolean spare field for future protocols
     answer: 1
@@ -1152,7 +1245,7 @@ blocks:
       The protocol defines ADD and ADDM (likewise SUB/SUBM, MUL/MULM) as
       separate methods, while the service interface declares exactly one
       arithmetic function per operation with a bool_t mem parameter. The
-      mapping falls out of the book's semantics: a memory-less method
+      mapping falls out of the service semantics: a memory-less method
       "simply adds two float numbers", the memory variant performs the same
       arithmetic "together with the value stored in the internal memory" and
       updates it. Keeping one function with a flag keeps the standalone
@@ -1161,8 +1254,7 @@ blocks:
     concept: mem-flag-single-implementation
   - kind: predict
     level: core
-    q: The server's request callback receives a request with id 1000, method DIV, operands 14.0 and 2.0. Trace the
-      service call and the response's status field.
+    q: The server's request callback receives a request with id 1000, method DIV, operands 14.0 and 2.0. Trace the service call and the response's status field.
     code: |
       struct calc_proto_req_t req = {1000, DIV, 14.0, 2.0};
       double result;
@@ -1202,9 +1294,7 @@ blocks:
     - 3
     - 4
     distractor_why:
-      the serializer converts the result digits BEFORE the service touches the memory: Distractor - serialization
-        happens after the service call produces the result object; nothing converts digits until the response
-        exists, and the memory update is part of the service call itself.
+      the serializer converts the result digits BEFORE the service touches the memory: Distractor - serialization happens after the service call produces the result object; nothing converts digits until the response exists, and the memory update is part of the service call itself.
     why: |
       The data flow is: deserialized request -> per-client stateful service
       (the object whose memory belongs to THIS client) -> the memory-taking
@@ -1219,8 +1309,8 @@ blocks:
   explain_md: |
     A server **stands in the position of a listener**, so a calculator server
     that wants stream connections over a UDS follows the **stream listener
-    sequence** from the previous chapter. Four milestones appear in the
-    project's `main` (Code Boxes 20-13..20-17), and each maps to one system
+    sequence**. Four milestones appear in the
+    project's `main`, and each maps to one system
     call:
 
     1. **Create the socket object.**
@@ -1239,7 +1329,7 @@ blocks:
        share one file. Before binding, the project **unlinks any stale file**:
        `unlink(sock_file)`, "delete the previously created socket file if it
        exists".
-       *Path-length note from the book:* the path cannot exceed **104 bytes**
+       *Path-length note:* the path cannot exceed **104 bytes**
        on most Unix systems and **108 bytes on Linux**; because the path is a
        C string, `sun_path` always holds an extra null at the end, so
        **effectively 103 and 107 bytes** of path are usable.
@@ -1260,33 +1350,80 @@ blocks:
        listener socket is the default, so with no client in the backlog the
        thread *stays inside accept()*, blocked.
 
-    Error discipline in the book's code: every call is checked, and a
+    Error discipline in the code: every call is checked, and a
     failure closes `server_sd`, reports `strerror(errno)`, and exits the
     process.
   diagram:
     kind: flow
-    caption: "Stream-listener bring-up: bare socket object to per-client channels"
+    caption: 'Stream-listener bring-up: bare socket object to per-client channels'
     nodes:
-    - {id: SOCK, label: "socket(AF_UNIX, SOCK_STREAM, 0)", shape: io}
-    - {id: UNLK, label: "unlink(stale socket file)", shape: io}
-    - {id: BIND, label: "bind(server_sd, sockaddr_un)"}
-    - {id: LSTN, label: "listen(server_sd, 10)"}
-    - {id: ACC, label: "accept(server_sd) loop", shape: decision}
-    - {id: CLI, label: "client_sd per client"}
+    - id: SOCK
+      label: socket(AF_UNIX, SOCK_STREAM, 0)
+      shape: io
+    - id: UNLK
+      label: unlink(stale socket file)
+      shape: io
+    - id: BIND
+      label: bind(server_sd, sockaddr_un)
+    - id: LSTN
+      label: listen(server_sd, 10)
+    - id: ACC
+      label: accept(server_sd) loop
+      shape: decision
+    - id: CLI
+      label: client_sd per client
     edges:
-    - {from: SOCK, to: UNLK}
-    - {from: UNLK, to: BIND, label: "path free"}
-    - {from: BIND, to: LSTN, label: "exclusive bind"}
-    - {from: LSTN, to: ACC, label: "backlog 10"}
-    - {from: ACC, to: CLI, label: "queue non-empty"}
-    - {from: CLI, to: ACC, label: "again"}
+    - from: SOCK
+      to: UNLK
+    - from: UNLK
+      to: BIND
+      label: path free
+    - from: BIND
+      to: LSTN
+      label: exclusive bind
+    - from: LSTN
+      to: ACC
+      label: backlog 10
+    - from: ACC
+      to: CLI
+      label: queue non-empty
+    - from: CLI
+      to: ACC
+      label: again
     steps:
-    - {focus: [SOCK], note: "socket() creates a bare socket object - role still undetermined (client or server)"}
-    - {focus: [SOCK, UNLK], note: "unlink() deletes a stale socket file so bind() does not meet an occupied path"}
-    - {focus: [SOCK, UNLK, BIND], note: "bind() ties server_sd to the socket file; two sockets cannot share one file"}
-    - {focus: [SOCK, UNLK, BIND, LSTN], note: "listen() configures the backlog (10) - listener mode reached, not yet serving"}
-    - {focus: [SOCK, UNLK, BIND, LSTN, ACC], note: "accept() blocks while the backlog queue is empty"}
-    - {focus: [SOCK, UNLK, BIND, LSTN, ACC, CLI], note: "each success returns a NEW client_sd (own stream channel per client); the loop accepts again"}
+    - focus:
+      - SOCK
+      note: socket() creates a bare socket object - role still undetermined (client or server)
+    - focus:
+      - SOCK
+      - UNLK
+      note: unlink() deletes a stale socket file so bind() does not meet an occupied path
+    - focus:
+      - SOCK
+      - UNLK
+      - BIND
+      note: bind() ties server_sd to the socket file; two sockets cannot share one file
+    - focus:
+      - SOCK
+      - UNLK
+      - BIND
+      - LSTN
+      note: listen() configures the backlog (10) - listener mode reached, not yet serving
+    - focus:
+      - SOCK
+      - UNLK
+      - BIND
+      - LSTN
+      - ACC
+      note: accept() blocks while the backlog queue is empty
+    - focus:
+      - SOCK
+      - UNLK
+      - BIND
+      - LSTN
+      - ACC
+      - CLI
+      note: each success returns a NEW client_sd (own stream channel per client); the loop accepts again
   viz:
     kind: ascii-memory
     steps:
@@ -1301,14 +1438,13 @@ blocks:
     level: intro
     q: Right after socket(AF_UNIX, SOCK_STREAM, 0) succeeds, what does the server actually have?
     choices:
-    - A socket object whose role is still undetermined; only later calls decide whether it serves as client or
-      server socket
+    - A socket object whose role is still undetermined; only later calls decide whether it serves as client or server socket
     - A ready-to-accept server socket with a backlog already configured by the call
     - A connected channel with exactly one client, since AF_UNIX binds the peer implicitly
     - A file descriptor open on the filesystem, because AF_UNIX requests a file immediately
     answer: 0
     why: |
-      Code Box 20-13's lesson is stated outright: "Note that this is just a
+      The socket setup lesson is direct: "Note that this is just a
       socket object, and yet it is not determined whether this is going to be
       a client socket or a server socket. Only the subsequent function calls
       determine this." bind/listen/accept are what turn it into a listener;
@@ -1333,12 +1469,9 @@ blocks:
     - 3
     - 4
     distractor_why:
-      int client_sd = accept(sock_file, NULL, NULL);: Distractor - accept() takes the
-        server socket descriptor as its first argument, never a file path; the descriptor is what the kernel knows
-        the backlog through.
+      int client_sd = accept(sock_file, NULL, NULL);: Distractor - accept() takes the server socket descriptor as its first argument, never a file path; the descriptor is what the kernel knows the backlog through.
     why: |
-      The sequence matches Code Boxes 20-13 through 20-16 and the consolidated
-      main of Code Box 20-17: create the socket object, clear any stale socket
+      The sequence is: create the socket object, clear any stale socket
       file, prepare the sockaddr_un and bind, configure the backlog with
       listen, and only then loop on accept() to receive clients. The
       distractor passes a filesystem path where the kernel wants the bound
@@ -1348,19 +1481,16 @@ blocks:
     level: core
     from_chapter: ch22
     from_block: b20
-    q: "The calculator server binds /tmp/calc_svc.sock while a previous server instance is still running and then
-      calls listen() on it. Reading this against the stream listener sequence from the previous chapter: which part
-      of the sequence breaks, and what must hold at bind time?"
+    q: The calculator server calls `bind()` on `/tmp/calc_svc.sock` while a previous server instance is still running and then calls `listen()`. Which step fails first, and what must hold at bind time?
     choices:
     - listen() fails, because a listener socket may exist only once per process per address family
-    - The socket object creation succeeds, but the bind milestone breaks - bind can only succeed when no other socket
-      object is already bound to the same socket file
+    - The socket object creation succeeds, but the bind milestone breaks - bind can only succeed when no other socket object is already bound to the same socket file
     - accept() fails, because the backlog of a shared path is summed over both processes and overflows 10
     - Nothing breaks; two servers bound to one socket file share the backlog like twin listeners
     answer: 1
-    why: |
-      Chapter 19's stream listener sequence runs socket -> bind -> listen ->
-      accept loop, and the chapters section for UDS adds the exclusivity rule:
+    why: |+
+      The stream listener sequence runs socket -> bind -> listen ->
+      accept loop, and the UDS rule adds the exclusivity rule:
       "The bind function call succeeds only if there is no other socket
       object bound to the same socket file. Therefore, with UDS, two socket
       objects, probably being in different processes, cannot be bound to the
@@ -1368,16 +1498,14 @@ blocks:
       project's own error discipline closes the descriptor, prints
       strerror(errno), and exits.
       Options A, C, and D invent per-process limits and shared-backlog
-      behavior the chapters never state.
-      (From Chapter 19, block b20: Execute Listener-Connector Initialization
-      Sequences - review that block before answering.)
+      behavior the sections never state.
+
     concept: bind-exclusivity-across-processes
   - kind: trace
     level: core
-    q: Trace the file-descriptor and filesystem state of the stream server from process start to the first accepted
-      client. What belongs in the target cell?
+    q: Trace the file-descriptor and filesystem state of the stream server from process start to the first accepted client. What belongs in the target cell?
     code: |
-      /* main() of the UDS stream calculator server (Code Box 20-17) */
+      /* main() of the UDS stream calculator server */
       char sock_file[] = "/tmp/calc_svc.sock";
       int server_sd = socket(AF_UNIX, SOCK_STREAM, 0);  /* sd = 3 */
       unlink(sock_file);
@@ -1393,23 +1521,22 @@ blocks:
       rows:
       - - after socket()
         - (may hold a stale file until unlink)
-        - "server_sd = 3"
+        - server_sd = 3
       - - after unlink() + bind()
         - socket file created, tied to server_sd
-        - "server_sd = 3"
+        - server_sd = 3
       - - after listen(_, 10)
         - socket file in place, queue behind it
-        - "server_sd = 3, backlog 10"
+        - server_sd = 3, backlog 10
       - - first accept() returns
-        - "???"
-        - "server_sd = 3 + client_sd = 4/5"
+        - ???
+        - server_sd = 3 + client_sd = 4/5
     target:
       row: 3
       col: 1
     choices:
     - the socket file is deleted; accept consumes the file so clients can no longer connect
-    - the socket file is unchanged; accept() pops a pending connection from the backlog and returns a fresh socket
-      descriptor for that client, while server_sd keeps listening
+    - the socket file is unchanged; accept() pops a pending connection from the backlog and returns a fresh socket descriptor for that client, while server_sd keeps listening
     - socket file becomes a regular file, because accept() demotes the node after its first use
     - socket file gets overwritten by a symbolic link to the client's own path
     answer: 1
@@ -1418,14 +1545,13 @@ blocks:
       stays where bind() put it (clients still need it to connect), the
       backlog hands the listener one pending connection, and the kernel
       returns a NEW socket object whose descriptor is dedicated to the
-      accepted client, exactly as Code Boxes 20-16/20-18 state. The listener
+      accepted client, exactly as the UDS server setup and handler code do. The listener
       descriptor remains open and listening.
       Options A, C, and D invent consumption, demotion, and symlink behavior.
     concept: accept-milestone-descriptor-trace
   - kind: fillblank
     level: intro
-    q: "Complete the stream server's socket-creation call by filling the type attribute that requests a stream
-      channel."
+    q: Complete the stream server's socket-creation call by filling the type attribute that requests a stream channel.
     code: |
       int server_sd = socket(AF_UNIX, ____________, 0);
       if (server_sd == -1) {
@@ -1445,13 +1571,12 @@ blocks:
     q: In one sentence, what is a Linux abstract socket address good for in a UDS server?
     choices:
     - It caches the last accepted client so a restarted server resumes its backlog without listen()
-    - It names the socket inside the kernel with a null-prefixed string, useful mainly when no filesystem is
-      available to host a socket file
+    - It names the socket inside the kernel with a null-prefixed string, useful mainly when no filesystem is available to host a socket file
     - It hashes the socket file path so two servers may share one inode safely
     - It pins the socket file into memory, replacing unlink() maintenance entirely
     answer: 1
     why: |
-      The chapter's Linux note says UDS can be bound to abstract socket
+      The Linux note says UDS can be bound to abstract socket
       addresses, useful "mainly when there is no filesystem mounted to be used
       for having a socket file": a string starting with a null character
       initializes the address structure, and the name is bound to the socket
@@ -1463,19 +1588,15 @@ blocks:
     concept: abstract-socket-address-purpose
   - kind: predict
     level: advanced
-    q: A developer copies a 110-byte socket path into a sockaddr_un on Linux with
-      strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1). The book documents two sizes for sun_path. What
-      actually gets bound?
+    q: A developer copies a 110-byte socket path into `sockaddr_un.sun_path` on Linux with `strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1)`. Linux allows 108 bytes for `sun_path` including the terminating null; most Unix systems allow 104. What path actually gets bound?
     choices:
     - The full 110-byte path binds fine, because Linux truncates neither path nor terminator
-    - Only the first 107 usable path bytes reach sun_path (the 108-byte field holds a trailing null), so the address
-      bound is the truncated path - and the book's ceiling of 108 bytes on Linux (104 on most Unix) warns the
-      assignment is already out of contract
+    - Only the first 107 usable path bytes reach sun_path (the 108-byte field holds a trailing null), so the address bound is the truncated path - and the documented ceiling of 108 bytes on Linux (104 on most Unix) warns the assignment is already out of contract
     - strncpy refuses to copy and returns NULL, so bind never sees an address
     - The kernel grows sun_path dynamically to fit 110 bytes, since AF_UNIX paths are heap-backed
     answer: 1
     why: |
-      The book's note fixes the numbers: the socket file path cannot exceed
+      The path limits are: the socket file path cannot exceed
       104 bytes on most Unix systems and 108 on Linux, and because the string
       keeps an extra null character at the end, effectively 103 and 107 bytes
       of path are usable. With sizeof(addr.sun_path) - 1 the strncpy caps the
@@ -1484,16 +1605,15 @@ blocks:
       reverses strncpy semantics (it copies up to n bytes without
       terminating), and option D invents dynamic growth.
     concept: sun-path-effective-bytes
-
 - id: b7
   type: algorithm
   title: 'Run the Stream Server Core: thread-per-Client Machinery in srvcore'
   explain_md: |
-    The last milestones of `main` (Code Box 20-17) hand control to
+    The last milestones of `main` hand control to
     `accept_forever(server_sd)` — a function that lives in the **server
     common library** (`srvcore`, `stream_server_core.c`) because "its
     definition remains the same for other stream sockets such as TCP
-    sockets". Resting on Code Boxes 20-18..20-20, the machinery is:
+    sockets". The machinery is:
 
     ```c
     void accept_forever(int server_sd) {
@@ -1513,12 +1633,12 @@ blocks:
     - **Accept once, delegate immediately.** On every accepted client the
       loop **spawns a dedicated thread** (`client_handler`) that takes over
       that client: reading bytes from its channel, feeding the deserializer,
-      and producing responses. The chapter calls creating a new thread per
+      and producing responses. The protocol calls creating a new thread per
       client "usually the pattern for every server process that operates on a
       blocking stream channel, no matter what the type of socket is". (For
       non-blocking stream channels a different approach, the **event loop**,
       is typically used.)
-    - **Per-client context and teardown** (Code Box 20-19). `client_handler`
+    - **Per-client context and teardown** (client_handler). `client_handler`
       builds a `client_context_t`: the client's socket descriptor goes into
       `context.addr`, the serializer is created with
       `calc_proto_ser_new()` + `calc_proto_ser_ctor(context.ser, &context,
@@ -1535,7 +1655,7 @@ blocks:
       exactly as it is used with file descriptors — file descriptors and
       socket descriptors differ, "regarding I/O functions, we can use the
       same API" (the same holds for `write` and `close` further below).
-    - **Stream response writer** (Code Box 20-20). `stream_write_resp`
+    - **Stream response writer** (stream_write_resp). `stream_write_resp`
       serializes the response via the serializer, exits hard if
       `buf.len == 0`, then `write(context->addr->sd, buf.data, buf.len)` and
       frees the buffer. `ret == -1` aborts, and — load-bearing detail —
@@ -1544,32 +1664,86 @@ blocks:
       reported written.
   diagram:
     kind: flow
-    caption: "srvcore stream core: accept once, delegate per client"
+    caption: 'srvcore stream core: accept once, delegate per client'
     nodes:
-    - {id: ACC, label: "accept_forever(server_sd)", shape: decision}
-    - {id: THR, label: "pthread_create(handler)"}
-    - {id: CTX, label: "client_context_t"}
-    - {id: RDL, label: "read(sd, buffer, 128)", shape: decision}
-    - {id: DES, label: "deserialize bytes"}
-    - {id: CLN, label: "teardown context"}
-    - {id: REQ, label: "req_cb -> service"}
-    - {id: WRT, label: "stream_write_resp(sd)"}
+    - id: ACC
+      label: accept_forever(server_sd)
+      shape: decision
+    - id: THR
+      label: pthread_create(handler)
+    - id: CTX
+      label: client_context_t
+    - id: RDL
+      label: read(sd, buffer, 128)
+      shape: decision
+    - id: DES
+      label: deserialize bytes
+    - id: CLN
+      label: teardown context
+    - id: REQ
+      label: req_cb -> service
+    - id: WRT
+      label: stream_write_resp(sd)
     edges:
-    - {from: ACC, to: THR, label: "per client"}
-    - {from: THR, to: CTX}
-    - {from: CTX, to: RDL}
-    - {from: RDL, to: DES, label: "ret > 0"}
-    - {from: RDL, to: CLN, label: "ret 0 / -1"}
-    - {from: DES, to: REQ}
-    - {from: REQ, to: WRT}
-    - {from: WRT, to: RDL, label: "next chunk"}
+    - from: ACC
+      to: THR
+      label: per client
+    - from: THR
+      to: CTX
+    - from: CTX
+      to: RDL
+    - from: RDL
+      to: DES
+      label: ret > 0
+    - from: RDL
+      to: CLN
+      label: ret 0 / -1
+    - from: DES
+      to: REQ
+    - from: REQ
+      to: WRT
+    - from: WRT
+      to: RDL
+      label: next chunk
     steps:
-    - {focus: [ACC], note: "accept_forever lives in srvcore - its definition stays the same for TCP stream sockets"}
-    - {focus: [ACC, THR], note: "per accepted client the loop mallocs the sd and spawns a dedicated handler thread - the usual pattern for blocking stream channels"}
-    - {focus: [ACC, THR, CTX], note: "the handler builds its context: serializer (ring buffer 256) with request + error callbacks, and a dedicated stateful service object"}
-    - {focus: [ACC, THR, CTX, RDL], note: "then the read loop: read(context.addr->sd, buffer, 128)"}
-    - {focus: [ACC, THR, CTX, RDL, DES, CLN, REQ, WRT], note: "ret > 0: bytes feed the deserializer, req_cb runs the service, stream_write_resp writes the response back; ret 0 / -1: break and tear down"}
-    - {focus: [ACC, THR, CTX, RDL, DES, CLN, REQ, WRT], note: "after writing the response, the thread loops back to read the client's next chunk"}
+    - focus:
+      - ACC
+      note: accept_forever lives in srvcore - its definition stays the same for TCP stream sockets
+    - focus:
+      - ACC
+      - THR
+      note: per accepted client the loop mallocs the sd and spawns a dedicated handler thread - the usual pattern for blocking stream channels
+    - focus:
+      - ACC
+      - THR
+      - CTX
+      note: 'the handler builds its context: serializer (ring buffer 256) with request + error callbacks, and a dedicated stateful service object'
+    - focus:
+      - ACC
+      - THR
+      - CTX
+      - RDL
+      note: 'then the read loop: read(context.addr->sd, buffer, 128)'
+    - focus:
+      - ACC
+      - THR
+      - CTX
+      - RDL
+      - DES
+      - CLN
+      - REQ
+      - WRT
+      note: 'ret > 0: bytes feed the deserializer, req_cb runs the service, stream_write_resp writes the response back; ret 0 / -1: break and tear down'
+    - focus:
+      - ACC
+      - THR
+      - CTX
+      - RDL
+      - DES
+      - CLN
+      - REQ
+      - WRT
+      note: after writing the response, the thread loops back to read the client's next chunk
   viz:
     kind: ascii-memory
     steps:
@@ -1582,8 +1756,7 @@ blocks:
   checks:
   - kind: trace
     level: core
-    q: Trace ownership after two clients have been accepted by the calculator's UDS stream server. What belongs in
-      the target cell?
+    q: Trace ownership after two clients have been accepted by the calculator's UDS stream server. What belongs in the target cell?
     trace:
       headers:
       - Descriptor
@@ -1595,7 +1768,7 @@ blocks:
         - stays blocked in accept() for the next client
       - - client_sd A
         - handler thread A
-        - "???"
+        - ???
       - - client_sd B
         - handler thread B
         - same machinery, private ser (256) + service object
@@ -1604,8 +1777,7 @@ blocks:
       col: 2
     choices:
     - reads the channel for all clients, since one read loop serves every descriptor
-    - dedicated read() calls on its own sd, feeding that client's serializer, with responses written back on the
-      same sd
+    - dedicated read() calls on its own sd, feeding that client's serializer, with responses written back on the same sd
     - waits in accept() beside the main thread to accept the client's next connection
     - writes the shared response queue that a single reader thread drains
     answer: 1
@@ -1615,12 +1787,11 @@ blocks:
       feeds the per-client serializer; responses are written on the same
       descriptor through stream_write_resp. Server_sd never leaves the
       accept loop, and no descriptor is shared between handlers.
-      Options A, C, and D describe designs the book's code does not have.
+      Options A, C, and D describe designs the code does not have.
     concept: descriptor-ownership-thread-trace
   - kind: predict
     level: core
-    q: A calculator client closes its socket after one request. The handler thread is blocked in
-      read(context.addr->sd, buffer, 128). What happens next?
+    q: A calculator client closes its socket after one request. The handler thread is blocked in read(context.addr->sd, buffer, 128). What happens next?
     code: |
       while (1) {
         int ret = read(context.addr->sd, buffer, 128);
@@ -1634,13 +1805,12 @@ blocks:
       free(context.addr);
     choices:
     - read stays blocked forever, because a closed peer never wakes a reader
-    - read returns 0, the loop breaks, and the thread tears down that client's service object, serializer, and
-      address before returning
+    - read returns 0, the loop breaks, and the thread tears down that client's service object, serializer, and address before returning
     - read returns -1 with EAGAIN, so the loop retries until the client reconnects
     - the process exits via exit(1), killing every other client's thread too
     answer: 1
     why: |
-      Code Box 20-19's loop treats 0 and -1 alike as "break": a peer that
+      The stream client handler loop treats 0 and -1 alike as "break": a peer that
       quits closes its end, so the blocking read stops with 0 and the handler
       performs the fixed teardown sequence - service dtor + delete, serializer
       dtor + delete, free the context address - all inside the client's own
@@ -1651,17 +1821,15 @@ blocks:
     concept: client-disconnect-teardown-predict
   - kind: mcq
     level: core
-    q: Why does every accepted client get its own serializer object (and its own service object) in the calculator
-      stream server?
+    q: Why does every accepted client get its own serializer object (and its own service object) in the calculator stream server?
     choices:
-    - "To keep each client's messages apart: the per-client deserializer ring buffer and service memory belong to one
-      channel and one client, created and destroyed inside that client's handler thread"
+    - 'To keep each client''s messages apart: the per-client deserializer ring buffer and service memory belong to one channel and one client, created and destroyed inside that client''s handler thread'
     - To balance CPU load across four cores, since the library refuses to share instance state
     - Because libcalcser.a forbids more than one callback registration per process
     - Because thread stacks cannot exceed one serializer object per thread
     answer: 0
     why: |
-      The chapter notes that "every client has its own serializer object.
+      The design notes that "every client has its own serializer object.
       This is also true for the calculator service object. These objects are
       created and destroyed as part of the same thread." Isolation is the
       point: the deserializer's accumulated bytes and the service's internal
@@ -1671,12 +1839,10 @@ blocks:
     concept: per-client-serializer-isolation
   - kind: why-fails
     level: advanced
-    q: In stream_write_resp the server checks not only ret == -1 but also ret < buf.len, exiting the process on the
-      second condition. Why is a short write treated as fatal here instead of being retried?
+    q: In stream_write_resp the server checks not only ret == -1 but also ret < buf.len, exiting the process on the second condition. Why is a short write treated as fatal here instead of being retried?
     choices:
     - POSIX forbids looping on a stream socket because write() is idempotent once invoked
-    - The response carries no framing the server could resume from; the project treats a truncated message as a
-      protocol breach and stops, while a full write guaranteed buf.len bytes reached the channel
+    - The response carries no framing the server could resume from; the project treats a truncated message as a protocol breach and stops, while a full write guaranteed buf.len bytes reached the channel
     - Short writes only occur on datagram sockets, so the branch dead-codes in stream sockets
     - write() sets errno to 0 on a short write, and zero errno crashes stdio
     answer: 1
@@ -1693,17 +1859,15 @@ blocks:
     concept: short-write-fatality-rationale
   - kind: eipe
     level: core
-    q: In one sentence, what does client_handler's use of read() with a socket descriptor demonstrate about the
-      POSIX I/O API?
+    q: In one sentence, what does client_handler's use of read() with a socket descriptor demonstrate about the POSIX I/O API?
     choices:
     - That socket descriptors rank below file descriptors, so extra wrappers are needed before read() accepts them
-    - That read, write, and close work uniformly over file descriptors and socket descriptors, because both name
-      byte channels in the kernel's descriptor table
+    - That read, write, and close work uniformly over file descriptors and socket descriptors, because both name byte channels in the kernel's descriptor table
     - That reads on sockets clone the descriptor so both server and client can read concurrently
     - That the kernel translates read() on sockets into send(), attaching datagram headers
     answer: 1
     why: |
-      The chapter highlights it twice around Code Boxes 20-19/20-20/20-22:
+      The design highlights it:
       read is "used to read chunks from the client" with a socket descriptor
       passed where a file descriptor would go, and both write and close on
       the same descriptors are ordinary - the differences between FDs and
@@ -1714,8 +1878,7 @@ blocks:
     concept: unified-io-api-sockets
   - kind: spot-bug
     level: advanced
-    q: A refactored handler compiles and runs but every client ramps its service memory from stale values. Which
-      line carries the defect?
+    q: A refactored handler compiles and runs but every client ramps its service memory from stale values. Which line carries the defect?
     code: |
       void* client_handler(void *arg) {
         struct client_context_t context;
@@ -1745,43 +1908,41 @@ blocks:
       on every request; service fields are garbage after the first call.
     target_line: 11
     choices:
-    - "Line 11-12: the service is destroyed before the serving loop runs, so every callback afterward operates on a
-      dead object - teardown must wait until after the read() loop breaks, as Code Box 20-19 orders it"
-    - "Line 6: the serializer ring size must be 128 here, matching the client's constructor"
-    - "Line 3: context.addr must be freed before any read, or the kernel leaks the descriptor"
+    - 'Line 11-12: the service is destroyed before the serving loop runs, so every callback afterward operates on a dead object - teardown must wait until after the read() loop breaks, as client_handler orders it'
+    - 'Line 6: the serializer ring size must be 128 here, matching the client''s constructor'
+    - 'Line 3: context.addr must be freed before any read, or the kernel leaks the descriptor'
     answer: 0
     why: |
-      The chapter's client_handler creates the service (and serializer) in
+      client_handler creates the service (and serializer) in
       the thread's setup and destroys them only after the read loop breaks:
       calc_service_dtor/delete then calc_proto_ser_dtor/delete. Moving the
       service teardown above the loop leaves callbacks serving a destroyed
       object - undefined behavior that shows up as corrupt per-client state.
       The 128 ring size belongs to the client process, not the server (the
-      server constructor uses 256 per Code Box 20-19), and freeing
+      server constructor uses 256 per client_handler), and freeing
       context.addr early abandons the descriptor the loop still needs.
     concept: teardown-order-bug
   - kind: fillblank
     level: intro
-    q: "Fill in the ring buffer size the stream server passes to the serializer constructor per Code Box 20-19?"
+    q: The server-side serializer is constructed inside the per-client handler setup. What ring-buffer size does the stream server pass to that constructor?
     code: |
       calc_proto_ser_ctor(context.ser, &context, ____);
-    answer_text: "256"
+    answer_text: '256'
     why: |
-      Code Box 20-19 constructs the per-client server-side serializer with a
-      ring buffer size of 256. The client-side constructor in Code Box 20-22
+      client_handler constructs the per-client server-side serializer with a
+      ring buffer size of 256. The client-side constructor in stream_client_loop
       uses 128 - the two sides need not match, since each holds its own
       incoming message stream, but the server's is the number this block's
       machinery actually passes.
     concept: server-ring-size-256
-
 - id: b8
   type: model
   title: 'Wire the UDS Stream Client: connect() and the Split REPL/Reader Threads'
-  explain_md: |
+  explain_md: |-
     The UDS stream client follows the **stream connector sequence**:
 
     1. **Create the socket object** with the *same arguments the server used*:
-       `int conn_sd = socket(AF_UNIX, SOCK_STREAM, 0);` (Code Box 20-21).
+       `int conn_sd = socket(AF_UNIX, SOCK_STREAM, 0);` (UDS client main).
     2. **Connect to the server endpoint.** The address preparation block is
        "exactly the same as that of the server" — zeroing a
        `struct sockaddr_un`, setting `sun_family = AF_UNIX`, copying the
@@ -1791,9 +1952,8 @@ blocks:
        associated the `conn_sd` socket descriptor to the opened channel";
        from then on `conn_sd` reads and writes on the channel to the server.
 
-    The connected descriptor goes to `stream_client_loop(conn_sd)` (Code Box
-    20-22, in the client common library `clicore`, shared by all stream
-    clients regardless of socket type). The chapter's structure:
+    The connected descriptor goes to `stream_client_loop(conn_sd)` (the code in the client common library `clicore`, shared by all stream
+    clients regardless of socket type). The structure is:
 
     - **One serializer per client process**: `context.ser =
       calc_proto_ser_new()`, `calc_proto_ser_ctor(context.ser, &context,
@@ -1818,6 +1978,9 @@ blocks:
       traffic, the serializer is destroyed (`dtor` then `delete`), and only
       then does the main thread `pthread_join(reader_thread, NULL)` — "waits
       for its completion" — before printing `Bye.`
+
+
+    **Missing endpoint.** A UDS `connect()` needs the server's filesystem socket node to exist. If the server has not bound that path, the kernel fails the call with `ENOENT` (no such file or directory); the socket is not broken and the protocol has not started. Start the server or verify the path before connecting.
   viz:
     kind: ascii-memory
     steps:
@@ -1831,36 +1994,33 @@ blocks:
     level: intro
     q: Why does the client process get away with a single serializer object while the server needed one per client?
     choices:
-    - The client speaks to exactly one server through one channel, so one deserializer accumulates one response
-      stream; a server faces many independent client streams at once
+    - The client speaks to exactly one server through one channel, so one deserializer accumulates one response stream; a server faces many independent client streams at once
     - The client's serializer is shared read-only with the server, so only the server needs private instances
     - Serializer objects cost memory only on servers, because callbacks strip the state on clients
-    - The client creates a new serializer per process exit, which the book counts as one
+    - The client creates a new serializer per process exit, which the project counts as one
     answer: 0
     why: |
-      The chapter contrasts the sides explicitly: "every client process has
+      The client/server contrast is explicit: "every client process has
       only one serializer object and it makes sense. This is opposite to the
       server process, where every client had a separate serializer object."
       The client has one channel and one peer; the deserializer's ring buffer
       tracks a single stream of responses. The server instead multiplexes
       many client channels, each needing its own accumulated bytes - which is
-      why that side constructs one per accepted client (Code Box 20-19).
+      why that side constructs one per accepted client (client_handler).
       Options B, C, and D invent sharing, callbacks state-stripping, and
       exit-time accounting.
     concept: client-one-serializer-asymmetry
   - kind: why-fails
     level: core
-    q: The client's REPL and the response handling run in two threads. What breaks if stream_response_reader's job
-      is folded back onto the main thread?
+    q: The client's REPL and the response handling run in two threads. What breaks if stream_response_reader's job is folded back onto the main thread?
     choices:
-    - "The command line freezes: the main thread would block inside read() waiting for responses whenever the server
-      is slow, leaving the user unable to type or quit"
+    - 'The command line freezes: the main thread would block inside read() waiting for responses whenever the server is slow, leaving the user unable to type or quit'
     - The response would deserialize twice per message, because both threads parse the same ring buffer
     - scanf() drains the socket buffer of response bytes, since both functions read the same stdin descriptor
     - pthread_create must always be called at least once per process or the main function returns -1
     answer: 0
     why: |
-      The chapter's rationale for spawning the reader thread: "reading from
+      The reader thread is spawned because: "reading from
       the server process is a blocking task and it should be done in a
       separate flow of execution." The main thread owns the interactive REPL
       (prompt, scanf, serialize, write). Merging a blocking response read
@@ -1871,7 +2031,7 @@ blocks:
     concept: reader-thread-repl-rationale
   - kind: order
     level: core
-    q: 'Arrange the client exit sequence exactly as Code Box 20-22 executes it:'
+    q: 'Arrange the client exit sequence that runs after the REPL loop ends:'
     lines:
     - the REPL loop breaks (user typed quit or a write failed)
     - shutdown(conn_sd, SHUT_RD)
@@ -1886,9 +2046,7 @@ blocks:
     - 3
     - 4
     distractor_why:
-      the client deletes the server's socket file with unlink before dismounting: Distractor - the client never unlinks
-        the server's socket file; the file belongs to the listener side, whose server unlinks stale copies at ITS
-        startup (Code Box 20-17) and whose UDS datagram client unlinks its OWN client file (Code Box 20-26 area).
+      the client deletes the server's socket file with unlink before dismounting: Distractor - the client never unlinks the server's socket file; the file belongs to the listener side, whose server unlinks stale copies at ITS startup (UDS server main) and whose UDS datagram client unlinks its OWN client file (the datagram client main).
     why: |
       The exit path is strictly ordered: the REPL loop breaks, inbound
       traffic stops with shutdown(conn_sd, SHUT_RD), the serializer object is
@@ -1899,8 +2057,7 @@ blocks:
     concept: client-exit-sequence-order
   - kind: trace
     level: core
-    q: Trace which thread handles each step while the REPL user types 3++4 against an already-connected server.
-      Fill the target cell.
+    q: Trace which thread handles each step while the REPL user types 3++4 against an already-connected server. Fill the target cell.
     trace:
       headers:
       - Step
@@ -1917,8 +2074,8 @@ blocks:
         - reader thread
         - resp callback deserializes and formats the reply
       - - reply shown to the user
-        - "???"
-        - "req(0) > status: OK, result: 7.000000"
+        - ???
+        - 'req(0) > status: OK, result: 7.000000'
     target:
       row: 3
       col: 1
@@ -1933,12 +2090,11 @@ blocks:
       responses; the deserialized response object reaches the registered
       resp callback in that thread, which is where the reply's status and
       result get printed. The REPL thread only ever sends and announces the
-      send. No mutex or kernel direct-write is described in the chapter.
+      send. No mutex or kernel direct-write is involved.
     concept: repl-reader-thread-division
   - kind: predict
     level: core
-    q: A stream client just fired req(2). The serializer produced 30 bytes but write() returned 18 with no error.
-      What does stream_client_loop do, per Code Box 20-22?
+    q: A stream client has just sent request 2. The serializer produced 30 bytes but `write()` returned 18 with no error. What does `stream_client_loop` do?
     code: |
       int ret = write(context.sd, ser_req.data, ser_req.len);
       if (ret == -1) { fprintf(stderr, "Error while writing! %s\n", strerror(errno)); break; }
@@ -1947,8 +2103,7 @@ blocks:
     choices:
     - It retries the remaining 12 bytes automatically, since stream writes resume transparently
     - It prints The req(2) is sent. anyway, because a partial write still confirmed delivery of the message content
-    - It prints Wrote less than anticipated! and breaks the loop - a partial send ends the exchange, and no announcement
-      prints
+    - It prints Wrote less than anticipated! and breaks the loop - a partial send ends the exchange, and no announcement prints
     - It calls shutdown() immediately to resync the offset on the channel
     answer: 2
     why: |
@@ -1957,13 +2112,13 @@ blocks:
       hits the fprintf for a partial write and breaks as well. The request
       announcement ("The req(%d) is sent.") only prints when the full buffer
       was reported written. There is no automatic write-completion retry and
-      no resync semantic in the book.
+      no resync semantic in the project.
       Options A and B contradict the guard, option D invents shutdown-based
       resync on a channel that has no offset.
     concept: short-send-fatal-branch
   - kind: fillblank
     level: core
-    q: "Complete the call that stops inbound traffic on the client channel before teardown."
+    q: Complete the call that stops inbound traffic on the client channel before teardown.
     code: |
       shutdown(conn_sd, ____________);
       calc_proto_ser_dtor(context.ser);
@@ -1971,16 +2126,15 @@ blocks:
       pthread_join(reader_thread, NULL);
     answer_text: SHUT_RD
     why: |
-      Code Box 20-22 ends the serving loop with shutdown(conn_sd, SHUT_RD) -
+      stream_client_loop ends the serving loop with shutdown(conn_sd, SHUT_RD) -
       the read side of the client channel is shut down on the way out, then
       the serializer is decommissioned and the reader thread joined.
-      SHUT_RDWR or SHUT_WR would change what gets disabled; the book's exit
+      SHUT_RDWR or SHUT_WR would change what gets disabled; the project's exit
       specifically shuts down reads only.
     concept: shutdown-shut-rd-exit
   - kind: choose-better
     level: advanced
-    q: The server vanished mid-session and the client's write() starts returning -1 with the connection dead. Which
-      reaction fits the chapter's programming pattern?
+    q: The server vanished mid-session and the client's `write()` starts returning -1 with the connection dead. Which reaction matches the calculator client's write-error pattern?
     choices:
     - |
       /* spin until the server reappears */
@@ -1991,16 +2145,26 @@ blocks:
       /* ... shutdown, dtor, delete, pthread_join, Bye. */
     answer: 1
     why: |
-      The book's write guard treats -1 as an immediate stop: log the error
+      The write guard treats -1 as an immediate stop: log the error
       and break out of the REPL loop, falling through to the ordered exit
       (shutdown SHUT_RD, serializer teardown, pthread_join, Bye). A dead
       server produces a dead channel, and spinning on write would only
       engrave the failure - every retry after the shutdown of connectivity
-      fails the same way, and the book's pattern never retries a broken
+      fails the same way, and the project's pattern never retries a broken
       channel. Option A burns CPU in a loop the code base has no recovery
       path for.
     concept: broken-write-choose-exit-path
-
+  - kind: why-fails
+    level: advanced
+    q: A UDS stream client calls `connect()` to `/tmp/calc_svc.sock` before the server has created that socket file. `connect()` fails with `errno = ENOENT`. Why?
+    choices:
+    - The client lacks permission to open files under /tmp
+    - The server has not bound the filesystem socket node, so there is no endpoint at that path for the kernel to connect to
+    - The client must bind its own socket file before connecting to any UDS server
+    - ENOENT means the server accepted the connection but then closed it immediately
+    answer: 1
+    why: A UDS stream endpoint is represented by a socket file created by bind(). Until bind() creates that node, a connect() to the path cannot resolve an endpoint and fails with ENOENT. Permissions would produce EACCES; a stream client does not need its own bind; a peer close would be EOF after a successful connect. Options A, C, and D misstate the failure.
+    concept: uds-connect-enoent
 - id: b9
   type: model
   title: 'Serve UDS Datagrams: the Connection-less Server Without listen or accept'
@@ -2010,11 +2174,10 @@ blocks:
 
     - `int server_sd = socket(AF_UNIX, SOCK_DGRAM, 0);` — everything else is
       as with the stream server; "we have used SOCK_DGRAM instead of
-      SOCK_STREAM ... the other two arguments remain the same" (Code Box
-      20-23).
+      SOCK_STREAM ... the other two arguments remain the same" (the project code).
     - Bind to the same kind of UDS endpoint (the socket file
       `/tmp/calc_svc.sock`, prepared and bound exactly like the stream
-      server's — Code Box 20-24 reuses the same address block and skips the
+      server's — datagram server main reuses the same address block and skips the
       stale-file issue by calling `unlink` first).
 
     **What the datagram listener sequence does NOT have**: "there is no
@@ -2022,7 +2185,7 @@ blocks:
     that, there is no client-accepting phase because we can't have stream
     connections on some dedicated 1-to-1 channels."
 
-    **Everything is per-datagram** (Code Box 20-25, `serve_forever` in
+    **Everything is per-datagram** (serve_forever, `serve_forever` in
     srvcore): the server is a **single-threaded** loop that "operates on
     every datagram individually and independently". One cycle:
 
@@ -2037,7 +2200,7 @@ blocks:
        holds `server_sd`, the sockaddr, and its length), and — per datagram —
        a **new serializer object** (`calc_proto_ser_ctor(..., 256)`, with the
        req/error callbacks) and a **new calculator service object** are
-       created. The book flags this as a design conversation: one shared pair
+       created. The project flags this as a design conversation: one shared pair
        *could* be imagined instead, and "you might receive different opinions"
        — the shipped design gives each datagram its own objects.
     3. The datagram's bytes are deserialized with the found-flag address
@@ -2046,7 +2209,7 @@ blocks:
        datagram, the server answers immediately with a failure response** —
        `resp.req_id = -1`, `resp.status = ERROR_INVALID_RESPONSE`, and
        `resp.result = 0.0` — through `context.write_resp`.
-    4. Replies leave through `datagram_write_resp` (Code Box 20-26):
+    4. Replies leave through `datagram_write_resp` (datagram client main):
        the response is serialized, then
        `sendto(context->addr->server_sd, buf.data, buf.len, 0,
        context->addr->sockaddr, context->addr->socklen)` — **the stored
@@ -2079,28 +2242,25 @@ blocks:
     - socket() + bind() + accept(); only listen() is skipped because the backlog lives inside recvfrom()
     answer: 0
     why: |
-      The chapter is explicit: for a datagram listener "these steps [socket
+      The rule is explicit: for a datagram listener "these steps [socket
       creation, binding] were the only ones to be performed, there is no
       backlog associated to a datagram socket to be configured. More than
       that, there is no client-accepting phase because we can't have stream
-      connections on some dedicated 1-to-1 channels." Code Box 20-24's main
+      connections on some dedicated 1-to-1 channels." datagram server main's main
       ends with serve_forever right after bind — no listen, no accept.
       Options B and D half-skip, option C mislabels the server as connector.
     concept: datagram-listener-skip-listen-accept
   - kind: why-fails
     level: core
-    q: The datagram server drops the sockaddr and socklen pointers it was given and replies by reconstructing a
-      client address from a hardcoded path. Why does the chapter's serve_forever design refuse that shortcut?
+    q: The datagram server drops the `sockaddr` and `socklen` pointers it was given and replies by reconstructing a client address from a hardcoded path. Why does `serve_forever` reject that shortcut?
     choices:
     - Kernel datagrams self-deliver, so no sender handling is needed in a correct implementation
-    - "Datagram channels have no dedicated peers: many parties share the one channel, so recvfrom's captured address
-      is the only reliable record of which client this datagram came from — and that stored address is what sendto
-      must use to reply"
+    - 'Datagram channels have no dedicated peers: many parties share the one channel, so recvfrom''s captured address is the only reliable record of which client this datagram came from — and that stored address is what sendto must use to reply'
     - The hardcoded path is valid; the project only avoids it to save strlen() calls on the hot path
     - Reconstructing addresses is required because recvfrom() zeroes its sockaddr argument before filling it
     answer: 1
     why: |
-      The chapter motivates recvfrom()/sendto() precisely here: on a datagram
+      recvfrom()/sendto() are required because on a datagram
       socket "we have only one channel that is being used by many parties.
       Therefore, we can lose track of the process owning a specific
       datagram. These functions can keep track of and send the datagram back
@@ -2112,8 +2272,7 @@ blocks:
     concept: captured-sender-address-necessity
   - kind: predict
     level: advanced
-    q: A datagram from a buggy client carries "1000#ADD" — no '$' anywhere. What does the server send back through
-      the serializer-and-datagram write path?
+    q: A datagram from a buggy client carries "1000#ADD" — no '$' anywhere. What does the server send back through the serializer-and-datagram write path?
     code: |
       calc_proto_ser_server_deserialize(context.ser, buf, &req_found);
       if (!req_found) {
@@ -2125,12 +2284,12 @@ blocks:
       }
     choices:
     - the server stays silent; incomplete datagrams are dropped without any reply
-    - "-1#0#0$ — the serializer maps a failed parse back to the OK status with req id -1"
-    - "-1#201#0$ — status field carries the serializer's invalid-response error code with req id -1"
-    - "1000#201#0$ — the server reuses the request's id field so the client can match the error"
+    - -1#0#0$ — the serializer maps a failed parse back to the OK status with req id -1
+    - -1#201#0$ — status field carries the serializer's invalid-response error code with req id -1
+    - 1000#201#0$ — the server reuses the request's id field so the client can match the error
     answer: 2
     why: |
-      Code Box 20-25 fills the failure response exactly: req_id = -1, status
+      The datagram server fills the failure response exactly: req_id = -1, status
       = ERROR_INVALID_RESPONSE (the serializer-library constant 201 from the
       201-family in the API header), result = 0.0. The response serializer
       then writes <req_id>#<status>#<result>$ - so the wire carries
@@ -2141,8 +2300,7 @@ blocks:
     concept: req-not-found-error-response
   - kind: trace
     level: core
-    q: Trace object churn in serve_forever across three arriving datagrams from three different clients. Fill the
-      target cell.
+    q: Trace object churn in serve_forever across three arriving datagrams from three different clients. Fill the target cell.
     trace:
       headers:
       - Datagram
@@ -2156,7 +2314,7 @@ blocks:
         - 1 serializer + 1 service
         - same cycle against B's captured address
       - - datagram 3 (client B again)
-        - "???"
+        - ???
         - same cycle against B's captured address again
     target:
       row: 2
@@ -2168,10 +2326,10 @@ blocks:
     - a shared pair created once at serve_forever startup and never again
     answer: 1
     why: |
-      The chapter's design is per-datagram: inside the loop "every datagram
+      The design is per-datagram: inside the loop "every datagram
       has its own serializer object and its own service object" - created,
       used, and destroyed each cycle, identical machinery every time no
-      matter which client sent the datagram. The book treats the alternative
+      matter which client sent the datagram. The alternative is treated
       (one shared pair) as a debatable design conversation you could think
       about, not the shipped behavior.
       Options A, C, and D contradict the per-datagram lifecycle the code and
@@ -2182,13 +2340,12 @@ blocks:
     q: Why can the calculator's request and response messages not be split across two datagrams?
     choices:
     - Splitting would exceed the serializer's ring buffer size of 256 bytes
-    - "A datagram is the unit of reception: what lands is one whole message, and a message that doesn't fit a single
-      datagram cannot be reassembled across datagrams by this protocol's handling"
+    - 'A datagram is the unit of reception: what lands is one whole message, and a message that doesn''t fit a single datagram cannot be reassembled across datagrams by this protocol''s handling'
     - The kernel checksums each datagram, and a split message would compute two conflicting checksums
     - UDS datagrams cap at 64 bytes, and the protocol's messages are engineered below 64 bytes
     answer: 1
     why: |
-      The chapter states the constraint from the channel side: "the request
+      The datagram constraint is: "the request
       and response messages should be fit into a single datagram. Otherwise,
       they cannot be split between two datagrams and the server or client
       cannot handle the message." serve_forever receives exactly one datagram
@@ -2223,7 +2380,7 @@ blocks:
           context.buf.data = buffer;
           bool_t req_found = FALSE;
           calc_proto_ser_server_deserialize(context.ser, context.buf, &req_found);
-          /* ... svc setup, write_resp, per-datagram teardown per Code Box 20-25 ... */
+          /* ... svc setup, write_resp, per-datagram teardown ... */
         }
       }
     diagnostic_log: |
@@ -2231,26 +2388,24 @@ blocks:
       constant length regardless of which datagram arrived.
     target_line: 18
     choices:
-    - "Line 18: buffer length must come from recvfrom's return value (read_nr_bytes), not from the sockaddr size -
-      socklen describes the captured address, not the datagram payload"
-    - "Line 14: the serializer object must be created once before the loop, not per datagram"
-    - "Line 6: the symbolic 0 flag must be 1, or recvfrom will not block"
+    - 'Line 18: buffer length must come from recvfrom''s return value (read_nr_bytes), not from the sockaddr size - socklen describes the captured address, not the datagram payload'
+    - 'Line 14: the serializer object must be created once before the loop, not per datagram'
+    - 'Line 6: the symbolic 0 flag must be 1, or recvfrom will not block'
     answer: 0
     why: |
-      Code Box 20-25 stores the payload as buf.data = buffer with buf.len =
+      The datagram loop stores the payload as buf.data = buffer with buf.len =
       read_nr_bytes - recvfrom's RETURN value names how many payload bytes
       landed. Using socklen (the address structure's length that recvfrom
       filled in) as the buffer length mislabels every datagram: the
       deserializer sees an address-sized buffer instead of the real message,
       so parses go haywire and replies break. The per-datagram serializer is
-      the book's own design (fresh objects per cycle, per Code Box 20-25 -
+      the project's own design (fresh objects per cycle, per serve_forever -
       not a defect), and the flags argument stays 0 (blocking behavior does
       not need a 1).
     concept: buffer-length-from-recvfrom-return
   - kind: choose-better
     level: advanced
-    q: Serve_forever builds fresh serializer and service objects for every datagram. A reviewer proposes one shared
-      pair constructed once before the loop. Judgment per the chapter and the calculator's needs?
+    q: '`serve_forever` builds fresh serializer and service objects for every datagram. A reviewer proposes one shared pair constructed once before the loop. Which design matches the calculator''s needs?'
     choices:
     - |
       /* shared once - fewer new/delete per datagram */
@@ -2258,7 +2413,7 @@ blocks:
       svc = calc_service_new(); calc_service_ctor(svc);
       while (1) { recvfrom(...); /* reuse both */ }
     - |
-      /* per-datagram, as the book ships it */
+      /* per-datagram, as the project ships it */
       while (1) { recvfrom(...);
         ser = calc_proto_ser_new(); calc_proto_ser_ctor(ser, owner, 256);
         svc = calc_service_new(); calc_service_ctor(svc);
@@ -2266,7 +2421,7 @@ blocks:
       }
     answer: 1
     why: |
-      The book notes the pair IS rebuilt per datagram: "Note that every
+      The pair is rebuilt per datagram: "Note that every
       datagram has its own serializer object and its own service object",
       and it frames the one-pair alternative as something to think about with
       "different opinions" - not as the shipped design. For THIS protocol
@@ -2278,14 +2433,13 @@ blocks:
       Option A buys speed at the price of exactly the cross-datagram
       contamination the per-datagram design avoids.
     concept: shared-versus-per-datagram-objects
-
 - id: b10
   type: model
-  title: 'Bind the UDS Datagram Client: the Self-Address Book the Channel Demands'
+  title: 'Bind the UDS Datagram Client: the Self-Address Endpoint the Channel Demands'
   explain_md: |
     The UDS **datagram client** starts like the stream client but with a
-    twist the chapter calls out as **unique and specific to datagram clients
-    connecting to UDS endpoints** (Code Box 20-26 area, `main` of
+    twist this section calls out as **unique and specific to datagram clients
+    connecting to UDS endpoints** (the datagram client main, `main` of
     `client/unix/datagram/main.c`):
 
     *The client must bind a socket file, "just like the server program", so
@@ -2314,7 +2468,7 @@ blocks:
     always has a corresponding socket descriptor that is bound to an IP
     address and a port" — the kernel's endpoint machinery gives every client
     a return address without the application binding one by path. (The UDP
-    client later in the chapter, for instance, calls no bind at all.)
+    client later in this section, for instance, calls no bind at all.)
 
     **Functionally the loop mirrors the stream client**: the same overall
     structure, command line, and serializer/deserializer usage — with the
@@ -2332,7 +2486,7 @@ blocks:
   checks:
   - kind: order
     level: core
-    q: 'Arrange the datagram UDS client''s initialization exactly as its main function (Code Box 20-26 area) does it:'
+    q: 'Arrange the UDS datagram client''s initialization sequence:'
     lines:
     - int conn_sd = socket(AF_UNIX, SOCK_DGRAM, 0);
     - unlink(client_sock_file) then bind conn_sd to /tmp/calc_cli.sock
@@ -2345,9 +2499,7 @@ blocks:
     - 2
     - 3
     distractor_why:
-      the client binds /tmp/calc_svc.sock to catch the server's traffic in advance: Distractor - the server's socket
-        file belongs to the server's bind; a client binding it would collide with a live listener (bind succeeds only
-        if no other socket object is bound to the same file).
+      the client binds /tmp/calc_svc.sock to catch the server's traffic in advance: Distractor - the server's socket file belongs to the server's bind; a client binding it would collide with a live listener (bind succeeds only if no other socket object is bound to the same file).
     why: |
       The main function runs exactly this order: create the datagram socket,
       unlink the stale client file and bind the client's OWN socket file
@@ -2358,17 +2510,15 @@ blocks:
     concept: datagram-client-self-bind-order
   - kind: predict
     level: core
-    q: The datagram client skipped its bind and simply sent "1000#ADD#1.5#5.6$" toward the server. Per the chapter's
-      reasoning, what happens inside the server's serve_forever for this datagram?
+    q: The datagram client skips its own `bind()` and sends `1000#ADD#1.5#5.6$` to the server. What happens inside the server's `serve_forever` for this datagram?
     choices:
     - recvfrom returns the payload with a usable empty address, so the reply still finds the client by request id
-    - The datagram cannot be delivered at all, because an unbound Unix datagram socket has no filesystem return
-      address for the kernel to route responses to
+    - The datagram cannot be delivered at all, because an unbound Unix datagram socket has no filesystem return address for the kernel to route responses to
     - recvfrom blocks forever on the server side, since its buffer refuses datagrams from unbound clients
     - The kernel assigns the client a fresh socket file automatically, and the server answers through it
     answer: 1
     why: |
-      The chapter pins the failure precisely: the server "needs an address to
+      The failure is precise: the server "needs an address to
       send the response back to, and if the datagram client doesn't bind a
       socket file, there is no endpoint bound to the client socket file".
       Unlike network sockets - where "a client always has a corresponding
@@ -2376,11 +2526,11 @@ blocks:
       problem cannot occur" - AF_UNIX offers no automatic endpoint. The bound
       client file is what makes replies deliverable.
       Option A invents addressless delivery; option C invents a receive-side
-      refusal; option D grants the exact auto-assignment the chapter denies.
+      refusal; option D grants the exact auto-assignment the rule denies.
     concept: unbound-client-reply-vanishes
   - kind: mcq
     level: core
-    q: Which pair does the UDS datagram client actually use, per Code Box 20-26 area?
+    q: Which pair of socket files does the UDS datagram client use?
     choices:
     - It binds its own /tmp/calc_cli.sock and connects to the server's /tmp/calc_svc.sock
     - It binds the server's /tmp/calc_svc.sock and never calls connect, since datagram sockets need no connection
@@ -2403,13 +2553,12 @@ blocks:
     q: In one sentence, why does a UDP client escape the self-bind obligation that its UDS datagram twin cannot?
     choices:
     - UDP's responses ride the same channel back, so addresses are irrelevant to delivery
-    - Network client descriptors are already bound to an IP address and a port on the kernel side, so a return
-      address always exists without the application binding one by path
+    - Network client descriptors are already bound to an IP address and a port on the kernel side, so a return address always exists without the application binding one by path
     - UDP servers broadcast, so their replies reach unbound clients through the broadcast table
     - The UDP protocol header carries the client's process ID, which replaces socket files
     answer: 1
     why: |
-      The chapter ties both halves together: the UDS datagram client MUST
+      Both halves connect: the UDS datagram client MUST
       bind because without the filesystem endpoint "there is no endpoint
       bound to the client socket file" to reply to - while "regarding network
       sockets, a client always has a corresponding socket descriptor that is
@@ -2418,12 +2567,11 @@ blocks:
       path would have supplied. That is exactly what the UDP client relies on
       when it calls sendto without ever binding.
       Options A, C, and D channel-hijack, broadcast, and process-identity the
-      chapter never claims.
+      no rule claims.
     concept: udp-client-auto-address-contrast
   - kind: trace
     level: core
-    q: Trace the two socket files across one full client-server session, including the client's own cleanup. Fill
-      the target cell.
+    q: Trace the two socket files across one full client-server session, including the client's own cleanup. Fill the target cell.
     code: |
       /* client main (no code shown): server_sock_file = /tmp/calc_svc.sock;
          client_sock_file = /tmp/calc_cli.sock; client unlinks + binds its own
@@ -2442,7 +2590,7 @@ blocks:
         - created, bound to client's own sd
       - - client quits and unlinks its file
         - stays alive; the server's door remains for its next clients
-        - "???"
+        - ???
     target:
       row: 2
       col: 2
@@ -2456,15 +2604,14 @@ blocks:
       The client deliberately unlinks the file IT created (the client self
       bind exists precisely so the CLIENT has a filesystem record of its own
       address); the server's file is never the client's to remove - the
-      server manages it (unlink at its own startup, Code Box 20-17/20-24).
+      server manages it (unlink at its own startup, the server startup).
       Ownership follows creation: each socket file dies by the hand that
       bound it, and the server's door stays open for the next client.
       Options B, C, and D invent shared lifecycles, leaks, and renaming.
     concept: socket-file-ownership-trace
   - kind: spot-bug
     level: advanced
-    q: A copy-paste refactor left the datagram client binding the server's file. Which line carries the defect, and
-      what does the chapter predict?
+    q: A copy-paste refactor left the datagram client binding the server's file. Which line carries the defect, and what consequence follows?
     code: |
       int main(int argc, char** argv) {
         char server_sock_file[] = "/tmp/calc_svc.sock";
@@ -2483,13 +2630,12 @@ blocks:
       bind failed: Address already in use   (with the server running)
     target_line: 6
     choices:
-    - "Line 6 + the bind below: the client must unlink+bind its OWN client_sock_file (/tmp/calc_cli.sock); binding
-      the server's file fails while the server holds it, and even when free it would misdirect replies"
-    - "Line 4: the second socket file variable is wasted; one file suffices for both roles"
-    - "Line 10: strncpy must leave room for two null terminators, so - 2 is the safe cap"
+    - 'Line 6 + the bind below: the client must unlink+bind its OWN client_sock_file (/tmp/calc_cli.sock); binding the server''s file fails while the server holds it, and even when free it would misdirect replies'
+    - 'Line 4: the second socket file variable is wasted; one file suffices for both roles'
+    - 'Line 10: strncpy must leave room for two null terminators, so - 2 is the safe cap'
     answer: 0
     why: |
-      The chapter's datagram client binds a DIFFERENT socket file, "not the
+      The datagram client binds a DIFFERENT socket file, "not the
       server's socket file": the client self-binds client_sock_file and then
       connects to server_sock_file. Targeting the server's path breaks twice
       over - first at bind time with EADDRINUSE whenever the live server
@@ -2501,7 +2647,7 @@ blocks:
     concept: client-binding-wrong-file-bug
   - kind: fillblank
     level: advanced
-    q: "Complete the send call the datagram client uses to push a serialized request toward the server's endpoint."
+    q: Complete the send call the datagram client uses to push a serialized request toward the server's endpoint.
     code: |
       /* inside datagram_client_loop, per request */
       int ret = ____________(conn_sd, ser_req.data, ser_req.len,
@@ -2517,18 +2663,17 @@ blocks:
     concept: datagram-client-sendto-call
 - id: b11
   type: syntax
-  title: "Swap in AF_INET: the TCP Server and Client Change Only Their Mains"
+  title: 'Swap in AF_INET: the TCP Server and Client Change Only Their Mains'
   explain_md: |
     Moving the calculator from UDS stream channels to **network (TCP) stream
-    channels** is intentionally small. The chapter lists exactly two
+    channels** is intentionally small. The design lists exactly two
     differences for a TCP server, and the code confirms them:
 
     1. **A different address family**: `AF_INET` instead of `AF_UNIX` in the
        `socket` call — "it simply refers to any channel established on top of
        a network connection".
     2. **A different structure for the socket address** used for binding:
-       `struct sockaddr_in` instead of `sockaddr_un`. Its preparation (Code
-       Box 20-27):
+       `struct sockaddr_in` instead of `sockaddr_un`. Its preparation (the project code):
        ```c
        struct sockaddr_in addr;
        memset(&addr, 0, sizeof(addr));
@@ -2547,7 +2692,7 @@ blocks:
     `close` functions, the same `client_handler` machinery, the same
     `stream_write_resp`.
 
-    The **TCP client** mirrors this minimalism (Code Box 20-27's client
+    The **TCP client** mirrors this minimalism (TCP main's client
     main): `socket(AF_INET, SOCK_STREAM, 0)`, then the address needs a real
     IP — the main first resolves the **hostname** ("find the IP address
     behind the hostname"), and the entry's address bytes drop straight into
@@ -2556,7 +2701,7 @@ blocks:
     `stream_client_loop(conn_sd)` — "which is part of the client common
     library ... shared between UDS and TCP sockets".
 
-    The chapter draws the conclusion explicitly: "the `main` function in the
+    The conclusion is explicit: "the `main` function in the
     client and server programs is the only code that changes when moving
     from UDS to network sockets." That is the payoff of the two common
     libraries — "when we can use the same code for two different scenarios,
@@ -2573,16 +2718,15 @@ blocks:
   checks:
   - kind: mcq
     level: core
-    q: Which two changes turn the calculator's UDS stream server main into a TCP server main, per the chapter?
+    q: Which two changes turn the calculator's UDS stream server main into a TCP server main?
     choices:
-    - The address family (AF_INET) inside the socket call and the socket address structure (sockaddr_in) prepared for
-      binding
+    - The address family (AF_INET) inside the socket call and the socket address structure (sockaddr_in) prepared for binding
     - The serializer constructor must switch quadrants, because TCP deserializes responses on the server
     - The listener sequence gains a connect step before listen, since TCP needs a connection first
     - Reads are replaced by recvfrom/sendto, since TCP frames every write as a datagram
     answer: 0
     why: |
-      The chapter's TCP server section states the difference plainly: the
+      The TCP server difference is plain: the
       server "is different from a stream server listening on a UDS endpoint
       in two ways: firstly, it specifies a different address family, AF_INET
       instead of AF_UNIX, when calling the socket function. And secondly, it
@@ -2594,8 +2738,7 @@ blocks:
     concept: tcp-two-changes-only
   - kind: trace
     level: core
-    q: "Fill the target cell: what value and intent does the TCP server's third assigned field carry, per Code Box
-      20-27?"
+    q: 'Fill the target cell: what value and intent does the TCP server''s third assigned field carry?'
     trace:
       headers:
       - Field assigned
@@ -2609,19 +2752,19 @@ blocks:
         - INADDR_ANY
         - bind to every local network interface
       - - addr.sin_port
-        - "???"
+        - ???
         - the calculator project's fixed TCP port, shipped in network byte order
     target:
       row: 2
       col: 1
     choices:
-    - "6666 stored raw in host byte order"
-    - "htons(6666), so the port travels in network byte order"
-    - "calc_svc.sock, resolved to a port by the kernel"
-    - "htons(9999), the UDP port reused for TCP traffic"
+    - 6666 stored raw in host byte order
+    - htons(6666), so the port travels in network byte order
+    - calc_svc.sock, resolved to a port by the kernel
+    - htons(9999), the UDP port reused for TCP traffic
     answer: 1
     why: |
-      Code Box 20-27 assigns addr.sin_port = htons(6666). Two things are
+      TCP main assigns addr.sin_port = htons(6666). Two things are
       happening at once: the project fixes the TCP port at 6666 (distinct
       from the UDP server's 9999), and the conversion call stores it in
       network byte order - which is the byte order the IP stack reads ports
@@ -2631,15 +2774,10 @@ blocks:
     concept: tcp-endpoint-field-trace
   - kind: why-fails
     level: advanced
-    q: In the TCP client main, the resolved address is copied wholesale (`addr.sin_addr = *((struct
-      in_addr*)host_entry->h_addr)`), yet the port still needs its own `htons(6666)` call. Why does the address not
-      need the same treatment in this code?
+    q: In the TCP client main, the resolved address is copied wholesale (`addr.sin_addr = *((struct in_addr*)host_entry->h_addr)`), yet the port still needs its own `htons(6666)` call. Why does the address not need the same treatment in this code?
     choices:
-    - Addresses are always one byte wide, so there is nothing to convert; ports are four bytes and need heavy
-      conversion
-    - The host entry already holds the address in the form the protocol ships it (the 4 bytes copied are the
-      network-order IP), while the port began as a host-side integer literal that the conversion functions must move
-      into network order
+    - Addresses are always one byte wide, so there is nothing to convert; ports are four bytes and need heavy conversion
+    - The host entry already holds the address in the form the protocol ships it (the 4 bytes copied are the network-order IP), while the port began as a host-side integer literal that the conversion functions must move into network order
     - htons cannot convert addresses because they contain dots; only ports are numeric
     - The compiler auto-converts assignments to sin_addr but not to sin_port, by C standard rule
     answer: 1
@@ -2648,7 +2786,7 @@ blocks:
       form network sockets use on the wire, so copying the struct in_addr
       verbatim is enough - the bytes do not start as a host arithmetic value.
       The port, by contrast, is written in the source as the ordinary host
-      integer 6666, and the chapter's own convention (htons on every
+      integer 6666, and the project's own convention (htons on every
       assignment to sin_port) exists exactly to push such a host value into
       network byte order. Address bytes copied from resolution, port numbers
       converted at assignment - that division of labor is the pattern the
@@ -2658,7 +2796,7 @@ blocks:
     concept: tcp-port-vs-address-ordering
   - kind: order
     level: core
-    q: 'Arrange the TCP server main''s milestone lines per Code Box 20-27:'
+    q: 'Arrange the TCP server main''s milestone lines:'
     lines:
     - int server_sd = socket(AF_INET, SOCK_STREAM, 0);
     - struct sockaddr_in addr; memset(&addr, 0, sizeof(addr));
@@ -2677,13 +2815,13 @@ blocks:
       The TCP main follows the same stream listener sequence as the UDS
       server - socket, prepare the address, bind, set the backlog, accept
       forever - with the family and structure swapped in steps 1-3. The
-      comments in Code Box 20-27 keep the same numbered milestones, and the
+      comments in TCP main keep the same numbered milestones, and the
       prose confirms listen is used the same and accept_forever is called
       the same. Transport changed; the sequence did not.
     concept: tcp-server-main-order
   - kind: fillblank
     level: core
-    q: "Complete the assignment that lets the TCP server respond on every local network interface."
+    q: Complete the assignment that lets the TCP server respond on every local network interface.
     code: |
       struct sockaddr_in addr;
       memset(&addr, 0, sizeof(addr));
@@ -2692,7 +2830,7 @@ blocks:
       addr.sin_port = htons(6666);
     answer_text: INADDR_ANY
     why: |
-      Code Box 20-27 sets addr.sin_addr.s_addr = INADDR_ANY for the server.
+      TCP main sets addr.sin_addr.s_addr = INADDR_ANY for the server.
       INADDR_ANY is the wildcard address: the bound endpoint accepts
       connections whose destination IP is any of the host's local interface
       addresses. The TCP client instead must put a concrete destination
@@ -2701,8 +2839,7 @@ blocks:
     concept: inaddr-any-fillblank
   - kind: choose-better
     level: advanced
-    q: A teammate proposes writing tcp_stream_read(), tcp_stream_write(), and a fresh tcp_client_handler() so the TCP
-      path avoids depending on libsrvcore and libclicore. Judgment per the chapter's own reasoning?
+    q: A teammate proposes writing `tcp_stream_read()`, `tcp_stream_write()`, and a fresh `tcp_client_handler()` so the TCP path avoids depending on `libsrvcore` and `libclicore`. Which design matches the project's reasoning?
     choices:
     - |
       /* fresh TCP-specific I/O layer - keeps transports fully independent */
@@ -2714,7 +2851,7 @@ blocks:
       stream_client_loop(conn_sd);    /* from libclicore, unchanged */
     answer: 1
     why: |
-      The chapter hosts the argument: "since a TCP socket is a stream socket,
+      The reuse argument is: "since a TCP socket is a stream socket,
       it inherits all the properties from a stream socket; therefore, it can
       be used just like any other stream socket. In other words, the same
       read, write, and close functions can be used", and "when we can use the
@@ -2722,15 +2859,14 @@ blocks:
       as a library and reuse it in the scenarios." Duplicating the machinery
       would multiply maintenance for zero behavioral gain, and it would hide
       the common boundary the project was designed to surface.
-      Option A is exactly the giveaway the hierarchy block warned against
+      Option A is exactly the giveaway the hierarchy design warned against
       when it extracted the common parts into reusable libraries.
     concept: tcp-reuse-common-library
-
 - id: b12
   type: model
-  title: "Ship Ports in Network Byte Order: htons, htonl, and Back"
+  title: 'Ship Ports in Network Byte Order: htons, htonl, and Back'
   explain_md: |
-    The chapter's network mains assign ports through a converter without
+    The network mains assign ports through a converter without
     commentary - `addr.sin_port = htons(6666)` for TCP and `htons(9999)` for
     UDP. This block unpacks that convention, because a server that skips it
     binds a *different port* than the one the client dials.
@@ -2744,7 +2880,7 @@ blocks:
     there must already BE network ordered.
 
     **The converter family** (POSIX `<arpa/inet.h>`, in hostings like the
-    book's Linux toolchain):
+    Linux toolchain):
 
     - `htons` / `htonl` — **h**ost **to** **n**etwork, for `s`hort (16-bit,
       ports) and `l`ong (32-bit, addresses) values.
@@ -2759,7 +2895,7 @@ blocks:
     obviously wrong in the code. With `htons(6666)`, the memory bytes are
     `[0x1A, 0x0A]`, which the stack reads back as 6666 exactly.
 
-    **When conversion is NOT needed** in this chapter's code:
+    **When conversion is NOT needed** in the code:
 
     - `INADDR_ANY` is the value **0**; zero reads identically in both byte
       orders, so the assignment is order-neutral.
@@ -2782,17 +2918,16 @@ blocks:
   checks:
   - kind: predict
     level: core
-    q: On a little-endian host, a debugging probe dumps the two bytes that htons(0xABCD) left in sin_port, printing
-      the lower memory address first. What does the probe show?
+    q: On a little-endian host, a debugging probe dumps the two bytes that htons(0xABCD) left in sin_port, printing the lower memory address first. What does the probe show?
     code: |
       addr.sin_port = htons(0xABCD);
       unsigned char* p = (unsigned char*)&addr.sin_port;
       printf("%02x %02x\n", p[0], p[1]);   /* ??? */
     choices:
-    - "ab cd"
-    - "cd ab"
-    - "abcd 00"
-    - "the layout is CPU-dependent, so a stored port's bytes cannot be reasoned about in advance"
+    - ab cd
+    - cd ab
+    - abcd 00
+    - the layout is CPU-dependent, so a stored port's bytes cannot be reasoned about in advance
     answer: 0
     why: |
       htons moved the value into NETWORK byte order (big endian): the most
@@ -2806,28 +2941,27 @@ blocks:
     concept: port-htons-memory-predict
   - kind: trace
     level: advanced
-    q: A log helper reads a captured peer port straight out of a filled sockaddr_in and converts it for display. Fill
-      the target cell.
+    q: A log helper reads a captured peer port straight out of a filled sockaddr_in and converts it for display. Fill the target cell.
     trace:
       headers:
       - Bytes at sin_port (memory order)
       - Value in network byte order
       - Displayed after the right converter
       rows:
-      - - "[0x0A, 0x1A]"
-        - 0x0A1A
+      - - '[0x0A, 0x1A]'
         - 2586
-      - - "[0x1A, 0x0A]"
-        - "???"
+        - 2586
+      - - '[0x1A, 0x0A]'
+        - ???
         - 6666
     target:
       row: 1
       col: 1
     choices:
-    - 0x1A0A
-    - 0x0A1A
-    - 0x6666
-    - 0x1A00
+    - 6666
+    - 2586
+    - 26214
+    - 6656
     answer: 0
     why: |
       Middle column = the byte sequence read as a big-endian number.
@@ -2841,12 +2975,10 @@ blocks:
     concept: port-network-order-readback
   - kind: why-fails
     level: advanced
-    q: On a little-endian host, the TCP server assigns `addr.sin_port = 6666;` (no conversion), while every client
-      correctly uses `htons(6666)`. Why can no client ever connect?
+    q: On a little-endian host, the TCP server assigns `addr.sin_port = 6666;` (no conversion), while every client correctly uses `htons(6666)`. Why can no client ever connect?
     choices:
     - The bind fails outright; the kernel refuses plain integer ports
-    - The server actually binds port 2586 - the bytes of 6666 stored little-endian ([0x0A, 0x1A]) are read by the IP
-      stack as the network-order number 0x0A1A - so dialers to 6666 find nobody listening
+    - The server actually binds port 2586 - the bytes of 6666 stored little-endian ([0x0A, 0x1A]) are read by the IP stack as the network-order number 0x0A1A - so dialers to 6666 find nobody listening
     - The client's htons corrupts the port; without everyone skipping htons the connection would work
     - The kernel silently doubles the port on bind, so the server sits on 13332
     answer: 1
@@ -2867,8 +2999,7 @@ blocks:
     q: In one sentence, what problem does the htons/htonl/ntohs/ntohl family exist to solve?
     choices:
     - They compress numeric fields so datagrams stay under the MTU on slow links
-    - They move values between the CPU's own (host) byte order and the fixed network byte order, at every boundary
-      where an integer travels onto or off the wire
+    - They move values between the CPU's own (host) byte order and the fixed network byte order, at every boundary where an integer travels onto or off the wire
     - They encrypt short integers so sniffers cannot read port numbers on the wire
     - They align ports to 4-byte boundaries inside sockaddr_in for faster DMA
     answer: 1
@@ -2877,15 +3008,14 @@ blocks:
       protocols fix one byte order (big endian) while host CPUs vary, so any
       host-side integer placed into a protocol field needs htons/htonl, and
       any integer read out of a protocol field needs ntohs/ntohl before
-      human-facing arithmetic. That is why the book's mains convert the port
+      human-facing arithmetic. That is why the project's mains convert the port
       and why an inspection helper would convert the captured peer values
       back. Options A, C, and D invent compression, encryption, and
       alignment roles.
     concept: conversion-function-purpose
   - kind: spot-bug
     level: advanced
-    q: A developer transcribed the TCP server's address preparation from memory. Compiles clean, binds nothing useable.
-      Which line carries the defect?
+    q: A developer transcribed the TCP server's address preparation from memory. Compiles clean, binds nothing useable. Which line carries the defect?
     code: |
       int server_sd = socket(AF_INET, SOCK_STREAM, 0);
       if (server_sd == -1) { fprintf(stderr, "Could not create socket: %s\n", strerror(errno)); exit(1); }
@@ -2899,10 +3029,9 @@ blocks:
       bind failed: Address family not supported by protocol
     target_line: 5
     choices:
-    - "Line 5: the family inside the sockaddr_in must match the descriptor's family (AF_INET here); AF_UNIX promises a
-      filesystem path, which sin_addr/sin_port cannot encode, so the kernel rejects the address at bind time"
-    - "Line 1: the socket call should have used AF_UNIX since sockaddr_in was replaced by sockaddr_un"
-    - "Line 7: the port must be 9999 because TCP shares the UDP server's port on Linux"
+    - 'Line 5: the family inside the sockaddr_in must match the descriptor''s family (AF_INET here); AF_UNIX promises a filesystem path, which sin_addr/sin_port cannot encode, so the kernel rejects the address at bind time'
+    - 'Line 1: the socket call should have used AF_UNIX since sockaddr_in was replaced by sockaddr_un'
+    - 'Line 7: the port must be 9999 because TCP shares the UDP server''s port on Linux'
     answer: 0
     why: |
       The family fields must agree on both sides of the call: the descriptor
@@ -2916,8 +3045,7 @@ blocks:
     concept: family-mismatch-in-sockaddr-in
   - kind: mcq
     level: core
-    q: Why does `addr.sin_addr.s_addr = INADDR_ANY;` need no converter while the neighboring port line wraps its
-      value in htons?
+    q: Why does `addr.sin_addr.s_addr = INADDR_ANY;` need no converter while the neighboring port line wraps its value in htons?
     choices:
     - INADDR_ANY is the value 0, and zero reads identically in either byte order, so no conversion can change it
     - sin_addr is protected from conversion by the kernel's copy-on-write machinery
@@ -2937,32 +3065,31 @@ blocks:
     concept: inaddr-any-zero-symmetric
   - kind: fillblank
     level: intro
-    q: "Complete the UDP server's port line with the host-to-network converter the chapter's code uses."
+    q: Complete the UDP server's port assignment with the host-to-network converter used by the project.
     code: |
       addr.sin_family = AF_INET;
       addr.sin_addr.s_addr = INADDR_ANY;
       addr.sin_port = ____________(9999);
     answer_text: htons
     why: |
-      Code Box 20-28's UDP server reads addr.sin_port = htons(9999) - the
+      The UDP server reads addr.sin_port = htons(9999) - the
       converter is htons because a port is a 16-bit value and it must land in
       network byte order for the IP stack. htonl is the 32-bit sibling
       (addresses), and ntohs/ntohl convert in the other direction when
       reading captured fields back.
     concept: htons-wire-fillblank
-
 - id: b13
   type: model
   title: 'Dial Out with UDP: the Same Datagram Cores Behind AF_INET'
   explain_md: |
-    The **UDP server and client** close the chapter, and the chapter frames
+    The **UDP server and client** close the material, and they are framed
     them as a merge of everything before: "UDP sockets are network sockets.
     Other than that, they are datagram sockets. Therefore, we expect to
     observe a high degree of similarity between the code we wrote for the
     TCP server together with the code we wrote for the datagram server
     operating on a UDS."
 
-    **UDP server main** (Code Box 20-28):
+    **UDP server main**:
     ```c
     int server_sd = socket(AF_INET, SOCK_DGRAM, 0);
     struct sockaddr_in addr;
@@ -3018,7 +3145,7 @@ blocks:
     - The serializer constructor size doubles to handle split datagrams
     answer: 0
     why: |
-      The chapter isolates the delta: "the main difference between a UDP
+      The UDP delta is: "the main difference between a UDP
       socket and a TCP socket, regardless of being used in a client or server
       program, is the fact that the socket type is SOCK_DGRAM for the UDP
       socket. The address family remains the same, because both of them are
@@ -3029,8 +3156,7 @@ blocks:
     concept: udp-same-main-serving
   - kind: trace
     level: core
-    q: Three UDP clients transmit one request each, none of them ever calling bind(). Trace what the server's loop
-      observes. Fill the target cell.
+    q: Three UDP clients transmit one request each, none of them ever calling bind(). Trace what the server's loop observes. Fill the target cell.
     trace:
       headers:
       - Client action
@@ -3045,7 +3171,7 @@ blocks:
         - datagram + B's endpoint
       - - client A fires a second request
         - A's socket keeps the endpoint assigned earlier
-        - "???"
+        - ???
     target:
       row: 2
       col: 2
@@ -3056,7 +3182,7 @@ blocks:
     - the server's own endpoint, echoed back to the client for bookkeeping
     answer: 0
     why: |
-      The chapter's explanation of why network clients skip the bind is that
+      Network clients skip the bind because
       "a client always has a corresponding socket descriptor that is bound to
       an IP address and a port" - the kernel's binding persists for the
       socket's life, so A's second departure carries the same return address
@@ -3066,19 +3192,16 @@ blocks:
     concept: udp-auto-port-trace
   - kind: why-fails
     level: advanced
-    q: A UDP server's author deletes the bind step ("clients work unbound, why not me?") and loops on recvfrom.
-      Clients sendto the intended port 9999; the server sees nothing. Why?
+    q: A UDP server's author deletes the bind step ("clients work unbound, why not me?") and loops on recvfrom. Clients sendto the intended port 9999; the server sees nothing. Why?
     choices:
     - recvfrom cannot run at all on an unbound socket; the call returns -1 within microseconds
-    - With no address bound, the datagram socket is not an endpoint of any IP + port, so datagrams addressed to it
-      (port 9999) have nowhere to land; binding INADDR_ANY + 9999 is what makes the kernel route those packets to this
-      socket
+    - With no address bound, the datagram socket is not an endpoint of any IP + port, so datagrams addressed to it (port 9999) have nowhere to land; binding INADDR_ANY + 9999 is what makes the kernel route those packets to this socket
     - It works, but only after the first client connects, since UDP derives the server port from its clients
     - The kernel auto-assigns the server a port too, but never 9999, so the exchange needs an out-of-band port lookup
     answer: 1
     why: |
       Binding is what attaches the socket to a local endpoint - here
-      INADDR_ANY and port 9999 as Code Box 20-28 shows - so the kernel knows
+      INADDR_ANY and port 9999 as the UDP server main shows - so the kernel knows
       which socket should receive datagrams addressed to that IP + port. A
       server socket with no bind is addressless: the clients' packets to
       9999 are delivered to whoever owns that port (nobody), and the loop
@@ -3092,8 +3215,7 @@ blocks:
     concept: unbound-udp-server-invisible
   - kind: choose-better
     level: advanced
-    q: The calculator deployment will ship in containers whose clients run on OTHER machines over the network. Which
-      socket family pairing is on-contract, and why does the chapter's UDS preference not apply?
+    q: The calculator deployment will ship in containers whose clients run on other machines over the network. Which socket family pairing is correct, and why does the UDS preference not apply?
     choices:
     - |
       /* UDS everywhere - fastest channel, reused from the project */
@@ -3107,7 +3229,7 @@ blocks:
       participating processes live on one machine", and single-host
       deployments should prefer UDS for speed and low overhead - but the flip
       side is exactly that once client and server cross a machine boundary,
-      UDS endpoints (filesystem paths) have no meaning, and the chapter
+      UDS endpoints (filesystem paths) have no meaning, and this section
       reaches for AF_INET channel: TCP for stream channels, UDP for
       datagram channels. Note the second option's comment: containers on one
       HOST do not share a filesystem namespace, so "same machine" fails even
@@ -3118,7 +3240,7 @@ blocks:
     concept: network-datagram-needed-when-remote
   - kind: fillblank
     level: core
-    q: "Complete the UDP server's socket creation call."
+    q: Complete the UDP server's socket creation call.
     code: |
       int server_sd = socket(AF_INET, ____________, 0);
       if (server_sd == -1) {
@@ -3127,7 +3249,7 @@ blocks:
       }
     answer_text: SOCK_DGRAM
     why: |
-      Code Box 20-28's UDP server asks for the datagram type: even though it
+      UDP main's UDP server asks for the datagram type: even though it
       is a network socket like TCP, the datagram channel kind demands
       SOCK_DGRAM (and the serve side then runs the datagram core with
       recvfrom/sendto). Compare the TCP server, whose same line reads
@@ -3135,17 +3257,15 @@ blocks:
     concept: udp-type-constant-fillblank
   - kind: eipe
     level: advanced
-    q: In one sentence, what does a connection-less UDP channel buy a server compared with managing per-client stream
-      connections?
+    q: In one sentence, what does a connection-less UDP channel buy a server compared with managing per-client stream connections?
     choices:
     - It lets the server statefully track each client's memory between requests for free
-    - It serves datagrams one at a time from a single-threaded loop, with no per-client connection state or thread
-      machinery to maintain
+    - It serves datagrams one at a time from a single-threaded loop, with no per-client connection state or thread machinery to maintain
     - It guarantees that every request is answered exactly once, removing the need for request IDs
     - It removes the bounded backlog worry by converting datagrams into connections internally
     answer: 1
     why: |
-      The chapter's datagram server description is the embodiment: it "is a
+      The datagram server description is the embodiment: it "is a
       single-threaded program and there is no multithreading around it", and
       it "operates on every datagram individually and independently" - each
       recvfrom delivers a self-contained message with its return address, so
@@ -3156,16 +3276,15 @@ blocks:
       and D misattribute statefulness, delivery guarantees, and connection
       synthesis to a channel whose essence is not having them.
     concept: connectionless-buys-independence
-
 - id: b14
   type: design
   title: 'One Protocol, Four Skins: How the Eight Executables Share Their Cores'
   explain_md: |
-    Step back and the chapter's architecture snaps into focus. The
+    Step back and the architecture snaps into focus. The
     calculator ships **eight executables** (four servers, four clients), but
     each contains only a thin, transport-specific `main`. The machinery they
     invoke lives in the common libraries, reused across socket types as the
-    chapter promised at every stop:
+    design promised at every stop:
 
     - **stream clients** (both the UDS *unix_stream_calc_client* and
       *tcp_calc_client*) call `stream_client_loop` — part of the client
@@ -3193,9 +3312,9 @@ blocks:
     calculation service "isolated as a standalone logic", linked by every
     server.
 
-    The chapter closes by admitting that "there are many things in the
+    The closing observation admits that "there are many things in the
     calculator project that we didn't even talk about" and recommending the
-    code base as the standing exercise. And the payoff of the chapter's
+    code base as standing practice. And the payoff of this section's
     *unusual order* — teaching sockets inside this one running project — is
     that every concept (protocol, serializer, listener/connector sequences,
     thread patterns, byte order) landed with a concrete place to live, and
@@ -3203,36 +3322,102 @@ blocks:
     truly transport-bound.
   diagram:
     kind: flow
-    caption: "One protocol, four skins: who calls what"
+    caption: 'One protocol, four skins: who calls what'
     nodes:
-    - {id: SCM, label: "stream client"}
-    - {id: SSM, label: "stream server"}
-    - {id: DSM, label: "datagram server"}
-    - {id: DCM, label: "datagram client"}
-    - {id: SCL, label: "stream_client_loop"}
-    - {id: AF, label: "accept_forever"}
-    - {id: SF, label: "serve_forever"}
-    - {id: DCL, label: "datagram_client_loop"}
-    - {id: CSER, label: "libcalcser.a (protocol)"}
-    - {id: SVC, label: "libcalcsvc.a (service)"}
+    - id: SCM
+      label: stream client
+    - id: SSM
+      label: stream server
+    - id: DSM
+      label: datagram server
+    - id: DCM
+      label: datagram client
+    - id: SCL
+      label: stream_client_loop
+    - id: AF
+      label: accept_forever
+    - id: SF
+      label: serve_forever
+    - id: DCL
+      label: datagram_client_loop
+    - id: CSER
+      label: libcalcser.a (protocol)
+    - id: SVC
+      label: libcalcsvc.a (service)
     edges:
-    - {from: SCM, to: SCL}
-    - {from: SSM, to: AF}
-    - {from: DSM, to: SF}
-    - {from: DCM, to: DCL}
-    - {from: SCL, to: CSER}
-    - {from: AF, to: CSER}
-    - {from: SF, to: CSER}
-    - {from: DCL, to: CSER}
-    - {from: AF, to: SVC}
-    - {from: SF, to: SVC}
+    - from: SCM
+      to: SCL
+    - from: SSM
+      to: AF
+    - from: DSM
+      to: SF
+    - from: DCM
+      to: DCL
+    - from: SCL
+      to: CSER
+    - from: AF
+      to: CSER
+    - from: SF
+      to: CSER
+    - from: DCL
+      to: CSER
+    - from: AF
+      to: SVC
+    - from: SF
+      to: SVC
     steps:
-    - {focus: [SCM, SSM, DSM, DCM], note: "eight executables; each main carries only its skin: AF_UNIX/AF_INET, SOCK_STREAM/SOCK_DGRAM, sun_path or INADDR_ANY + ports 6666/9999"}
-    - {focus: [SCM, SSM, DSM, DCM, SCL], note: "both stream clients (UDS and TCP) call the shared stream_client_loop"}
-    - {focus: [SCM, SSM, DSM, DCM, SCL, AF], note: "both stream servers run srvcore's accept_forever with client_handler and stream_write_resp"}
-    - {focus: [SCM, SSM, DSM, DCM, SCL, AF, SF], note: "both datagram servers run serve_forever with datagram_write_resp - no listen, no accept"}
-    - {focus: [SCM, SSM, DSM, DCM, SCL, AF, SF, DCL], note: "both datagram clients call datagram_client_loop; the UDS one adds only the self-bind step"}
-    - {focus: [SCM, SSM, DSM, DCM, SCL, AF, SF, DCL, CSER, SVC], note: "above all transport code: libcalcser.a dictates the application protocol; libcalcsvc.a is the stateful service every server core links"}
+    - focus:
+      - SCM
+      - SSM
+      - DSM
+      - DCM
+      note: 'eight executables; each main carries only its skin: AF_UNIX/AF_INET, SOCK_STREAM/SOCK_DGRAM, sun_path or INADDR_ANY + ports 6666/9999'
+    - focus:
+      - SCM
+      - SSM
+      - DSM
+      - DCM
+      - SCL
+      note: both stream clients (UDS and TCP) call the shared stream_client_loop
+    - focus:
+      - SCM
+      - SSM
+      - DSM
+      - DCM
+      - SCL
+      - AF
+      note: both stream servers run srvcore's accept_forever with client_handler and stream_write_resp
+    - focus:
+      - SCM
+      - SSM
+      - DSM
+      - DCM
+      - SCL
+      - AF
+      - SF
+      note: both datagram servers run serve_forever with datagram_write_resp - no listen, no accept
+    - focus:
+      - SCM
+      - SSM
+      - DSM
+      - DCM
+      - SCL
+      - AF
+      - SF
+      - DCL
+      note: both datagram clients call datagram_client_loop; the UDS one adds only the self-bind step
+    - focus:
+      - SCM
+      - SSM
+      - DSM
+      - DCM
+      - SCL
+      - AF
+      - SF
+      - DCL
+      - CSER
+      - SVC
+      note: 'above all transport code: libcalcser.a dictates the application protocol; libcalcsvc.a is the stateful service every server core links'
   viz:
     kind: ascii-memory
     steps:
@@ -3253,7 +3438,7 @@ blocks:
     - In libcalcser.a, since it drives all serialization traffic
     answer: 1
     why: |
-      Code Box 20-22's caption places stream_client_loop in
+      The source placement is stream_client_loop in
       [client/clicore/stream_client_core.c], "the client common library that
       is used by all stream clients, regardless of the socket type and is
       shared between UDS and TCP sockets." So the two stream-flavored
@@ -3264,7 +3449,7 @@ blocks:
     concept: stream-loop-home-clicore
   - kind: trace
     level: advanced
-    q: Fill the target cell of the executable wiring table for the UDP client, per Code Box 20-28.
+    q: Fill the target cell of the executable wiring table for the UDP client.
     trace:
       headers:
       - Executable
@@ -3281,7 +3466,7 @@ blocks:
         - socket(AF_INET, SOCK_STREAM, 0)
         - bind -> listen -> accept_forever (same stream core)
       - - udp_calc_client
-        - "???"
+        - ???
         - datagram_client_loop (no self-bind needed over the network)
     target:
       row: 3
@@ -3303,17 +3488,12 @@ blocks:
     concept: transport-skin-matrix
   - kind: why-fails
     level: advanced
-    q: A maintainer wants the TCP executable's clients to keep their messages a little quieter, so they tweak ONLY the
-      tcp_calc_client's serializer call path (one shared libcalcser.a function). Every socket type's traffic now
-      changes, not just TCP's. Why?
+    q: A maintainer wants the TCP executable's clients to keep their messages a little quieter, so they tweak ONLY the tcp_calc_client's serializer call path (one shared libcalcser.a function). Every socket type's traffic now changes, not just TCP's. Why?
     choices:
     - The change leaked because UDP and UDS clients hot-patch themselves against libcalcser.a at startup
-    - libcalcser.a builds into ONE binary artifact linked by all eight executables; any behavior change inside the
-      serializer changes the protocol on every channel, which is precisely why the shared library, not each skin, must
-      stay the single source of protocol truth
+    - libcalcser.a builds into ONE binary artifact linked by all eight executables; any behavior change inside the serializer changes the protocol on every channel, which is precisely why the shared library, not each skin, must stay the single source of protocol truth
     - Only TCP datagrams cross the network stack, and the kernel broadcasts serializer updates to every bound socket
-    - The maintainer's rebuild replaced the wrong static archive on disk, so all transports log the new behavior from
-      their caches
+    - The maintainer's rebuild replaced the wrong static archive on disk, so all transports log the new behavior from their caches
     answer: 1
     why: |
       The whole architecture rests on the common layers: /calcser is "the
@@ -3330,12 +3510,10 @@ blocks:
     concept: protocol-change-blast-radius
   - kind: eipe
     level: advanced
-    q: In one sentence, what did the chapter's unusual order - teaching socket varieties through one running calculator
-      project - buy the learner?
+    q: In one sentence, what did teaching socket varieties through one running calculator project buy the learner?
     choices:
     - It hid the syscall layer so learners could focus on the service arithmetic alone
-    - It exposed the common boundaries between socket and channel types on real reused code, while still exercising
-      every listener and connector sequence in a working client-server example with a real application protocol
+    - It exposed the common boundaries between socket and channel types on real reused code, while still exercising every listener and connector sequence in a working client-server example with a real application protocol
     - It removed the need to learn backlogs and blocking behavior, since the project's libraries encapsulate them
     - It prioritized performance tuning over API usage across the four socket types
     answer: 1
@@ -3348,12 +3526,11 @@ blocks:
       included, a thing ordinary socket examples lack. Running the four
       skins end to end is what makes accept_forever shared, serve_forever
       shared, and only-the-main-different visible as facts rather than
-      claims. Options A, C, and D invert the chapter's actual emphasis.
+      claims. Options A, C, and D invert the design's actual emphasis.
     concept: unusual-order-payoff
   - kind: fillblank
     level: core
-    q: "Name the static library built from /calcsvc that every server executable must link against to do its
-      calculations."
+    q: Name the static library built from /calcsvc that every server executable must link against to do its calculations.
     code: |
       /* from the build of the calculator project */
       /calcsvc sources -> ______________
@@ -3368,3 +3545,368 @@ blocks:
       dictates the application protocol, linked from all eight executables,
       while libcalcsvc.a carries only the transport-agnostic service logic.
     concept: service-library-name-fillblank
+- id: b15
+  type: design
+  title: Retry Blocking Socket Calls Interrupted by Signals
+  explain_md: Blocking socket calls such as `accept()`, `read()`, `write()`, and `recvfrom()` can return `-1` with `errno == EINTR` when a signal is delivered before the call completes. `EINTR` means the wait was interrupted, not that the socket or listener is broken. For `accept()`, retry the call on the still-valid listening socket. For reads and writes, retry only when no bytes moved; if a partial transfer occurred, continue from the new offset rather than repeating the whole buffer. A common pattern is `do { rc = accept(sd, ...); } while (rc == -1 && errno == EINTR);`. Treating every `-1` as fatal makes a server exit merely because a signal arrived.
+  checks:
+  - kind: mcq
+    level: core
+    q: A blocking `accept()` returns `-1` and `errno == EINTR` after a signal handler runs. What happened?
+    choices:
+    - The listening socket was closed by the signal
+    - The call was interrupted before a connection was accepted; the listening socket remains valid and `accept()` can be retried
+    - The peer connected but sent no data
+    - The kernel converted the listener to a datagram socket
+    answer: 1
+    why: EINTR reports interruption of the blocking wait. The listener is still open, so retrying accept() is correct. The other options invent a closed listener, an accepted peer, or a socket-type change.
+    concept: eintr-accept-retry
+  - kind: choose-better
+    level: advanced
+    q: Which accept loop handles an interrupted system call correctly?
+    choices:
+    - while (1) { int c = accept(server_sd, NULL, NULL); if (c == -1) { if (errno == EINTR) continue; perror("accept"); break; } handle(c); }
+    - while (1) { int c = accept(server_sd, NULL, NULL); if (c == -1) { perror("accept"); exit(1); } handle(c); }
+    answer: 0
+    why: The first loop retries only when errno is EINTR and otherwise reports a real failure. The second treats an interruption as fatal and terminates the server. A retry is safe because no connection was accepted when EINTR was returned.
+    concept: eintr-retry-pattern
+  - kind: why-fails
+    level: core
+    q: Why should a server not treat `EINTR` from `accept()` as proof that its listening socket is unusable?
+    choices:
+    - EINTR is returned only after a connection was accepted
+    - EINTR means the blocking wait was interrupted by a signal; the descriptor remains open and the accept can be retried
+    - EINTR means the kernel has permanently disabled the backlog
+    - EINTR is returned only for datagram sockets
+    answer: 1
+    why: The signal interrupted the wait, not the socket. The listener remains valid and the pending connection queue is unaffected. The other choices confuse interruption with acceptance, permanent listener failure, or a socket-type rule.
+    concept: eintr-not-listener-failure
+  - kind: eipe
+    level: advanced
+    q: After `accept()` returns `-1` with `errno == EINTR`, what is the state of the listening socket?
+    choices:
+    - It is still open and still listening; the call can be repeated
+    - It is closed and must be recreated with `socket()`
+    - It has automatically accepted the next client
+    - It has been converted to a connected socket
+    answer: 0
+    why: EINTR does not close or rebind the listener. It reports that the wait ended early, so the same listener can be used for another accept().
+    concept: eintr-listener-state
+  - kind: mcq
+    level: intro
+    q: Which condition makes retrying a blocking socket call appropriate after `-1`?
+    choices:
+    - '`errno == EINTR`'
+    - '`errno == ENOENT`'
+    - '`errno == EMFILE`'
+    - Any error, because all socket errors are transient
+    answer: 0
+    why: EINTR is the explicit interrupted-call condition. ENOENT and EMFILE describe missing endpoints and exhausted descriptors, which need different handling; not every error is transient.
+    concept: eintr-retry-condition
+- id: b16
+  type: design
+  title: Handle SIGPIPE and EPIPE on Broken Writes
+  explain_md: 'A write to a stream socket whose peer has closed can raise `SIGPIPE`. The default action for `SIGPIPE` terminates the process, so a server can die just because one client disconnected. Robust programs ignore `SIGPIPE` with `signal(SIGPIPE, SIG_IGN)` or use `send()` with `MSG_NOSIGNAL`; the write then returns `-1` with `errno == EPIPE` instead of killing the process. A positive short count is a partial write, not EPIPE, and is handled by continuing from the unsent bytes. Once EPIPE is reported, the channel is dead: log it, tear down the connection, and do not retry the same write forever.'
+  checks:
+  - kind: mcq
+    level: core
+    q: What signal can be delivered when a process writes to a stream socket whose remote peer has closed?
+    choices:
+    - SIGPIPE
+    - SIGCHLD
+    - SIGALRM
+    - SIGCONT
+    answer: 0
+    why: Writing to a broken stream channel raises SIGPIPE. SIGCHLD reports child state changes, SIGALRM reports timers, and SIGCONT resumes a stopped process; none is the broken-pipe signal.
+    concept: sigpipe-signal
+  - kind: spot-bug
+    level: advanced
+    q: The server writes to a client socket without ignoring SIGPIPE. The client crashes, and the next write kills the server process. Which defect explains the abrupt server death?
+    code: |
+      ssize_t send_reply(int sd, const char *buf, size_t n) {
+        return write(sd, buf, n);
+      }
+    choices:
+    - The write uses a size_t length
+    - The default SIGPIPE disposition terminates the process when the peer is gone; the server should ignore SIGPIPE or use MSG_NOSIGNAL and handle EPIPE
+    - The server must call listen() again after every write
+    - The buffer must be null-terminated before every write
+    answer: 1
+    why: The peer close makes the channel broken. Without SIGPIPE ignored or MSG_NOSIGNAL, the signal uses its default fatal action. The other options misunderstand write types, listener lifecycle, and stream payload rules.
+    concept: sigpipe-default-fatal
+    diagnostic_log: |-
+      write failed: Broken pipe
+      [process terminated by signal 13: SIGPIPE]
+  - kind: choose-better
+    level: advanced
+    q: Which server-side setup handles a dead peer without killing the process?
+    choices:
+    - signal(SIGPIPE, SIG_IGN); then treat write() == -1 with errno == EPIPE as a dead connection and tear it down
+    - Leave SIGPIPE at its default and call write() repeatedly until it succeeds
+    - Catch SIGPIPE and restart the whole server process
+    - Convert the stream socket to a datagram socket before writing
+    answer: 0
+    why: Ignoring SIGPIPE turns the event into an EPIPE error the server can handle locally. Retrying a dead channel or restarting the server is wasteful; changing the socket type is unrelated.
+    concept: sigpipe-ignore-epipe
+  - kind: why-fails
+    level: core
+    q: Why is retrying a write after it returns `-1` with `errno == EPIPE` pointless?
+    choices:
+    - EPIPE means the peer is gone; the stream channel is dead, so the same write cannot succeed
+    - EPIPE means the buffer was too small and a larger buffer will work
+    - EPIPE means the socket is temporarily busy and a sleep will fix it
+    - EPIPE means the kernel has no route to the local host
+    answer: 0
+    why: 'EPIPE reports a broken pipe: the peer end is gone. Retrying the same dead channel does not restore the peer. The other options confuse it with buffer sizing, temporary backpressure, or routing.'
+    concept: epipe-dead-channel
+  - kind: eipe
+    level: advanced
+    q: What is the relationship between `SIGPIPE` and `EPIPE` on a broken stream write?
+    choices:
+    - SIGPIPE is the signal raised by the broken write; if it is ignored, the call reports the failure as `-1` with `errno == EPIPE`
+    - EPIPE is the signal and SIGPIPE is the errno value
+    - Both are returned only for datagram sockets
+    - SIGPIPE is raised only after EPIPE has been handled
+    answer: 0
+    why: The failed write raises SIGPIPE; suppressing that signal lets the system call return the EPIPE error. The names are not reversed, and the behavior belongs to broken stream channels, not datagram boundaries.
+    concept: sigpipe-epipe-relationship
+- id: b17
+  type: design
+  title: Recognize Descriptor Exhaustion at socket()
+  explain_md: Every socket consumes one entry in the process's file descriptor table. The operating system caps that table, often through `RLIMIT_NOFILE`. When the table is full, `socket()` fails with `-1` and `errno == EMFILE` (too many open files). This is a local resource limit, not a bad address family, missing route, or protocol error. Servers must close descriptors they no longer need, especially per-client sockets, and must handle EMFILE gracefully instead of leaking a descriptor on every failed path.
+  checks:
+  - kind: mcq
+    level: core
+    q: A process has exhausted its file descriptor limit. What does `socket()` return?
+    choices:
+    - '`-1` with `errno == EMFILE`'
+    - '`0`, which is stdin'
+    - A valid descriptor obtained by reusing the oldest socket
+    - '`-1` with `errno == ENOENT`'
+    answer: 0
+    why: The socket needs a free file descriptor table entry. With none available, the call fails with EMFILE. Descriptor 0 is a real descriptor, not a fallback; ENOENT describes a missing path, not exhaustion.
+    concept: emfile-socket-failure
+  - kind: why-fails
+    level: advanced
+    q: Why can `socket()` fail with `EMFILE` even when the machine has plenty of free memory?
+    choices:
+    - Sockets are limited by the process descriptor table rather than by RAM alone
+    - Sockets need a filesystem path before they can allocate memory
+    - The kernel refuses sockets whenever the network is down
+    - EMFILE means the address family is unsupported
+    answer: 0
+    why: EMFILE is an exhaustion of the process descriptor table, a separate resource limit. Memory availability does not guarantee a free descriptor slot. The other choices confuse resource classes, paths, network state, and address-family errors.
+    concept: emfile-resource-limit
+  - kind: choose-better
+    level: advanced
+    q: Which handler avoids leaking descriptors across client sessions?
+    choices:
+    - After handling a client, close(client_sd); if close is skipped on an error path, still route it through a single cleanup block
+    - Leave every accepted descriptor open so later writes can reuse it
+    - Ignore EMFILE and keep calling accept() until it succeeds
+    - Allocate one new socket for every failed write and never close it
+    answer: 0
+    why: A single cleanup path closes each accepted descriptor exactly once, preserving descriptor-table capacity. Leaving descriptors open, spinning on EMFILE, or allocating more sockets consumes the same exhausted resource.
+    concept: emfile-cleanup-discipline
+  - kind: eipe
+    level: core
+    q: What resource does each open socket consume?
+    choices:
+    - One entry in the process file descriptor table
+    - One entry in the routing table
+    - One dedicated CPU core
+    - One filesystem inode even for network sockets
+    answer: 0
+    why: A socket is represented by a descriptor in the process table. Routing entries, CPU cores, and filesystem inodes are different resources and are not consumed one-per-socket.
+    concept: socket-descriptor-resource
+  - kind: mcq
+    level: intro
+    q: Which errno specifically reports that a process has too many open file descriptors?
+    choices:
+    - EMFILE
+    - EINTR
+    - ENOENT
+    - EADDRINUSE
+    answer: 0
+    why: EMFILE is the descriptor-table exhaustion error. EINTR is interruption, ENOENT is a missing path or endpoint, and EADDRINUSE is an address already in use.
+    concept: emfile-errno
+- id: b18
+  type: design
+  title: Restart TCP Listeners with SO_REUSEADDR and TIME_WAIT
+  explain_md: After a TCP connection closes, one endpoint can remain in `TIME_WAIT` for roughly 30-120 seconds so delayed duplicate segments cannot be mistaken for a new connection. A new listener that tries to bind the same local port during that interval can fail with `EADDRINUSE`. Setting `SO_REUSEADDR` before `bind()` lets the listener reuse the local address and port when no active listener owns them, so a restart does not have to wait for TIME_WAIT to expire. It does not permit two simultaneous listeners on the same address and port. This is a TCP/IP port issue; a stale UDS path is a filesystem node and is handled by `unlink()` instead.
+  checks:
+  - kind: why-fails
+    level: advanced
+    q: Why can restarting a TCP server immediately after it terminates fail with `EADDRINUSE` even though the process is gone?
+    choices:
+    - The old connection may linger in TIME_WAIT, keeping the local port reserved while delayed segments are absorbed
+    - TCP requires a reboot to clear every closed port
+    - The kernel permanently assigns the port to the first process that used it
+    - The new process lacks permission to bind any port above 1024
+    answer: 0
+    why: TIME_WAIT keeps the endpoint reserved temporarily so late duplicates cannot corrupt a new connection. Rebooting, permanent ownership, and a blanket high-port permission rule are not the cause.
+    concept: timewait-port-reservation
+  - kind: mcq
+    level: core
+    q: Where should `SO_REUSEADDR` be set for a TCP listener?
+    choices:
+    - On the listening socket, before `bind()`
+    - After `accept()` on each connected socket
+    - Only after the first `EADDRINUSE` failure, on the peer socket
+    - On the client socket after `connect()`
+    answer: 0
+    why: The option must be active when bind() reserves the local endpoint, so it is set on the listening socket before bind(). It is not a per-accepted-connection or client-side setting.
+    concept: reuseaddr-before-bind
+  - kind: choose-better
+    level: advanced
+    q: Which restart path handles TIME_WAIT correctly?
+    choices:
+    - int one = 1; setsockopt(server_sd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)); bind(server_sd, ...);
+    - bind(server_sd, ...); setsockopt(server_sd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    - sleep(forever) until the old process is forgotten, then bind without an option
+    - Call listen() before bind() so the port is reserved early
+    answer: 0
+    why: SO_REUSEADDR must be set before bind so bind can reuse a port that is only lingering in TIME_WAIT. Setting it after bind, sleeping forever, or reordering listen before bind does not solve the reservation.
+    concept: reuseaddr-order
+  - kind: eipe
+    level: advanced
+    q: What does `SO_REUSEADDR` not allow?
+    choices:
+    - Two active listeners bound to the same address and port at the same time
+    - A listener to bind a local port whose previous connection is in TIME_WAIT
+    - A server to restart without waiting for TIME_WAIT to expire
+    - A TCP listener to reserve its local endpoint before accepting clients
+    answer: 0
+    why: SO_REUSEADDR relaxes reuse of a lingering endpoint; it does not create two simultaneous owners of one address and port. The other options describe valid effects of the option.
+    concept: reuseaddr-no-double-listener
+  - kind: mcq
+    level: core
+    q: A UDS server finds a stale socket file at its bind path after a crash. What handles that stale endpoint?
+    choices:
+    - Call `unlink()` on the socket path before `bind()`
+    - Set `SO_REUSEADDR` on the UDS socket
+    - Call `listen()` twice
+    - Use `connect()` before `bind()`
+    answer: 0
+    why: A UDS endpoint is a filesystem node, so a stale path is removed with unlink(). SO_REUSEADDR is a TCP/IP port option and does not delete the filesystem node; listen and connect do not clear it.
+    concept: uds-stale-file-vs-reuseaddr
+- id: b19
+  type: design
+  title: Detect Truncated Datagram Reads with MSG_TRUNC
+  explain_md: '`recvfrom()` on a datagram socket copies at most the buffer size and returns the number of bytes copied, not necessarily the original datagram length. If the datagram is larger than the buffer, the extra bytes are discarded and the call returns the buffer size; the remainder cannot be read by calling `recvfrom()` again because the datagram boundary has already been consumed. On Linux, passing `MSG_TRUNC` makes `recvfrom()` return the full datagram length even when the buffer is smaller, so the receiver can detect truncation; `MSG_PEEK | MSG_TRUNC` can inspect the length before deciding how much space to allocate. The receiver must size its buffer for the protocol''s maximum or detect and reject oversized datagrams.'
+  checks:
+  - kind: predict
+    level: core
+    q: A 50-byte datagram arrives. The receiver passes a 20-byte buffer to `recvfrom()` with no flags. What does `recvfrom()` return?
+    choices:
+    - '20'
+    - '30'
+    - '50'
+    - -1 with EMSGSIZE
+    answer: 0
+    why: Without MSG_TRUNC, recvfrom copies at most 20 bytes and returns the copied count, 20. The other 30 bytes are discarded. It does not return 30 or 50, and a small buffer is not an error.
+    concept: recvfrom-small-buffer-return
+  - kind: mcq
+    level: advanced
+    q: Which Linux flag makes `recvfrom()` report the full datagram length even when the supplied buffer is smaller?
+    choices:
+    - '`MSG_TRUNC`'
+    - '`MSG_PEEK` alone'
+    - '`MSG_WAITALL`'
+    - '`MSG_OOB`'
+    answer: 0
+    why: MSG_TRUNC makes the return value report the original datagram size so truncation is detectable. MSG_PEEK alone only leaves the datagram queued; MSG_WAITALL and MSG_OOB serve other purposes.
+    concept: msg-trunc-flag
+  - kind: why-fails
+    level: advanced
+    q: Why can a receiver not recover the missing bytes by calling `recvfrom()` again after a datagram was truncated?
+    choices:
+    - The whole datagram was consumed atomically; the discarded tail is gone and the next call waits for a different datagram
+    - The kernel queues the tail for the next read only when MSG_PEEK is set
+    - The second call returns the tail only if the buffer is larger
+    - The datagram remains queued until the receiver acknowledges it
+    answer: 0
+    why: Datagrams preserve boundaries atomically. A short buffer truncates and consumes the datagram, so the tail is not a second message. The other options invent tail queuing, buffer-dependent recovery, or acknowledgments.
+    concept: datagram-truncation-irrecoverable
+  - kind: choose-better
+    level: advanced
+    q: Which receive path handles oversized datagrams safely?
+    choices:
+    - Use a buffer sized for the protocol maximum, and use MSG_TRUNC or a length check to reject anything larger
+    - Always use a 20-byte buffer and assume every datagram is small
+    - Call recvfrom twice and concatenate the two results
+    - Use a stream socket so the kernel splits the datagram automatically
+    answer: 0
+    why: A maximum-size buffer prevents silent truncation, and a length check detects oversize input. A fixed tiny buffer loses data, a second recvfrom does not recover the tail, and changing to a stream socket destroys the datagram boundary semantics.
+    concept: datagram-size-validation
+  - kind: eipe
+    level: core
+    q: What does a `recvfrom()` return value equal to the buffer size tell the receiver when `MSG_TRUNC` is not used?
+    choices:
+    - The datagram may have been exactly that size or larger; truncation is possible and must be considered
+    - The datagram was definitely exactly that size
+    - The datagram was split into two messages
+    - The sender used a stream socket
+    answer: 0
+    why: Without MSG_TRUNC, the return value is the number copied, so a full buffer cannot distinguish an exact fit from a truncated larger datagram. The other options assert certainty the call does not provide.
+    concept: recvfrom-full-buffer-ambiguity
+- id: b20
+  type: design
+  title: Let the Kernel Assign a UDP Client's Ephemeral Port
+  explain_md: 'A UDP client may skip `bind()`. On its first `sendto()`, the kernel performs an implicit bind: it selects a local source address according to the route and assigns a free ephemeral port from the system''s dynamic port range. That source address and port stay associated with the socket for its lifetime, so the server can send replies back to them. `bind()` with port 0 explicitly requests the same ephemeral assignment. This differs from a UDS datagram client, which must bind its own filesystem socket path because a UDS endpoint has no automatic ephemeral namespace.'
+  checks:
+  - kind: mcq
+    level: core
+    q: How does an unbound UDP client socket obtain a local port when it first calls `sendto()`?
+    choices:
+    - The kernel implicitly binds it to an available ephemeral port
+    - The client sends from port 0 and the server assigns a port
+    - The compiler assigns a port from the source line number
+    - The client must read a port from /dev/urandom
+    answer: 0
+    why: The first sendto triggers an implicit bind that chooses a free ephemeral port. Port 0 is not the source port on the wire, the compiler has no role, and the kernel does not require the application to choose a random device.
+    concept: udp-implicit-ephemeral-bind
+  - kind: why-fails
+    level: advanced
+    q: Why must a UDS datagram client bind its own socket path even though a UDP client can skip `bind()`?
+    choices:
+    - UDS has no automatic ephemeral address; the server needs a filesystem path in the client address to send a reply
+    - UDS datagram sockets cannot receive data
+    - The UDS kernel assigns a port only after `listen()`
+    - UDP clients actually bind an invisible path instead of a port
+    answer: 0
+    why: A UDP client receives an implicit IP address and ephemeral port, but a UDS endpoint is a filesystem path with no automatic allocation. Without the client path, the server has no return address. UDS datagrams can receive, listen is not used for datagrams, and UDP does not use filesystem paths.
+    concept: uds-client-bind-vs-udp
+  - kind: choose-better
+    level: advanced
+    q: Which UDP client design lets the kernel choose the local port?
+    choices:
+    - Create the socket and call `sendto()` without binding; or call `bind()` with port 0 to request an ephemeral port explicitly
+    - Bind a hardcoded port below 1024 before sending
+    - Call `listen()` and then `sendto()`
+    - Bind the server destination port locally before sending
+    answer: 0
+    why: Omitting bind or binding port 0 delegates ephemeral port selection to the kernel. Hardcoding a low port, calling listen on a datagram client, or binding the server port locally is incorrect.
+    concept: udp-ephemeral-bind-choice
+  - kind: eipe
+    level: core
+    q: What does passing port 0 to `bind()` mean for a UDP socket?
+    choices:
+    - Ask the kernel to choose an available ephemeral port
+    - Bind to the server port
+    - Disable replies from the server
+    - Use port 0 as the literal source port
+    answer: 0
+    why: 'Port 0 is the ephemeral request: the kernel assigns a free local port. It is not the server port, it does not disable replies, and the assigned port is not 0 on the wire.'
+    concept: bind-port-zero-ephemeral
+  - kind: predict
+    level: advanced
+    q: A UDP client sends from an unbound socket to a server. What source information does the server receive with the datagram?
+    choices:
+    - The client's chosen source IP address and the ephemeral port the kernel assigned
+    - No source address, because the client never called bind
+    - The server port as both source and destination
+    - The client filesystem path
+    answer: 0
+    why: The implicit bind gives the socket a source IP and ephemeral port, and recvfrom reports that address. The client is not addressless, the source is not the server port, and UDP has no filesystem path.
+    concept: udp-implicit-source-address

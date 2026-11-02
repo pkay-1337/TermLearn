@@ -1,0 +1,173 @@
+cards:
+- front: In a client-server exchange, which side initiates and which side waits?
+  back: |-
+    The client initiates a request; the server waits for requests and answers them. Why: the roles
+    describe who starts the conversation, not which side is more powerful.
+  concept: client-server-roles
+- front: How does a fork-per-connection server handle many clients?
+  back: |-
+    The parent accepts a connection, forks a child, and returns to accept. The child serves the accepted
+    descriptor. Why: the parent keeps the listening queue moving while children own conversations.
+  concept: fork-per-connection
+- front: What does accept() return on success?
+  back: A new descriptor for the accepted connection. The listening descriptor stays open for later clients.
+  concept: accept-return
+- front: What happens to the listening socket after accept() returns?
+  back: |-
+    It stays open and can accept more connections. accept removes one pending connection; it does not
+    consume the listener.
+  concept: listener-lifetime
+- front: Why does the parent close new_fd after fork?
+  back: |-
+    The child owns the accepted conversation, so the parent releases its copy and returns to accept.
+    Keeping it open leaks one descriptor per connection.
+  concept: parent-close
+- front: Why does the child close sockfd after fork?
+  back: |-
+    The child serves one connection and does not accept new clients, so it closes its copy of the
+    listening socket.
+  concept: child-close
+- front: What does fork() copy into the child?
+  back: |-
+    A copy of the descriptor table. Both processes can refer to the same open socket description, but
+    each close removes only that process's entry.
+  concept: fork-descriptor-table
+- front: What hints does a stream server use for getaddrinfo()?
+  back: AF_UNSPEC, SOCK_STREAM, and AI_PASSIVE, with a NULL node for wildcard local addresses.
+  concept: server-hints
+- front: What does AI_PASSIVE request?
+  back: |-
+    Wildcard addresses suitable for binding when the node is NULL. It marks a server-style lookup, not a
+    client lookup.
+  concept: ai-passive
+- front: What does the server do inside the getaddrinfo candidate loop?
+  back: |-
+    Create a socket, set SO_REUSEADDR, try bind, and break on the first success. Close the socket and
+    try the next candidate on failure.
+  concept: bind-loop
+- front: Why set SO_REUSEADDR on a server socket?
+  back: |-
+    It allows rebinding a local address that is still in TIME_WAIT. It does not make one socket serve
+    every client.
+  concept: reuseaddr
+- front: What should a server do when bind() fails for one candidate?
+  back: |-
+    Close that socket and try the next addrinfo record. Exiting ignores valid later candidates; reusing
+    the failed socket keeps its bad state.
+  concept: bind-retry
+- front: What does listen() do?
+  back: |-
+    It marks a bound socket ready to queue connections and sets the backlog. It does not accept a
+    connection.
+  concept: listen-role
+- front: What does the backlog argument control?
+  back: |-
+    A hint for how many connections may wait in the accept queue. It is not a fork count or a message
+    size.
+  concept: backlog
+- front: What is the stream server call order from lookup to accepting?
+  back: getaddrinfo, socket, bind, listen, accept. The accepted descriptor is then used for data.
+  concept: server-sequence
+- front: What does accept() do with addrlen?
+  back: |-
+    It treats addrlen as in/out: the caller passes the buffer capacity, and the kernel writes back the
+    actual address length.
+  concept: accept-addrlen
+- front: What is a zombie process?
+  back: |-
+    An exited child whose exit status has not been collected by the parent. It remains in the process
+    table until reaped.
+  concept: zombie
+- front: Which signal tells a server that a child changed state?
+  back: SIGCHLD. A handler can reap exited children when the signal arrives.
+  concept: sigchld
+- front: What does waitpid(-1, NULL, WNOHANG) do?
+  back: |-
+    It polls for any ready child without blocking. A positive return is a reaped PID; 0 means no child
+    is ready; -1 means no children or an error.
+  concept: waitpid-wnohang
+- front: Why loop waitpid() with WNOHANG in a SIGCHLD handler?
+  back: |-
+    One wait reaps at most one child. The loop drains all ready zombies and stops when the return is 0
+    or -1.
+  concept: reap-loop
+- front: Why save and restore errno in a signal handler?
+  back: |-
+    Called functions such as waitpid may overwrite errno. The handler preserves the interrupted code's
+    value.
+  concept: errno-save
+- front: What does get_in_addr() return for AF_INET?
+  back: A pointer to the sin_addr field inside a sockaddr_in. The family tag selects the layout.
+  concept: get-in-addr-v4
+- front: What does get_in_addr() return for AF_INET6?
+  back: A pointer to the sin6_addr field inside a sockaddr_in6. It does not return sin_addr.
+  concept: get-in-addr-v6
+- front: Which function converts a binary IP address to text?
+  back: inet_ntop(). inet_pton() goes from text to binary.
+  concept: inet-ntop
+- front: Why use INET6_ADDRSTRLEN for inet_ntop() output?
+  back: It is large enough for the longest printable IPv6 address, so it also holds any IPv4 form.
+  concept: addrstrlen
+- front: What must precede a sockaddr_in cast of a generic address?
+  back: A check of sa_family. An IPv6 address read through sockaddr_in has the wrong layout.
+  concept: family-cast
+- front: How does a stream client try address candidates?
+  back: |-
+    For each addrinfo record, create a socket and call connect. The first success wins; close failed
+    sockets and continue.
+  concept: client-candidate-loop
+- front: Does a stream client normally call bind()?
+  back: No. The kernel assigns an ephemeral local port when the client connects.
+  concept: client-no-bind
+- front: What is an ephemeral port?
+  back: |-
+    A short-lived local port chosen by the kernel for a client connection. It is not a well-known server
+    port.
+  concept: ephemeral-port
+- front: What does connect() return on success?
+  back: 0. It returns -1 on failure; it does not return a new descriptor.
+  concept: connect-return
+- front: What does recv() returning 0 mean on a stream socket?
+  back: The peer has closed the connection. It does not mean the buffer is empty while the peer is alive.
+  concept: recv-zero
+- front: Why null-terminate a received stream buffer before printing?
+  back: recv does not append a null byte. Write one at buf[n] after using the returned byte count.
+  concept: recv-terminate
+- front: Does a stream preserve message boundaries?
+  back: |-
+    No. One recv may return part of a logical message, and one send may be split. Track byte counts and
+    framing.
+  concept: stream-boundaries
+- front: Which socket type does a datagram listener use?
+  back: SOCK_DGRAM. It binds and calls recvfrom directly.
+  concept: dgram-type
+- front: What does recvfrom() report besides the payload?
+  back: The sender address, written into the supplied address buffer. addrlen is in/out.
+  concept: recvfrom-sender
+- front: Does a datagram listener call listen() or accept()?
+  back: No. Datagram sockets are connectionless and have no connection queue.
+  concept: dgram-no-listen
+- front: What does sendto() need that send() does not?
+  back: A destination address on every call. send() works only after a peer is fixed.
+  concept: sendto-destination
+- front: What does UDP guarantee about delivery?
+  back: |-
+    Nothing. Datagrams may be lost, duplicated, or reordered; sendto success only means the local kernel
+    accepted the packet.
+  concept: udp-best-effort
+- front: What happens when datagram peers use different address families?
+  back: The packet is silently not received. There is no connect error to reveal the mismatch.
+  concept: family-mismatch
+- front: What does connect() do on a datagram socket?
+  back: |-
+    It records a default peer so send and recv can be used, and the kernel filters other senders. It
+    does not create a reliable stream.
+  concept: connected-datagram
+- front: Why does a connected UDP socket ignore other senders?
+  back: |-
+    The kernel filters incoming packets to the connected peer address. This is convenience and
+    isolation, not reliability.
+  concept: connected-filter
+- front: Does datagram connect() perform a handshake?
+  back: No. It only stores a default peer. There is no SYN, no reply, and no guarantee that the peer exists.
+  concept: udp-connect-no-handshake

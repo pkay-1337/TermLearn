@@ -1,0 +1,420 @@
+labs:
+- id: lab1
+  title: Send Every Byte
+  instruction_md: |-
+    ### What You Are Building
+    You are writing a helper that sends an entire buffer over a stream socket.
+    If the kernel accepts only part of it, the helper keeps sending the rest
+    until the whole buffer is gone.
+
+    ## Goal
+
+    Implement a stream helper that finishes a short send instead of trusting one `send()` call.
+
+    ## What you must implement
+
+    Complete `send_all(int fd, const char *buf, size_t len)` in `sendall.c`:
+
+    1. Return `0` immediately when `len` is zero. 2. Loop while fewer than `len` bytes have been sent.
+    3. Call `send()` on the unsent suffix only. 4. Return `-1` if `send()` returns `0` or `-1`. 5.
+    Advance the sent count by the positive return value and return the total when complete.
+
+    `sendall.h`, `main.c`, and `test_runner.c` are complete. Do not edit them.
+
+    ## Why the loop matters
+
+    `send()` reports accepted bytes, not whether the whole buffer left. The test runner reads from the
+    peer and checks the full message, so a single-call stub leaves it truncated.
+
+    ## Verify
+
+    - `t` compiles and runs the tests. The untouched starter returns `-1`, so the tests fail first.
+    - After implementing the loop, every assertion must PASS.
+    - `r` prints the number of bytes sent and the received text.
+  files:
+  - path: sendall.h
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #ifndef SENDALL_H
+      #define SENDALL_H
+
+      #include <stddef.h>
+
+      /* Send every byte of buf, returning the total sent or -1 on error. */
+      int send_all(int fd, const char *buf, size_t len);
+
+      #endif
+  - path: sendall.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include "sendall.h"
+      #include <sys/socket.h>
+
+      int send_all(int fd, const char *buf, size_t len)
+      {
+          (void)fd;
+          (void)buf;
+          (void)len;
+          /* TODO: loop until every byte is sent, or return -1 on error. */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <sys/socket.h>
+      #include <unistd.h>
+      #include "sendall.h"
+
+      int main(void)
+      {
+          int sv[2];
+          char buf[32];
+          ssize_t n;
+          int rc;
+
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+              return 1;
+          }
+          rc = send_all(sv[0], "hello", 5);
+          n = recv(sv[1], buf, sizeof buf - 1, 0);
+          if (n < 0) {
+              n = 0;
+          }
+          buf[n] = '\0';
+          printf("sent=%d text=%s\n", rc, buf);
+          close(sv[0]);
+          close(sv[1]);
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <unistd.h>
+      #include "sendall.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      int main(void)
+      {
+          int sv[2];
+          char buf[32];
+          ssize_t n;
+          int rc;
+
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+              return 2;
+          }
+          rc = send_all(sv[0], "hello", 5);
+          check(rc == 5, "send_all returns the full length");
+          if (rc == 5) {
+              n = recv(sv[1], buf, sizeof buf - 1, 0);
+          } else {
+              n = 0;
+          }
+          if (n < 0) {
+              n = 0;
+          }
+          buf[n] = '\0';
+          check(n == 5, "peer receives five bytes");
+          check(strcmp(buf, "hello") == 0, "peer receives the full text");
+          check(send_all(sv[0], "", 0) == 0, "zero length succeeds");
+          if (failures == 0) {
+              puts("all send tests passed");
+          } else {
+              printf("%d send tests failed\n", failures);
+          }
+          close(sv[0]);
+          close(sv[1]);
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 sendall.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 sendall.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      sent=5 text=hello
+    expect_exit: 0
+  hints:
+  - Track how many bytes have been accepted so far.
+  - Offer only buf plus the sent count, and only len minus the sent count.
+  - Treat a non-positive send return as an error; otherwise add it to the sent count.
+  lang: c
+- id: lab2
+  title: Frame a Length-Prefixed Packet
+  instruction_md: |-
+    ### What You Are Building
+    You are assembling one chat packet: one length byte, an eight-byte padded
+    user name, and the chat text. The receiver will read the first byte to
+    learn how many bytes belong to the packet.
+
+    ## Goal
+
+    Build the header and payload for one variable-length chat packet.
+
+    ## What you must implement
+
+    Complete `frame_packet()` in `frame.c`. The packet layout is:
+
+    - byte 0: total packet length, including this byte
+    - bytes 1 through 8: user name, NUL-padded to eight bytes
+    - remaining bytes: chat text, with no terminator required
+
+    Reject a NULL pointer, an empty name, a name longer than eight bytes, or a total that exceeds
+    `cap`. Clear the eight name bytes, copy the name, copy the text, set the length byte, and return the
+    total length. `frame.h`, `main.c`, and `test_runner.c` are complete.
+
+    ## Why the length byte comes first
+
+    A stream receiver can read the first byte to learn the whole packet size, then keep reading until
+    that many bytes arrive. The name is fixed width so the text starts at a known offset.
+
+    ## Verify
+
+    - `t` fails first because the starter returns `-1`.
+    - After implementing the function, every assertion must PASS.
+    - `r` prints the framed length, name, and text.
+  files:
+  - path: frame.h
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #ifndef FRAME_H
+      #define FRAME_H
+
+      #include <stddef.h>
+
+      /* Build one length-prefixed packet in out. Return total length or -1. */
+      int frame_packet(unsigned char *out, size_t cap, const char *name, const char *text);
+
+      #endif
+  - path: frame.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include "frame.h"
+      #include <string.h>
+
+      int frame_packet(unsigned char *out, size_t cap, const char *name, const char *text)
+      {
+          (void)out;
+          (void)cap;
+          (void)name;
+          (void)text;
+          /* TODO: validate, clear the name field, copy both parts, set the length byte. */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include "frame.h"
+
+      int main(void)
+      {
+          unsigned char buf[137];
+          int len = frame_packet(buf, sizeof buf, "tom", "Hi");
+
+          if (len < 0) {
+              return 1;
+          }
+          printf("framed=%d name=%s text=%.*s\n", len, (char *)buf + 1, len - 9, (char *)buf + 9);
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include "frame.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      int main(void)
+      {
+          unsigned char buf[137];
+          int len;
+
+          len = frame_packet(buf, sizeof buf, "tom", "Hi");
+          check(len == 11, "total length is 1 + 8 + 2");
+          check(buf[0] == 11, "length byte matches total");
+          check(strcmp((char *)buf + 1, "tom") == 0, "name is NUL padded");
+          check(memcmp(buf + 9, "Hi", 2) == 0, "text follows the name");
+          check(frame_packet(buf, sizeof buf, "Benjamin", "Hey") == 12,
+                "second packet has its own length");
+          check(frame_packet(buf, sizeof buf, "toolongname", "x") == -1,
+                "long name is rejected");
+          check(frame_packet(NULL, sizeof buf, "tom", "Hi") == -1,
+                "NULL output is rejected");
+          if (failures == 0) {
+              puts("all frame tests passed");
+          } else {
+              printf("%d frame tests failed\n", failures);
+          }
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 frame.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 frame.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      framed=11 name=tom text=Hi
+    expect_exit: 0
+  hints:
+  - Compute the total from the text length, the eight name bytes, and the length byte.
+  - Validate cap and name length before writing anything.
+  - Clear out[1] through out[8], copy the name, then copy text to out + 9.
+  lang: c
+- id: lab3
+  title: Wait for Readability with poll
+  instruction_md: |-
+    ### What You Are Building
+    You are writing a wait helper that sleeps until a socket has data to read
+    or a timeout expires, instead of repeatedly checking in a busy loop.
+
+    ## Goal
+
+    Use one `pollfd` entry to wait for readable data without a busy loop.
+
+    ## What you must implement
+
+    Complete `wait_readable(int fd, int timeout_ms)` in `wait.c`:
+
+    1. Fill a `struct pollfd` with `fd` and `POLLIN`. 2. Call `poll()` with one entry and the given
+    timeout. 3. Return `-1` on a poll error, `0` on timeout, and `1` when `POLLIN` is reported.
+
+    `wait.h`, `main.c`, and `test_runner.c` are complete. Do not edit them.
+
+    ## Why this is better than looping
+
+    `poll()` sleeps until the kernel reports readiness or the timeout expires. The caller does not spin
+    on failed reads, so an idle process uses no CPU.
+
+    ## Verify
+
+    - `t` fails first because the starter returns `-1`.
+    - After implementing the function, every assertion must PASS.
+    - `r` prints the ready result and the timeout result.
+  files:
+  - path: wait.h
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #ifndef WAIT_H
+      #define WAIT_H
+
+      /* Return 1 if readable, 0 on timeout, -1 on poll error. */
+      int wait_readable(int fd, int timeout_ms);
+
+      #endif
+  - path: wait.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include "wait.h"
+      #include <poll.h>
+
+      int wait_readable(int fd, int timeout_ms)
+      {
+          (void)fd;
+          (void)timeout_ms;
+          /* TODO: build one pollfd entry, call poll, and classify the result. */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <unistd.h>
+      #include "wait.h"
+
+      int main(void)
+      {
+          int p[2];
+          char c = 'x';
+          int ready;
+          int timeout;
+
+          if (pipe(p) == -1) {
+              return 1;
+          }
+          write(p[1], &c, 1);
+          ready = wait_readable(p[0], 100);
+          read(p[0], &c, 1);
+          timeout = wait_readable(p[0], 20);
+          printf("ready=%d timeout=%d\n", ready, timeout);
+          close(p[0]);
+          close(p[1]);
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <unistd.h>
+      #include "wait.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      int main(void)
+      {
+          int p[2];
+          char c = 'x';
+
+          if (pipe(p) == -1) {
+              return 2;
+          }
+          write(p[1], &c, 1);
+          check(wait_readable(p[0], 100) == 1, "queued byte reports readable");
+          read(p[0], &c, 1);
+          check(wait_readable(p[0], 20) == 0, "empty pipe reports timeout");
+          if (failures == 0) {
+              puts("all wait tests passed");
+          } else {
+              printf("%d wait tests failed\n", failures);
+          }
+          close(p[0]);
+          close(p[1]);
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 wait.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 wait.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      ready=1 timeout=0
+    expect_exit: 0
+  hints:
+  - Declare a struct pollfd and set fd and events.
+  - A return of zero is a timeout, not an error.
+  - Test the POLLIN bit in revents only after poll returns a positive count.
+  lang: c

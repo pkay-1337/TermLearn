@@ -1,0 +1,129 @@
+test:
+  gates:
+  - needs:
+    - b1
+    - b2
+    - b3
+    min_quiz: 70
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    min_quiz: 80
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    min_quiz: 85
+  final_checks:
+  - kind: order
+    q: Order the 6 correct steps for a select-based stream server; one line is a distractor.
+    lines:
+    - build master with the listener and clients
+    - copy master into read_fds
+    - call select with the highest descriptor plus one
+    - accept when the listener is ready
+    - read a client and broadcast the bytes
+    - remove a closed client from master
+    - call poll with the master fd_set
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    distractor_why:
+      call poll with the master fd_set: poll takes a pollfd array, while select takes fd_set values.
+    why: |-
+      The server maintains membership, copies it, selects, handles readiness, and updates membership on
+      close. Mixing poll into a select loop uses the wrong descriptor representation. (b5)
+    concept: final-select-loop
+  - kind: spot-bug
+    q: A framed sender sometimes delivers a truncated packet. Which line is the defect?
+    code: |
+      len = frame(buf, name, text);       /* 1 */
+      n = send(fd, buf, len, 0);          /* 2 */
+      if (n < 0) return -1;               /* 3 */
+      return len;                         /* 4 */
+    diagnostic_log: |
+      frame length was 137
+      send returned 120
+      receiver parsed a short packet
+    target_line: 4
+    choices:
+    - Line 4 ignores the short send count
+    - Line 3 rejects a positive return
+    - Line 2 passes the framed length
+    answer: 0
+    why: |-
+      A positive short send leaves part of the frame unsent. Returning the full length hides that fact;
+      the sender must loop until every framed byte leaves. (b6, b8)
+    concept: final-truncated-frame
+  - kind: trace
+    q: Trace the non-blocking read. What value belongs in the target cell for errno?
+    code: |
+      fcntl(fd, F_SETFL, O_NONBLOCK);
+      n = recv(fd, buf, sizeof buf, 0);
+      if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+          /* no data yet */
+      }
+    trace:
+      headers:
+      - Step
+      - condition
+      - errno
+      rows:
+      - step: 1
+        line: 2
+        cells:
+        - empty queue
+        - ???
+      - step: 2
+        line: 3
+        cells:
+        - n is -1
+        - EAGAIN
+    target:
+      row: 0
+      col: 2
+    choices:
+    - EAGAIN or EWOULDBLOCK
+    - zero, because the read succeeded
+    - the peer address length
+    answer: 0
+    why: |-
+      An empty non-blocking queue sets EAGAIN or EWOULDBLOCK, and the next line tests both. A zero errno
+      would mean success, and an address length belongs to accept. (b1)
+    concept: final-eagain-trace
+  - kind: choose-better
+    q: A message must cross hosts with different integer byte order. Which packing design is better?
+    choices:
+    - convert each field with htonl and pack a fixed width
+    - memcpy the native struct into the packet
+    - send a pointer to the struct as text
+    answer: 0
+    why: |-
+      Fixed widths and network byte order make the bytes portable. Native structs carry host layout, and
+      a pointer does not transmit the pointed-to value. (b7, b8)
+    concept: final-portable-pack
+  - kind: why-fails
+    q: A UDP sendto to 255.255.255.255 fails with a permission error. Why?
+    choices:
+    - the socket lacks the SO_BROADCAST option
+    - the destination port is not network order
+    - the datagram has no length prefix
+    answer: 0
+    why: |-
+      The kernel requires explicit broadcast permission on the datagram socket. Port byte order and
+      framing do not cause this permission failure. (b9)
+    concept: final-broadcast-permission

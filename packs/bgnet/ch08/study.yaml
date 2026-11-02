@@ -1,0 +1,1141 @@
+blocks:
+  - id: b1
+    type: model
+    title: Blocking and Non-Blocking Sockets
+    explain_md: |-
+      A **blocking** call sleeps until it can make progress. `accept()`, `recv()`, and `recvfrom()` block
+      by default: if no data is ready, the process waits instead of burning CPU. A socket starts in
+      blocking mode because `socket()` creates it that way.
+
+      Call `fcntl(fd, F_SETFL, O_NONBLOCK)` to switch an existing descriptor to non-blocking mode. A read
+      with no data then returns `-1` and sets `errno` to `EAGAIN` or `EWOULDBLOCK`; check both because the
+      standard permits either. Repeatedly polling this way is a **busy-wait** and wastes CPU. Use `poll()`
+      or `select()` to sleep until the kernel reports readiness.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <errno.h>
+        #include <fcntl.h>
+        #include <stdio.h>
+        #include <sys/socket.h>
+        #include <unistd.h>
+
+        int main(void)
+        {
+            int sv[2];
+            char buf[16];
+            ssize_t n;
+
+            if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+                return 1;
+            }
+            if (fcntl(sv[0], F_SETFL, O_NONBLOCK) == -1) {
+                return 1;
+            }
+            errno = 0;
+            n = recv(sv[0], buf, sizeof buf, 0);
+            printf("empty recv: %zd errno=%s\n", n,
+                   n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK) ? "EAGAIN" : "other");
+            send(sv[1], "ping", 4, 0);
+            n = recv(sv[0], buf, sizeof buf - 1, 0);
+            if (n < 0) {
+                n = 0;
+            }
+            buf[n] = '\0';
+            printf("after send: %s\n", buf);
+            close(sv[0]);
+            close(sv[1]);
+            return 0;
+        }
+      run_expected: |
+        empty recv: -1 errno=EAGAIN
+        after send: ping
+      explain_md: |-
+        The first `recv` runs on an empty non-blocking socket, so it returns immediately with `-1` and
+        `EAGAIN`. The parent writes `ping` to the peer, and the next `recv` finds those four bytes. No call
+        slept, which is useful only when readiness is known or checked separately.
+      adapted: true
+      note: A local socketpair replaces a live network socket so the non-blocking state is deterministic.
+    viz:
+      kind: ascii-memory
+      steps:
+        - socket() returns a descriptor whose file status flags include blocking I/O
+        - fcntl(F_SETFL, O_NONBLOCK) sets the non-blocking status flag on that description
+        - recv() with an empty receive queue returns -1 and sets EAGAIN
+        - a peer send() places bytes in the receive queue
+        - the next recv() copies those bytes and returns their count
+    checks:
+      - kind: why-fails
+        q: Why does a non-blocking recv return immediately when the receive queue is empty?
+        choices:
+          - no data is a temporary failure, not a wait
+          - the descriptor has been closed by the peer
+          - the receive queue has reached its limit
+        answer: 0
+        why: |-
+          The O_NONBLOCK flag turns "no data yet" into EAGAIN instead of sleep. A closed peer is reported by
+          a zero return, and a full queue does not make a read fail this way. (b1)
+        concept: set-nonblocking
+      - kind: predict
+        q: Trace the call. The descriptor was made non-blocking and its receive queue is empty. What does
+          recv return?
+        code: |
+          n = recv(fd, buf, sizeof buf, 0);
+        choices:
+          - it blocks until a sender writes data
+          - it returns -1 and errno is EAGAIN
+          - it returns 0 and closes the socket
+        answer: 1
+        why: |-
+          A non-blocking read with no data fails immediately instead of sleeping. It does not wait for a
+          sender, and a zero return means orderly shutdown, not an empty queue. (b1)
+        concept: eagain-return
+      - kind: fillblank
+        q: Complete the portable no-data test. The second errno value is ____.
+        code: |
+          if (n < 0 && (errno == EAGAIN || errno == ____)) {
+              /* no data right now */
+          }
+        answer_text: EWOULDBLOCK
+        why: |-
+          Systems may report either EAGAIN or EWOULDBLOCK for a non-blocking operation that cannot
+          complete. Testing both keeps the code portable. (b1)
+        concept: wouldblock
+      - kind: why-fails
+        q: Why is a tight loop that calls recv on a non-blocking socket a poor readiness strategy?
+        choices:
+          - it changes the socket into a blocking socket
+          - it closes the descriptor after each failed read
+          - it burns CPU while no descriptor is ready
+        answer: 2
+        why: |-
+          The loop spins on failed reads and consumes CPU without sleeping. It does not alter blocking mode
+          or close the descriptor; only an explicit close does that. (b1)
+        concept: busy-wait
+      - kind: order
+        q: Order the 4 correct steps to read without blocking; one line is a distractor.
+        lines:
+          - call recv and treat EAGAIN as no data
+          - create a socket with socket()
+          - set O_NONBLOCK with fcntl()
+          - wait for readiness before retrying
+          - call listen before every recv
+        answer_order:
+          - 1
+          - 2
+          - 0
+          - 3
+        distractor_why:
+          call listen before every recv: listen is a one-time server operation that opens a connection
+            queue; it is not a readiness step.
+        why: |-
+          Create the descriptor, switch it to non-blocking, then read and treat EAGAIN as "try later". A
+          readiness wait avoids the busy-wait, while listen is unrelated to per-read readiness. (b1)
+        concept: nonblocking-sequence
+  - id: b2
+    type: model
+    title: poll() and the pollfd Array
+    explain_md: |-
+      `poll()` asks the kernel to watch an array of `struct pollfd` entries. Each entry names a descriptor
+      in `fd`, a requested event mask in `events`, and receives the result in `revents`. The call returns
+      the number of entries with a non-zero `revents`, or `0` on timeout, or `-1` on error.
+
+      Request `POLLIN` for readable data, `POLLOUT` for writable space, and `POLLHUP` for a remote close.
+      The timeout is in **milliseconds**; a negative timeout waits forever. A listening socket reports
+      `POLLIN` when a new connection is ready to accept. Because the return value is a count, scan the
+      array and test each entry's `revents` instead of treating the return value as an index.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <poll.h>
+        #include <stdio.h>
+        #include <unistd.h>
+
+        int main(void)
+        {
+            int p[2];
+            char c = 'x';
+            struct pollfd pfd;
+            int r;
+
+            if (pipe(p) == -1) {
+                return 1;
+            }
+            pfd.fd = p[0];
+            pfd.events = POLLIN;
+            r = poll(&pfd, 1, 1000);
+            printf("before write: events=%d revents=%d\n", r, pfd.revents);
+            write(p[1], &c, 1);
+            r = poll(&pfd, 1, 1000);
+            printf("after write: events=%d revents=%d\n", r, pfd.revents & POLLIN);
+            close(p[0]);
+            close(p[1]);
+            return 0;
+        }
+      run_expected: |
+        before write: events=0 revents=0
+        after write: events=1 revents=1
+      explain_md: |-
+        The first poll waits up to one second; the pipe is empty, so it returns `0` and `revents` is zero.
+        The write makes the read end readable, so the second poll returns `1` and sets `POLLIN` in
+        `revents`. The count tells how many entries fired, not which array index fired.
+      adapted: true
+      note: A pipe replaces a socket so readiness is local and deterministic.
+    viz:
+      kind: ascii-memory
+      steps:
+        - declare a pollfd entry with fd set to the read descriptor
+        - set events to POLLIN to request readable data
+        - call poll with the array count and a millisecond timeout
+        - the kernel blocks until readiness or timeout
+        - poll writes result bits into revents and returns the count of ready entries
+    checks:
+      - kind: why-fails
+        q: Why must the caller scan every pollfd entry after poll returns?
+        choices:
+          - the return value is a count, not an index
+          - the first entry is always the only ready one
+          - revents is cleared by the next poll call
+        answer: 0
+        why: |-
+          poll returns how many entries fired, not which positions fired. Ready entries can be anywhere, and
+          the caller must test each revents field. (b2)
+        concept: poll-return
+      - kind: fillblank
+        q: The poll timeout argument is measured in ____.
+        code: |
+          int ready = poll(fds, nfds, 2500);
+        answer_text: milliseconds
+        why: |-
+          A timeout of 2500 means 2.5 seconds, because poll uses milliseconds. A negative value waits
+          forever, and zero returns immediately. (b2)
+        concept: poll-timeout
+      - kind: predict
+        q: Trace poll with a negative timeout and no ready descriptors. What happens?
+        code: |
+          int ready = poll(fds, nfds, -1);
+        choices:
+          - it returns immediately with zero events
+          - it waits until at least one event occurs
+          - it waits one millisecond and then returns
+        answer: 1
+        why: |-
+          A negative timeout means no timeout, so poll sleeps until an event arrives or a signal interrupts
+          it. Zero, not a negative value, means return immediately. (b2)
+        concept: poll-forever
+      - kind: order
+        q: Order the 4 correct poll setup steps; one line is a distractor.
+        lines:
+          - set each entry's events mask
+          - declare an array of struct pollfd
+          - call poll with the count and timeout
+          - inspect revents for ready entries
+          - call accept before setting events
+        answer_order:
+          - 1
+          - 0
+          - 2
+          - 3
+        distractor_why:
+          call accept before setting events: accept consumes a pending connection and is not part of preparing
+            the pollfd array.
+        why: |-
+          Declare the entries, fill their events masks, call poll, then scan revents. accept belongs after
+          the listener reports readiness, not before the array is prepared. (b2)
+        concept: poll-sequence
+      - kind: why-fails
+        q: poll returns 2. Why is scanning the array until you have handled two ready entries correct?
+        choices:
+          - the return value is always the last index
+          - the first two entries are always the ready ones
+          - the return value counts entries, not positions
+        answer: 2
+        why: |-
+          The count says how many entries fired, so you may stop after finding that many non-zero revents.
+          It does not identify positions, and ready entries may appear anywhere in the array. (b2)
+        concept: poll-scan
+  - id: b3
+    type: design
+    title: Build a Dynamic poll() Event Loop
+    explain_md: |-
+      A poll server keeps one array entry for the listener and one for each connected client. The listener
+      reports `POLLIN` when a new connection is pending; the server accepts it, appends a new `pollfd`, and
+      continues. When a client is ready, the server reads it and broadcasts the bytes to the others.
+
+      The array must grow as clients arrive. Reserve capacity or `realloc()` when full. To remove an entry,
+      close its descriptor, copy the last active entry over the hole, and decrement the count. A negative
+      `fd` is ignored by poll, which is another way to disable a slot. Always scan `revents`; the poll
+      return value is only the number of ready entries.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <poll.h>
+        #include <stdio.h>
+        #include <unistd.h>
+
+        int main(void)
+        {
+            int a[2], b[2];
+            struct pollfd fds[2];
+            char c;
+            int r;
+
+            if (pipe(a) == -1 || pipe(b) == -1) {
+                return 1;
+            }
+            write(a[1], "A", 1);
+            write(b[1], "B", 1);
+            fds[0].fd = a[0];
+            fds[0].events = POLLIN;
+            fds[1].fd = b[0];
+            fds[1].events = POLLIN;
+            r = poll(fds, 2, 1000);
+            read(a[0], &c, 1);
+            fds[1].fd = -1;
+            printf("ready=%d first=%c\n", r, c);
+            r = poll(fds, 2, 0);
+            printf("remaining=%d\n", r);
+            close(a[0]);
+            close(a[1]);
+            close(b[0]);
+            close(b[1]);
+            return 0;
+        }
+      run_expected: |
+        ready=2 first=A
+        remaining=0
+      explain_md: |-
+        Both pipes are readable, so the first poll reports two ready entries. The server handles the first
+        one and disables the second by setting its fd to `-1`. The next poll ignores that entry and finds
+        nothing else ready, so it returns zero.
+      adapted: true
+      note: Pipes stand in for client sockets; the array, readiness scan, and disable-by-negative-fd rules
+        are unchanged.
+    checks:
+      - kind: choose-better
+        q: The poll array is full when a new client is accepted. Which action is better?
+        choices:
+          - realloc the array and append the new descriptor
+          - overwrite the listener with the new descriptor
+          - call poll again with the old array size
+        answer: 0
+        why: |-
+          Growing the array preserves the listener and every client. Overwriting the listener loses the
+          accept path, and polling the old size leaves the new descriptor unmonitored. (b3)
+        concept: poll-grow
+      - kind: mcq
+        q: A listener socket reports POLLIN in a poll result. What does that mean?
+        choices:
+          - the listener has no pending connections
+          - a new connection is ready to accept
+          - the listener has finished sending data
+        answer: 1
+        why: |-
+          A listening socket becomes readable when its accept queue is non-empty. It does not report that
+          the queue is empty, and listeners do not send application data. (b3)
+        concept: listener-ready
+      - kind: predict
+        q: poll returns 2 for an array of five entries. Which scan handles the ready entries correctly?
+        code: |
+          r = poll(fds, nfds, -1);
+          /* scan here */
+        choices:
+          - use the return value as an array index
+          - read only the first array entry
+          - scan every entry and test its revents
+        answer: 2
+        why: |-
+          The return value is a count, so every entry must be inspected for non-zero revents. Using it as an
+          index can skip ready entries, and the first entry may not be ready. (b3)
+        concept: poll-index-misuse
+      - kind: spot-bug
+        q: The server handles no client data after poll reports one ready entry. Which line is the defect?
+        code: |
+          n = poll(fds, nfds, -1);          /* 1 */
+          for (i = 0; i < nfds; i++) {      /* 2 */
+              if (fds[n].revents & POLLIN) { /* 3 */
+                  handle(fds[i].fd);
+              }
+          }
+        diagnostic_log: |
+          poll returned 1
+          listener index 0 was ready
+          no client bytes were read
+        target_line: 3
+        choices:
+          - Line 3 uses the event count as an index
+          - Line 2 loops over the wrong array
+          - Line 1 ignores the poll timeout
+        answer: 0
+        why: |-
+          The count belongs in the loop bound, not in an array subscript. Indexing with `n` tests the wrong
+          entry, so the ready listener is never handled. (b3)
+        concept: poll-count-index
+      - kind: order
+        q: Order the 4 correct steps to remove a poll entry; one line is a distractor.
+        lines:
+          - copy the last entry over the removed slot
+          - find the slot to remove
+          - decrement the active descriptor count
+          - close the removed descriptor
+          - call poll with the old count
+        answer_order:
+          - 1
+          - 3
+          - 0
+          - 2
+        distractor_why:
+          call poll with the old count: the count must shrink after removal, or poll scans a stale slot.
+        why: |-
+          Find the slot, close its descriptor, compact by copying the last entry, then decrement the count.
+          Keeping the old count leaves an inactive or duplicate entry in the watched range. (b3)
+        concept: poll-remove
+  - id: b4
+    type: model
+    title: select() and fd_set Mechanics
+    explain_md: |-
+      `select()` watches three descriptor sets: readable, writable, and exceptional. Build each set with
+      `FD_ZERO()` and `FD_SET()`, pass the highest descriptor plus one as `numfds`, and pass a timeout or
+      `NULL` to wait forever. After the call, test each descriptor with `FD_ISSET()`.
+
+      The timeout is a `struct timeval` with seconds and **microseconds**. Zero fields make select poll
+      immediately; a `NULL` timeout waits without limit. A readable set can also contain a listener with a
+      pending connection. When a peer closes, the descriptor becomes readable and `recv()` returns `0`.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <stdio.h>
+        #include <sys/select.h>
+        #include <unistd.h>
+
+        int main(void)
+        {
+            int p[2];
+            fd_set rfds;
+            struct timeval tv;
+            char c = 'z';
+            int r;
+
+            if (pipe(p) == -1) {
+                return 1;
+            }
+            FD_ZERO(&rfds);
+            FD_SET(p[0], &rfds);
+            tv.tv_sec = 0;
+            tv.tv_usec = 200000;
+            r = select(p[0] + 1, &rfds, NULL, NULL, &tv);
+            printf("before: %d\n", r);
+            write(p[1], &c, 1);
+            FD_ZERO(&rfds);
+            FD_SET(p[0], &rfds);
+            tv.tv_sec = 0;
+            tv.tv_usec = 200000;
+            r = select(p[0] + 1, &rfds, NULL, NULL, &tv);
+            printf("after: %d isset=%d\n", r, FD_ISSET(p[0], &rfds) ? 1 : 0);
+            close(p[0]);
+            close(p[1]);
+            return 0;
+        }
+      run_expected: |
+        before: 0
+        after: 1 isset=1
+      explain_md: |-
+        The first select times out because the pipe is empty, returning `0`. After the write, the read end
+        is ready; select returns `1`, and `FD_ISSET` confirms that descriptor is in the returned set. The
+        set is rebuilt before the second call because select modifies it.
+      adapted: true
+      note: A pipe replaces a socket; the fd_set construction, timeout, and readiness test are unchanged.
+    viz:
+      kind: ascii-memory
+      steps:
+        - clear each fd_set with FD_ZERO
+        - add descriptors of interest with FD_SET
+        - set numfds to the highest descriptor plus one
+        - select blocks until readiness or the timeval expires
+        - select rewrites the sets and FD_ISSET tests membership
+    checks:
+      - kind: fillblank
+        q: Complete the select call. The numfds argument is the highest descriptor plus ____.
+        code: |
+          int r = select(highest_fd + ____, &readfds, NULL, NULL, &tv);
+        answer_text: '1'
+        why: |-
+          select interprets numfds as a count of descriptors starting at zero, so it must be one greater than
+          the highest descriptor in any set. (b4)
+        concept: select-numfds
+      - kind: why-fails
+        q: Why is FD_ISSET needed after select returns?
+        choices:
+          - select clears every descriptor from the set
+          - select rewrites sets to hold only ready entries
+          - FD_ISSET performs the blocking select wait
+        answer: 1
+        why: |-
+          select overwrites each set with the readiness result, so membership identifies ready descriptors.
+          It does not empty the set, and the blocking wait already happened inside select. (b4)
+        concept: fd-isset
+      - kind: predict
+        q: Trace select with a NULL timeout and no ready descriptors. What does the call do?
+        code: |
+          int r = select(maxfd + 1, &readfds, NULL, NULL, NULL);
+        choices:
+          - it returns immediately with zero descriptors
+          - it waits exactly one microsecond then returns
+          - it waits until a descriptor becomes ready
+        answer: 2
+        why: |-
+          A NULL timeout means wait indefinitely. A zero timeval, not NULL, makes the call return
+          immediately. (b4)
+        concept: select-null-timeout
+      - kind: order
+        q: Order the 4 correct select call steps; one line is a distractor.
+        lines:
+          - clear and fill the descriptor set
+          - set the highest descriptor plus one
+          - call select with the sets and timeout
+          - test readiness with FD_ISSET
+          - close every descriptor in the set
+        answer_order:
+          - 0
+          - 1
+          - 2
+          - 3
+        distractor_why:
+          close every descriptor in the set: select only monitors descriptors; closing them would destroy
+            the connections.
+        why: |-
+          Build the set, choose numfds, call select, then test readiness. Closing descriptors is cleanup,
+          not part of a readiness query. (b4)
+        concept: select-sequence
+      - kind: why-fails
+        q: A timeval has tv_sec 0 and tv_usec 2500. How long is that timeout?
+        choices:
+          - 2500 microseconds, or 2.5 milliseconds
+          - 2500 milliseconds, or 2.5 seconds
+          - 2500 seconds, or about 41.7 minutes
+        answer: 0
+        why: |-
+          The usec field counts microseconds, and 1000 microseconds make one millisecond. The value is not
+          milliseconds or seconds, despite the small number. (b4)
+        concept: timeval-units
+  - id: b5
+    type: design
+    title: Keep a Master fd_set for select()
+    explain_md: |-
+      `select()` modifies the sets you pass. A server therefore keeps a pristine **master** set containing
+      the listener and every client, then copies it into `read_fds` immediately before each call. When a
+      new client arrives, add it to master; when a client closes, remove it from master.
+
+      A listener in the read set reports a pending connection. A client in the read set may have data, or
+      it may have closed: `recv()` returning `0` means the peer closed. On some systems select can report
+      readable and a subsequent read can still block, so setting `O_NONBLOCK` on the socket is a common
+      defensive workaround.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <stdio.h>
+        #include <sys/select.h>
+        #include <unistd.h>
+
+        int main(void)
+        {
+            int a[2], b[2];
+            fd_set master, read_fds;
+            char c;
+            int r, maxfd;
+
+            if (pipe(a) == -1 || pipe(b) == -1) {
+                return 1;
+            }
+            write(a[1], "m", 1);
+            FD_ZERO(&master);
+            FD_SET(a[0], &master);
+            FD_SET(b[0], &master);
+            maxfd = a[0] > b[0] ? a[0] : b[0];
+            read_fds = master;
+            r = select(maxfd + 1, &read_fds, NULL, NULL, NULL);
+            c = FD_ISSET(a[0], &read_fds) ? 'A' : 'B';
+            printf("ready=%d which=%c\n", r, c);
+            close(a[0]);
+            close(a[1]);
+            close(b[0]);
+            close(b[1]);
+            return 0;
+        }
+      run_expected: |
+        ready=1 which=A
+      explain_md: |-
+        The master set holds both read descriptors. The copy `read_fds = master` gives select a set it may
+        overwrite. Only the pipe that received a byte is reported ready, so the result is `1` and the
+        membership test selects `A`.
+      adapted: true
+      note: Pipes stand in for the listener and client sockets; the master/read_fds copy is the same.
+    checks:
+      - kind: choose-better
+        q: Why does a select server keep a master fd_set separate from the set passed to select?
+        choices:
+          - select needs one set for each connected client
+          - select modifies the set, so keep a pristine copy
+          - select stores the listener in the timeout field
+        answer: 1
+        why: |-
+          The call overwrites the descriptor sets with readiness results. Keeping master preserves the full
+          membership for the next iteration; one set can hold many descriptors. (b5)
+        concept: master-set
+      - kind: mcq
+        q: A client descriptor is readable and recv() returns 0. What happened?
+        choices:
+          - the local socket is still fully connected
+          - the kernel dropped one queued packet
+          - the peer closed its side of the connection
+        answer: 2
+        why: |-
+          A zero return is orderly shutdown: no more bytes will arrive. It does not mean the local side is
+          still connected or that a datagram was dropped. (b5)
+        concept: recv-zero
+      - kind: mcq
+        q: A listener is ready in poll with POLLIN. What is the select equivalent?
+        choices:
+          - include the listener in the read set
+          - include the listener in the write set
+          - include the listener in the exception set
+        answer: 0
+        why: |-
+          A pending connection makes the listener readable in both APIs. The write set means space to send,
+          and the exception set means exceptional conditions, not new connections. (b5)
+        from_chapter: ch07
+        from_block: b3
+        concept: interleave-listener-ready
+      - kind: trace
+        q: Trace the master copy. What action belongs in the target cell after select returns?
+        code: |
+          read_fds = master;
+          select(maxfd + 1, &read_fds, NULL, NULL, NULL);
+          /* next action */
+        trace:
+          headers:
+            - Step
+            - read_fds contents
+            - action
+          rows:
+            - step: 1
+              line: 1
+              cells:
+                - before select
+                - all master descriptors
+                - copy master
+            - step: 2
+              line: 2
+              cells:
+                - after select
+                - only ready descriptors
+                - ???
+        target:
+          row: 1
+          col: 2
+        choices:
+          - copy master into read_fds again
+          - test readiness and handle each ready fd
+          - close the listener before testing
+        answer: 1
+        why: |-
+          After select, read_fds contains only ready descriptors, so the server tests and handles them. The
+          next copy happens at the start of the next iteration, and the listener must stay open. (b5)
+        concept: select-handle
+      - kind: order
+        q: Order the 4 correct select server steps; one line is a distractor.
+        lines:
+          - copy master into read_fds
+          - call select on read_fds
+          - accept if the listener is ready
+          - remove a closed client from master
+          - call poll with master
+        answer_order:
+          - 0
+          - 1
+          - 2
+          - 3
+        distractor_why:
+          call poll with master: this server uses select; poll takes a pollfd array, not an fd_set.
+        why: |-
+          Copy the master set, select, handle readiness including accepts, then update master when clients
+          close. Mixing in poll would use the wrong descriptor representation. (b5)
+        concept: select-loop
+  - id: b6
+    type: syntax
+    title: Handle Partial send() with sendall
+    explain_md: |-
+      `send()` may accept fewer bytes than requested. A return of 412 for a 512-byte buffer means the
+      kernel took 412 bytes; the remaining 100 still belong to the caller. A return of `0` or `-1` is an
+      error for this helper, so stop and report failure.
+
+      `sendall()` keeps a count of bytes already sent, calls send on `buf + sent` for `len - sent` bytes,
+      and advances by the return value. The loop ends only when every byte is sent. The receiver must also
+      be prepared for partial arrivals; a stream is a byte sequence, not a sequence of message boundaries.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <stdio.h>
+        #include <sys/socket.h>
+        #include <unistd.h>
+
+        static int send_all(int fd, const char *buf, size_t len)
+        {
+            size_t sent = 0;
+
+            while (sent < len) {
+                ssize_t n = send(fd, buf + sent, len - sent, 0);
+                if (n <= 0) {
+                    return -1;
+                }
+                sent += (size_t)n;
+            }
+            return (int)sent;
+        }
+
+        int main(void)
+        {
+            int sv[2];
+            char buf[32];
+            ssize_t n;
+            int rc;
+
+            if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+                return 1;
+            }
+            rc = send_all(sv[0], "partial-send", 12);
+            n = recv(sv[1], buf, sizeof buf - 1, 0);
+            if (n < 0) {
+                n = 0;
+            }
+            buf[n] = '\0';
+            printf("sent=%d data=%s\n", rc, buf);
+            close(sv[0]);
+            close(sv[1]);
+            return 0;
+        }
+      run_expected: |
+        sent=12 data=partial-send
+      explain_md: |-
+        `send_all` starts with `sent` at zero. Each call offers only the unsent suffix, and the returned
+        count advances `sent`. When `sent` reaches 12 the loop stops, so the receiver sees the complete
+        message even if the kernel split the write internally.
+      adapted: true
+      note: The helper returns the total count instead of updating a pointer, and a socketpair replaces
+        the network peer.
+    checks:
+      - kind: order
+        q: Order the 4 correct sendall steps; one line is a distractor.
+        lines:
+          - compute the remaining byte count
+          - call send with the remaining slice
+          - advance the buffer pointer by the return value
+          - stop when every byte is sent
+          - reset the socket to blocking mode
+        answer_order:
+          - 0
+          - 1
+          - 2
+          - 3
+        distractor_why:
+          reset the socket to blocking mode: blocking mode is unrelated to finishing a short send; the
+            loop must handle short counts either way.
+        why: |-
+          The helper offers the unsent remainder, advances by the accepted count, and repeats until none
+          remains. Changing blocking mode does not make a single send accept every byte. (b6)
+        concept: sendall-loop
+      - kind: predict
+        q: A 512-byte send returns 412. Which bytes should the next send call offer?
+        code: |
+          n = send(fd, buf, 512, 0); /* n == 412 */
+        choices:
+          - the original 512 bytes from buf again
+          - zero bytes because send already failed
+          - the remaining 100 bytes starting at buf+412
+        answer: 2
+        why: |-
+          The first 412 bytes were accepted, so only the suffix remains. Resending the whole buffer
+          duplicates data, and a positive return is progress, not failure. (b6)
+        concept: partial-send
+      - kind: fillblank
+        q: send returns the number of ____ accepted by the kernel.
+        code: |
+          ssize_t n = send(fd, buf, len, 0);
+        answer_text: bytes
+        why: |-
+          The return value is a byte count, which may be smaller than the requested length. It is not a
+          message count or a descriptor number. (b6)
+        concept: send-return
+      - kind: spot-bug
+        q: The receiver gets only part of a 512-byte message. Which line is the defect?
+        code: |
+          n = send(fd, buf, 512, 0);   /* 1 */
+          if (n < 0) return -1;        /* 2 */
+          return 512;                  /* 3 */
+        diagnostic_log: |
+          sender reported success
+          receiver read 412 bytes
+          connection stayed open
+        target_line: 3
+        choices:
+          - Line 3 ignores the short send count
+          - Line 2 rejects a positive return
+          - Line 1 requests too many bytes
+        answer: 0
+        why: |-
+          A positive short return is not an error, but the helper must continue from the unsent suffix.
+          Returning the requested length claims bytes were sent that never left the buffer. (b6)
+        concept: sendall-bug
+      - kind: choose-better
+        q: Which helper design correctly handles a short send?
+        choices:
+          - call send once and trust its return value
+          - loop until sent equals the requested length
+          - call recv once to confirm the byte count
+        answer: 1
+        why: |-
+          Only a loop that advances by each accepted count guarantees all bytes leave. A single call may be
+          short, and recv cannot prove what the sender transmitted. (b6)
+        concept: sendall-choice
+  - id: b7
+    type: design
+    title: Choose a Serialization Strategy
+    explain_md: |-
+      Binary data needs an agreed wire format. You can convert numbers to text with `sprintf()` and parse
+      them with `strtol()`; send raw memory; or encode into a documented binary form. Text is readable but
+      larger and slower to parse. Raw memory is fast but depends on host byte order, type size, and layout.
+
+      Portable binary encoding converts integers with `htonl()`/`ntohl()` and defines every field's width.
+      Floats need a documented layout such as IEEE-754; on an IEEE-754 host you can still send the bytes
+      after fixing byte order, but a non-IEEE host needs an encoder such as `pack754()`.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <arpa/inet.h>
+        #include <stdint.h>
+        #include <stdio.h>
+
+        static uint32_t pack_u32(uint32_t host)
+        {
+            return htonl(host);
+        }
+
+        static uint32_t unpack_u32(uint32_t net)
+        {
+            return ntohl(net);
+        }
+
+        int main(void)
+        {
+            uint32_t wire = pack_u32(0x12345678u);
+            printf("roundtrip=%08x\n", (unsigned)unpack_u32(wire));
+            return 0;
+        }
+      run_expected: |
+        roundtrip=12345678
+      explain_md: |-
+        `htonl` converts a 32-bit host integer to network byte order, and `ntohl` reverses it. The printed
+        round trip is the original value on any host. Printing the intermediate `wire` bytes would reveal
+        host endianness, which is exactly why the conversion belongs at the boundary.
+    checks:
+      - kind: choose-better
+        q: Which serialization method is better for a value that must cross CPU architectures?
+        choices:
+          - send the in-memory bytes of the value
+          - send a pointer to the value as text
+          - encode into a documented binary format
+        answer: 2
+        why: |-
+          A documented format fixes width and byte order for every receiver. Raw memory depends on the
+          sender's layout, and sending a pointer transmits an address, not the value. (b7)
+        concept: portable-encoding
+      - kind: choose-better
+        q: A human-readable chat protocol carries short text messages. Which encoding is better?
+        choices:
+          - text is readable but larger and slower to parse
+          - binary is readable and always uses less space
+          - raw struct bytes are portable across all hosts
+        answer: 0
+        why: |-
+          Text trades size and parsing cost for readability and easy debugging. Binary is not human-readable,
+          and raw struct bytes are not portable. (b7)
+        concept: text-vs-binary
+      - kind: fillblank
+        q: Convert a 32-bit host integer to network byte order with ____().
+        code: |
+          uint32_t wire = ____(host_value);
+        answer_text: htonl
+        why: |-
+          htonl handles 32-bit host-to-network conversion; htons handles 16-bit ports. The result is the
+          wire-order value, not a pointer or a string. (b7)
+        concept: htonl
+      - kind: why-fails
+        q: Why can sending a whole struct with one send() fail across systems?
+        choices:
+          - structs cannot contain more than one field
+          - padding and byte order differ between systems
+          - send rejects pointers to struct objects
+        answer: 1
+        why: |-
+          Compilers insert padding and choose layout, and integer fields have host byte order. Those details
+          differ, while send accepts any readable buffer. (b7)
+        concept: raw-struct
+      - kind: order
+        q: Order the 4 correct portable integer steps; one line is a distractor.
+        lines:
+          - convert the host integer with htonl
+          - copy the network-order bytes into a buffer
+          - receive and copy the bytes into an integer
+          - convert back with ntohl
+          - send the host integer directly
+        answer_order:
+          - 0
+          - 1
+          - 2
+          - 3
+        distractor_why:
+          send the host integer directly: direct host bytes carry host byte order and are not portable.
+        why: |-
+          Convert to network order, copy the defined bytes into the packet, then reverse the conversion on
+          arrival. Sending host-order bytes skips the portability step. (b7)
+        concept: integer-wire
+  - id: b8
+    type: algorithm
+    title: Pack Floats and Struct Fields Portably
+    explain_md: |-
+      C does not guarantee a portable in-memory float layout, so a wire format must define one. IEEE-754
+      is the common standard: a sign bit, an exponent field, and a fraction field. `pack754()` encodes
+      values into that layout; the receiver decodes with the matching width and exponent size.
+
+      A struct is also not a wire format. The compiler may insert padding, so pack each field separately
+      into a byte buffer, using the agreed width and network byte order. On receipt, copy each field out
+      by the same widths. A helper with a format string reduces mistakes, but every width and bound still
+      needs validation, especially for untrusted network input.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <arpa/inet.h>
+        #include <stdint.h>
+        #include <stdio.h>
+        #include <string.h>
+
+        int main(void)
+        {
+            unsigned char buf[6];
+            uint16_t id = htons(7);
+            uint32_t count = htonl(42);
+            uint16_t rid;
+            uint32_t rcount;
+
+            memcpy(buf, &id, 2);
+            memcpy(buf + 2, &count, 4);
+            memcpy(&rid, buf, 2);
+            memcpy(&rcount, buf + 2, 4);
+            printf("id=%u count=%u packed=%zu\n",
+                   (unsigned)ntohs(rid), (unsigned)ntohl(rcount), sizeof buf);
+            return 0;
+        }
+      run_expected: |
+        id=7 count=42 packed=6
+      explain_md: |-
+        Each field is converted to network order, then copied into a fixed offset: two bytes for `id` and
+        four for `count`. The receiver copies the same widths and converts back. The packed buffer is six
+        bytes, while the in-memory struct could be larger because of padding.
+    checks:
+      - kind: why-fails
+        q: Why does packing a struct as one memory block fail across systems?
+        choices:
+          - struct fields cannot be converted to bytes
+          - network buffers cannot hold more than one field
+          - compiler padding and layout vary across systems
+        answer: 2
+        why: |-
+          Padding, alignment, and field order are implementation details. A byte buffer with explicit widths
+          is stable, while fields and buffers can both hold many values. (b8)
+        concept: struct-padding
+      - kind: fillblank
+        q: The common standard binary layout for floats is IEEE-____.
+        code: |
+          /* encode a float into a documented sign/exponent/fraction layout */
+        answer_text: '754'
+        why: |-
+          IEEE-754 defines the sign, exponent, and fraction fields used by most floating-point hardware. It
+          is a format standard, not a C library function. (b8)
+        concept: ieee754
+      - kind: order
+        q: Order the 4 correct struct packing steps; one line is a distractor.
+        lines:
+          - convert the id field to network order
+          - copy the id into the packet at offset zero
+          - convert and append the count after the id
+          - track the total offset for the next field
+          - copy the whole struct with memcpy
+        answer_order:
+          - 0
+          - 1
+          - 2
+          - 3
+        distractor_why:
+          copy the whole struct with memcpy: the struct's padding and host layout are not a portable wire
+            format.
+        why: |-
+          Convert each field, place it at a known offset, and advance the offset by that field's width.
+          Copying the whole struct transmits padding and host-order bytes. (b8)
+        concept: struct-pack-order
+      - kind: predict
+        q: Trace the layout. A struct holds a one-byte tag followed by a four-byte count. What size is
+          typical on a 32-bit-aligned system?
+        code: |
+          struct msg {
+              unsigned char tag;
+              uint32_t count;
+          };
+          printf("%zu\n", sizeof(struct msg));
+        choices:
+          - eight bytes, because alignment adds padding
+          - five bytes, because the fields are adjacent
+          - four bytes, because the tag is ignored
+        answer: 0
+        why: |-
+          The compiler usually inserts three padding bytes so the four-byte count starts on a four-byte
+          boundary, giving eight bytes total. The field sum is five, not four. (b8)
+        concept: struct-size-padding
+      - kind: choose-better
+        q: A host may not use IEEE-754 floats. Which approach is better for its wire format?
+        choices:
+          - memcpy the native float and hope both match
+          - encode with a documented bit layout like pack754
+          - convert the float to an integer with htonl
+        answer: 1
+        why: |-
+          An explicit encoder defines every bit, independent of the host. Native bytes assume a matching
+          layout, and htonl does not convert floating-point values. (b8)
+        concept: float-portable
+      - kind: mcq
+        q: A stream send returns a short count for a packed struct. Which rule still applies?
+        choices:
+          - discard the frame and close the socket
+          - switch the socket to datagram mode
+          - loop until every framed byte is sent
+        answer: 2
+        why: |-
+          Packing defines bytes, but a stream can still accept only part of them at a time. The sendall loop
+          must finish the frame before the receiver can parse it. (b8)
+        from_chapter: ch06
+        from_block: b10
+        concept: interleave-short-send
+  - id: b9
+    type: syntax
+    title: Send IPv4 UDP Broadcast Packets
+    explain_md: |-
+      IPv4 broadcast is a UDP feature; TCP streams connect one peer and have no broadcast form. Before
+      sending to a broadcast address, enable `SO_BROADCAST` with `setsockopt()`. Without it, the send fails
+      with a permission error.
+
+      A subnet broadcast address is the network number with all host bits set, such as `192.168.1.255`
+      for `192.168.1.0/24`. The limited broadcast address `255.255.255.255` (`INADDR_BROADCAST`) stays on
+      the local link. Routers do not forward the limited address, while a subnet broadcast may be dropped
+      or forwarded depending on policy. Every host on the link must process broadcast traffic, so use it
+      sparingly.
+    example:
+      lang: c
+      code: |
+        #define _POSIX_C_SOURCE 200809L
+        #include <stdio.h>
+        #include <sys/socket.h>
+        #include <unistd.h>
+
+        int main(void)
+        {
+            int fd, on = 1, value = 0;
+            socklen_t len = sizeof value;
+
+            fd = socket(AF_INET, SOCK_DGRAM, 0);
+            if (fd == -1) {
+                return 1;
+            }
+            if (setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &on, sizeof on) == -1) {
+                return 1;
+            }
+            if (getsockopt(fd, SOL_SOCKET, SO_BROADCAST, &value, &len) == -1) {
+                return 1;
+            }
+            printf("broadcast=%d\n", value);
+            close(fd);
+            return 0;
+        }
+      run_expected: |
+        broadcast=1
+      explain_md: |-
+        The datagram socket is created first. `setsockopt` enables `SO_BROADCAST`, and `getsockopt` reads
+        the option back to confirm it is set. Only after this step may `sendto` target a broadcast address.
+    checks:
+      - kind: why-fails
+        q: Why can a TCP stream not send an IPv4 broadcast packet?
+        choices:
+          - TCP is connection-oriented and targets one peer
+          - TCP lacks a reserved broadcast port number
+          - TCP always fragments packets before sending
+        answer: 0
+        why: |-
+          A stream is bound to one established peer, so there is no broadcast destination. Port numbers and
+          fragmentation do not create a broadcast delivery mode. (b9)
+        concept: udp-broadcast
+      - kind: fillblank
+        q: The limited IPv4 broadcast address macro is ____.
+        code: |
+          dest.sin_addr.s_addr = ____;
+        answer_text: INADDR_BROADCAST
+        why: |-
+          INADDR_BROADCAST is the limited broadcast address 255.255.255.255. A subnet broadcast uses the
+          network number with all host bits set instead. (b9)
+        concept: inaddr-broadcast
+      - kind: order
+        q: Order the 4 correct broadcast setup steps; one line is a distractor.
+        lines:
+          - create an IPv4 datagram socket
+          - enable SO_BROADCAST with setsockopt
+          - fill a sockaddr_in with the broadcast address
+          - call sendto with the packet
+          - call listen before sending
+        answer_order:
+          - 0
+          - 1
+          - 2
+          - 3
+        distractor_why:
+          call listen before sending: listen opens a TCP accept queue; UDP broadcast senders do not listen.
+        why: |-
+          Create the datagram socket, enable broadcast permission, build the destination address, then send.
+          listen belongs to stream servers, not broadcast senders. (b9)
+        concept: broadcast-sequence
+      - kind: why-fails
+        q: sendto to 255.255.255.255 fails with a permission error. What is the likely cause?
+        choices:
+          - the destination port was in network order
+          - SO_BROADCAST was not enabled on the socket
+          - the packet length exceeded one byte
+        answer: 1
+        why: |-
+          The kernel requires explicit broadcast permission for a datagram socket. Port byte order and small
+          packet lengths do not cause this permission failure. (b9)
+        concept: broadcast-permission
+      - kind: choose-better
+        q: A packet must stay on the local LAN and never cross a router. Which destination is better?
+        choices:
+          - the subnet broadcast 192.168.1.255
+          - the loopback address 127.0.0.1
+          - the limited broadcast 255.255.255.255
+        answer: 2
+        why: |-
+          Routers do not forward the limited broadcast, so it stays on the local link. A subnet broadcast
+          can be routed under some policies, and loopback never reaches the LAN. (b9)
+        concept: broadcast-scope

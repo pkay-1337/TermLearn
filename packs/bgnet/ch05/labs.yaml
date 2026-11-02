@@ -1,0 +1,445 @@
+labs:
+  - id: lab1
+    title: "Build a Clean IPv6 Wildcard Endpoint"
+    instruction_md: |
+      ## Goal
+
+      Construct an IPv6 endpoint the way the migration checklist prescribes:
+      clear the whole `sockaddr_in6`, select `AF_INET6`, store the port in
+      network order, and install the IPv6 wildcard with `in6addr_any`.
+
+      ## What you must implement
+
+      Complete the four functions in `endpoint.c`:
+
+      1. `endpoint_init(sa6, port)` — reject a NULL pointer with `-1`. Otherwise
+         zero the whole structure, set `sin6_family` to `AF_INET6`, set
+         `sin6_port` with `htons(port)`, assign `in6addr_any` to `sin6_addr`,
+         and return `0`.
+      2. `endpoint_parse(sa6, text, port)` — reject NULL inputs with `-1`.
+         Initialize the endpoint, then parse `text` with `inet_pton(AF_INET6,
+         ...)`. Return `0` only when the parse returns `1`; return `-1`
+         otherwise.
+      3. `endpoint_text(sa6, buf, len)` — reject NULL pointers or a zero length
+         with `-1`. Format `sin6_addr` with `inet_ntop(AF_INET6, ...)`. Return
+         `-1` when formatting fails, otherwise `0`.
+      4. `endpoint_is_any(addr)` — return `1` when the address bytes equal
+         `in6addr_any`, otherwise `0`. A NULL address returns `0`.
+
+      `endpoint.h`, `main.c`, and `test_runner.c` are complete and must not be
+      edited.
+
+      ## Verify
+
+      - `t` (test) compiles the unit runner. The untouched starter returns
+        failure codes, so the tests fail first.
+      - After the implementation, every assertion must PASS.
+      - `r` (run) prints the family, port, formatted wildcard address, and a
+        wildcard verdict.
+    files:
+      - path: endpoint.h
+        content: |
+          #ifndef ENDPOINT_H
+          #define ENDPOINT_H
+
+          #include <stddef.h>
+          #include <stdint.h>
+          #include <netinet/in.h>
+
+          /* Fill sa6 with AF_INET6, the given port, and the IPv6 wildcard address. */
+          int endpoint_init(struct sockaddr_in6 *sa6, uint16_t port);
+
+          /* Build an IPv6 endpoint from numeric text; 0 on success, -1 on bad input. */
+          int endpoint_parse(struct sockaddr_in6 *sa6, const char *text, uint16_t port);
+
+          /* Format the endpoint address as text; 0 on success, -1 on failure. */
+          int endpoint_text(const struct sockaddr_in6 *sa6, char *buf, size_t len);
+
+          /* Return 1 when addr is the all-zero IPv6 wildcard, 0 otherwise. */
+          int endpoint_is_any(const struct in6_addr *addr);
+
+          #endif
+      - path: endpoint.c
+        content: |
+          #include "endpoint.h"
+          #include <string.h>
+          #include <arpa/inet.h>
+
+          int endpoint_init(struct sockaddr_in6 *sa6, uint16_t port)
+          {
+              (void)sa6;
+              (void)port;
+              /* TODO: zero the structure, set AF_INET6, htons(port),
+               * and assign in6addr_any to sin6_addr. */
+              return -1;
+          }
+
+          int endpoint_parse(struct sockaddr_in6 *sa6, const char *text, uint16_t port)
+          {
+              (void)sa6;
+              (void)text;
+              (void)port;
+              /* TODO: initialize the endpoint, then parse the numeric IPv6 text.
+               * Return 0 only when inet_pton reports success. */
+              return -1;
+          }
+
+          int endpoint_text(const struct sockaddr_in6 *sa6, char *buf, size_t len)
+          {
+              (void)sa6;
+              (void)buf;
+              (void)len;
+              /* TODO: format sin6_addr with inet_ntop(AF_INET6, ...). */
+              return -1;
+          }
+
+          int endpoint_is_any(const struct in6_addr *addr)
+          {
+              (void)addr;
+              /* TODO: compare the 16 address bytes with in6addr_any. */
+              return 0;
+          }
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <arpa/inet.h>
+          #include "endpoint.h"
+
+          int main(void)
+          {
+              struct sockaddr_in6 sa6;
+              char text[INET6_ADDRSTRLEN];
+
+              if (endpoint_init(&sa6, 8080) != 0) {
+                  puts("endpoint initialization failed");
+                  return 1;
+              }
+              if (endpoint_text(&sa6, text, sizeof text) != 0) {
+                  puts("endpoint formatting failed");
+                  return 1;
+              }
+
+              printf("family=%s\n",
+                     sa6.sin6_family == AF_INET6 ? "AF_INET6" : "other");
+              printf("port=%u\n", (unsigned)ntohs(sa6.sin6_port));
+              printf("address=%s\n", text);
+              printf("wildcard=%s\n",
+                     endpoint_is_any(&sa6.sin6_addr) ? "yes" : "no");
+              return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <string.h>
+          #include <arpa/inet.h>
+          #include "endpoint.h"
+
+          static int failures = 0;
+
+          static void check(int cond, const char *what)
+          {
+              if (cond)
+                  printf("PASS: %s\n", what);
+              else {
+                  printf("FAIL: %s\n", what);
+                  failures++;
+              }
+          }
+
+          int main(void)
+          {
+              struct sockaddr_in6 sa6;
+              char text[INET6_ADDRSTRLEN];
+
+              check(endpoint_init(&sa6, 8080) == 0, "init accepts a valid endpoint");
+              check(sa6.sin6_family == AF_INET6, "init selects AF_INET6");
+              check(sa6.sin6_port == htons(8080), "init stores the port in network order");
+              check(endpoint_is_any(&sa6.sin6_addr) == 1, "init installs the IPv6 wildcard");
+
+              check(endpoint_parse(&sa6, "2001:db8::1", 443) == 0,
+                    "parse accepts a numeric IPv6 address");
+              check(sa6.sin6_family == AF_INET6, "parse keeps AF_INET6");
+              check(sa6.sin6_port == htons(443), "parse stores the new port");
+              check(endpoint_text(&sa6, text, sizeof text) == 0,
+                    "format accepts a valid endpoint");
+              check(strcmp(text, "2001:db8::1") == 0,
+                    "format round-trips 2001:db8::1");
+
+              check(endpoint_parse(&sa6, "not-an-ip", 80) == -1,
+                    "parse rejects malformed text");
+              check(endpoint_parse(&sa6, "::1", 80) == 0,
+                    "parse accepts IPv6 loopback");
+              check(endpoint_text(&sa6, text, sizeof text) == 0,
+                    "format accepts loopback");
+              check(strcmp(text, "::1") == 0, "format round-trips ::1");
+              check(endpoint_text(&sa6, text, 3) == -1,
+                    "format rejects a buffer that is too small");
+
+              if (failures == 0)
+                  puts("ALL TESTS PASSED");
+              else
+                  printf("%d test(s) failed\n", failures);
+              return failures != 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 endpoint.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 endpoint.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "unit runner: wildcard, parse, format, and bounds"
+        command: "gcc -Wall -Wextra -std=c99 endpoint.c test_runner.c -o test_runner && ./test_runner"
+        stdin: ""
+        expect: |
+          PASS: init accepts a valid endpoint
+          PASS: init selects AF_INET6
+          PASS: init stores the port in network order
+          PASS: init installs the IPv6 wildcard
+          PASS: parse accepts a numeric IPv6 address
+          PASS: parse keeps AF_INET6
+          PASS: parse stores the new port
+          PASS: format accepts a valid endpoint
+          PASS: format round-trips 2001:db8::1
+          PASS: parse rejects malformed text
+          PASS: parse accepts IPv6 loopback
+          PASS: format accepts loopback
+          PASS: format round-trips ::1
+          PASS: format rejects a buffer that is too small
+          ALL TESTS PASSED
+        expect_exit: 0
+      - name: "driver: family, port, wildcard address, verdict"
+        command: "gcc -Wall -Wextra -std=c99 endpoint.c main.c -o app && ./app"
+        stdin: ""
+        expect: |
+          family=AF_INET6
+          port=8080
+          address=::
+          wildcard=yes
+        expect_exit: 0
+    hints:
+      - "Check the whole-structure clear before any field assignment; family, port, and address all depend on a clean base."
+      - "The wildcard is a 16-byte value: use the in6addr_any object with structure assignment, not an integer constant."
+      - "Bottom-out: in endpoint_init, reject NULL, memset the structure, then set sin6_family=AF_INET6, sin6_port=htons(port), and sin6_addr=in6addr_any. parse calls init then inet_pton and checks for a return of 1; text calls inet_ntop and checks for NULL; is_any uses memcmp against in6addr_any."
+
+  - id: lab2
+    title: "Round-Trip IPv6 Text and Build an Endpoint"
+    instruction_md: |
+      ## Goal
+
+      Replace the old IPv4-only text converters with a checked
+      `inet_pton`/`inet_ntop` round trip, then use that round trip to build an
+      IPv6 endpoint from numeric text.
+
+      ## What you must implement
+
+      Complete the three functions in `textaddr.c`:
+
+      1. `parse_ipv6(text, out)` — reject NULL inputs with `-1`. Otherwise
+         return the result of `inet_pton(AF_INET6, text, out)`: `1` for
+         success, `0` for malformed text, `-1` for a system error.
+      2. `format_ipv6(addr, buf, len)` — reject NULL pointers or zero length
+         with `-1`. Call `inet_ntop(AF_INET6, addr, buf, len)`. Return `-1`
+         when it returns NULL, otherwise `0`.
+      3. `build_ipv6_endpoint(sa6, text, port)` — reject NULL inputs with
+         `-1`. Zero the structure, set `sin6_family` to `AF_INET6`, set
+         `sin6_port` with `htons(port)`, then parse `text` directly into
+         `sin6_addr`. Return `0` only when the parse returns `1`.
+
+      `textaddr.h`, `main.c`, and `test_runner.c` are complete and must not be
+      edited.
+
+      ## Verify
+
+      - `t` (test) compiles and runs the unit runner. The untouched starter
+        fails first because its functions do not parse or format anything.
+      - `r` (run) parses `::1` and `2001:db8::5`, shows a malformed parse
+        returning zero, and builds an endpoint for port 8443.
+    files:
+      - path: textaddr.h
+        content: |
+          #ifndef TEXTADDR_H
+          #define TEXTADDR_H
+
+          #include <stddef.h>
+          #include <stdint.h>
+          #include <netinet/in.h>
+
+          /* Convert IPv6 text to binary. Return 1 on success, 0 on malformed text,
+           * and -1 when text or out is NULL. */
+          int parse_ipv6(const char *text, struct in6_addr *out);
+
+          /* Convert an address to text. Return 0 on success, -1 on failure. */
+          int format_ipv6(const struct in6_addr *addr, char *buf, size_t len);
+
+          /* Build an IPv6 endpoint from numeric text and a port.
+           * Return 0 on success, -1 on bad input or malformed text. */
+          int build_ipv6_endpoint(struct sockaddr_in6 *sa6, const char *text,
+                                  uint16_t port);
+
+          #endif
+      - path: textaddr.c
+        content: |
+          #include "textaddr.h"
+          #include <string.h>
+          #include <arpa/inet.h>
+
+          int parse_ipv6(const char *text, struct in6_addr *out)
+          {
+              (void)text;
+              (void)out;
+              /* TODO: reject NULL, then return inet_pton(AF_INET6, text, out). */
+              return -1;
+          }
+
+          int format_ipv6(const struct in6_addr *addr, char *buf, size_t len)
+          {
+              (void)addr;
+              (void)buf;
+              (void)len;
+              /* TODO: reject invalid arguments, call inet_ntop(AF_INET6, ...),
+               * and turn NULL into -1. */
+              return -1;
+          }
+
+          int build_ipv6_endpoint(struct sockaddr_in6 *sa6, const char *text,
+                                  uint16_t port)
+          {
+              (void)sa6;
+              (void)text;
+              (void)port;
+              /* TODO: zero the structure, set family and network-order port,
+               * then parse the text directly into sin6_addr. */
+              return -1;
+          }
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include <arpa/inet.h>
+          #include "textaddr.h"
+
+          int main(void)
+          {
+              struct in6_addr a6;
+              struct sockaddr_in6 sa6;
+              char text[INET6_ADDRSTRLEN];
+
+              printf("parse ::1 -> %d\n", parse_ipv6("::1", &a6));
+              format_ipv6(&a6, text, sizeof text);
+              printf("text: %s\n", text);
+
+              printf("parse 2001:db8::5 -> %d\n",
+                     parse_ipv6("2001:db8::5", &a6));
+              format_ipv6(&a6, text, sizeof text);
+              printf("text: %s\n", text);
+
+              printf("parse malformed -> %d\n",
+                     parse_ipv6("2001:db8:::5", &a6));
+
+              if (build_ipv6_endpoint(&sa6, "2001:db8::5", 8443) != 0) {
+                  puts("build failed");
+                  return 1;
+              }
+              format_ipv6(&sa6.sin6_addr, text, sizeof text);
+              printf("endpoint: %s port=%u\n",
+                     text, (unsigned)ntohs(sa6.sin6_port));
+              return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include <string.h>
+          #include <arpa/inet.h>
+          #include "textaddr.h"
+
+          static int failures = 0;
+
+          static void check(int cond, const char *what)
+          {
+              if (cond)
+                  printf("PASS: %s\n", what);
+              else {
+                  printf("FAIL: %s\n", what);
+                  failures++;
+              }
+          }
+
+          int main(void)
+          {
+              struct in6_addr a6;
+              struct sockaddr_in6 sa6;
+              char text[INET6_ADDRSTRLEN];
+
+              check(parse_ipv6("::1", &a6) == 1, "parse accepts ::1");
+              check(format_ipv6(&a6, text, sizeof text) == 0, "format accepts ::1");
+              check(strcmp(text, "::1") == 0, "format round-trips ::1");
+
+              check(parse_ipv6("2001:db8::5", &a6) == 1,
+                    "parse accepts 2001:db8::5");
+              check(format_ipv6(&a6, text, sizeof text) == 0,
+                    "format accepts a global address");
+              check(strcmp(text, "2001:db8::5") == 0,
+                    "format round-trips 2001:db8::5");
+
+              check(parse_ipv6("2001:db8:::5", &a6) == 0,
+                    "parse rejects malformed text");
+              check(parse_ipv6(NULL, &a6) == -1,
+                    "parse rejects a null text pointer");
+              check(format_ipv6(&a6, text, 8) == -1,
+                    "format rejects a short buffer");
+
+              check(build_ipv6_endpoint(&sa6, "2001:db8::5", 8443) == 0,
+                    "build accepts a valid endpoint");
+              check(sa6.sin6_family == AF_INET6, "build selects AF_INET6");
+              check(sa6.sin6_port == htons(8443),
+                    "build stores the port in network order");
+              check(format_ipv6(&sa6.sin6_addr, text, sizeof text) == 0,
+                    "build leaves a formattable address");
+              check(strcmp(text, "2001:db8::5") == 0,
+                    "build stores the parsed address");
+              check(build_ipv6_endpoint(&sa6, "bad-address", 80) == -1,
+                    "build rejects malformed text");
+
+              if (failures == 0)
+                  puts("ALL TESTS PASSED");
+              else
+                  printf("%d test(s) failed\n", failures);
+              return failures != 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 textaddr.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 textaddr.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "unit runner: parse, format, round trip, and endpoint build"
+        command: "gcc -Wall -Wextra -std=c99 textaddr.c test_runner.c -o test_runner && ./test_runner"
+        stdin: ""
+        expect: |
+          PASS: parse accepts ::1
+          PASS: format accepts ::1
+          PASS: format round-trips ::1
+          PASS: parse accepts 2001:db8::5
+          PASS: format accepts a global address
+          PASS: format round-trips 2001:db8::5
+          PASS: parse rejects malformed text
+          PASS: parse rejects a null text pointer
+          PASS: format rejects a short buffer
+          PASS: build accepts a valid endpoint
+          PASS: build selects AF_INET6
+          PASS: build stores the port in network order
+          PASS: build leaves a formattable address
+          PASS: build stores the parsed address
+          PASS: build rejects malformed text
+          ALL TESTS PASSED
+        expect_exit: 0
+      - name: "driver: round trips, malformed parse, built endpoint"
+        command: "gcc -Wall -Wextra -std=c99 textaddr.c main.c -o app && ./app"
+        stdin: ""
+        expect: |
+          parse ::1 -> 1
+          text: ::1
+          parse 2001:db8::5 -> 1
+          text: 2001:db8::5
+          parse malformed -> 0
+          endpoint: 2001:db8::5 port=8443
+        expect_exit: 0
+    hints:
+      - "Separate the direction: inet_pton goes text to binary; inet_ntop goes binary to text. Both need AF_INET6 here."
+      - "The parser's three outcomes are meaningful: return the value unchanged so 1, 0, and -1 remain distinguishable. For formatting, convert a NULL return into -1."
+      - "Bottom-out: parse_ipv6 rejects NULL and returns inet_pton(AF_INET6, text, out). format_ipv6 rejects NULL/zero length and returns -1 if inet_ntop returns NULL, else 0. build_ipv6_endpoint zeroes the struct, sets AF_INET6 and htons(port), then parses directly into sin6_addr and succeeds only on a parse result of 1."

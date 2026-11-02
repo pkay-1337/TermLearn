@@ -1,0 +1,14 @@
+meta:
+  book: bgnet
+  chapter_id: ch03
+  title: "What Is a Socket? Descriptors, Flavors, and the Layered Model"
+  source_ref: "Ch.2 'What is a socket?' (Beej's Guide to Network Programming)"
+  level: intro
+  prereqs: [ch02]
+objectives:
+  - "Explain what a socket is in Unix terms: an integer file descriptor issued by socket() that the program uses for network I/O just like any other open file"
+  - "Acquire stream (SOCK_STREAM) and datagram (SOCK_DGRAM) descriptors in C with socket(), guard the failure path, and state exactly which guarantees each flavor makes"
+  - "Decide between stream and datagram sockets for a given workload by weighing ordering, in-packet integrity, connection state, and speed, and justify the choice"
+  - "Describe how tftp-style applications rebuild reliability above UDP with an application-level ACK-and-retransmit procedure"
+  - "Trace data encapsulation end to end: name each wrapping layer on send and which agent (hardware, kernel, application) strips each header on receive"
+  - "Place sockets on the layered network model (ISO/OSI and the Unix 4-layer form) and identify what the kernel does for the socket programmer"

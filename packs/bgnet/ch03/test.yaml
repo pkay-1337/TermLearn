@@ -1,0 +1,48 @@
+test:
+  gates:
+    - needs: [b1, b2]
+      min_quiz: 60
+    - needs: [b1, b2, b3, b4, b5]
+      min_quiz: 70
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8]
+      min_quiz: 80
+  final_checks:
+    - kind: choose-better
+      q: "A teammate must ship a multiplayer game's positional updates at 40 messages per second AND a companion tool that transfers the game's 40 MB binary installer. Which pairing of transports is better for the two jobs?"
+      choices:
+        - "stream for both — ordering always beats speed, so nothing should ever be fire-and-forget"
+        - "datagrams for both — the installer packets are just updates with a bigger payload"
+        - "stream for the installer and datagrams for the updates — order and integrity where files need it, fire-and-forget where the next update supersedes the last"
+      answer: 2
+      why: "This is the chapter's decision rule applied twice: the installer must work when it arrives (stream, or UDP plus an ACK procedure), while 40 positional updates per second tolerate drops — UDP is a good choice there. 'Datagrams for both' risks a silently broken installer with no ACK layer; 'stream for both' pays connection bookkeeping for traffic that does not value it. (Ch.2)"
+      concept: tcp-vs-udp-choice
+    - kind: trace
+      q: "Trace the session. What value does intact hold after Step 4?"
+      code: |
+        int sent = 4;
+        int arrived = 3;
+        int corrupted = 0;
+        int intact = arrived > corrupted;
+      trace:
+        headers: ["Step", "Line", "Variable", "Value"]
+        rows:
+          - {step: 1, line: 1, cells: ["1", "sent", "4"]}
+          - {step: 2, line: 2, cells: ["2", "arrived", "3"]}
+          - {step: 3, line: 3, cells: ["3", "corrupted", "0"]}
+          - {step: 4, line: 4, cells: ["4", "intact", "???"]}
+      target: {row: 3, col: 2}
+      choices: ["4", "3", "0", "1"]
+      answer: 3
+      why: "3 datagrams arrived and 0 arrived corrupted — the datagram contract's within-packet integrity — so intact holds 1. '4' is the stale sent value; '0' is the corrupted count leaking into the boolean; '3' confuses the compared operand with the comparison result. (Ch.2)"
+      concept: trace-drop-arithmetic
+    - kind: eipe
+      q: "In one sentence, what is this receive-side sequence FOR?"
+      code: |
+        hardware strips Ethernet -> kernel strips IP + UDP -> app strips its own header
+      choices:
+        - "it unwraps the nested headers in reverse wrap order, handing the application pure payload"
+        - "it wraps the data three more times for security on the receiving side"
+        - "it forwards the packet through three routers before delivery"
+      answer: 0
+      why: "Encapsulation runs in reverse on receive: each agent removes only the wrapper it owns, so the application ends holding its own protocol's payload. 'Wraps for security' confuses encapsulation with encryption; 'routers' confuses stripping with IP forwarding, which the chapter deliberately leaves untaught. (Ch.2)"
+      concept: strip-order

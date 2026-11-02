@@ -1,0 +1,112 @@
+cards:
+- front: Which constant selects the IPv6 address family?
+  back: AF_INET6. It replaces AF_INET so the kernel uses the IPv6 address layout.
+  concept: family-ipv6
+- front: Which protocol-family constant replaces PF_INET for IPv6?
+  back: PF_INET6. The IPv6 migration changes it alongside AF_INET.
+  concept: family-pf
+- front: WHY must AF_INET and PF_INET both be changed in a migration?
+  back: Each family decision can steer a socket or lookup independently; leaving one IPv4 tag creates a mixed-family program.
+  concept: family-consistency
+- front: What does in6addr_any represent?
+  back: The all-zero IPv6 wildcard address, meaning any local address.
+  concept: in6addr-any
+- front: How do you assign the IPv6 wildcard to an existing sin6_addr field?
+  back: sa6.sin6_addr = in6addr_any; copies the 16-byte all-zero address object.
+  concept: any-assignment
+- front: How do you initialize a standalone in6_addr to the IPv6 wildcard?
+  back: struct in6_addr ia6 = IN6ADDR_ANY_INIT; uses the initializer macro.
+  concept: any-initializer
+- front: WHY are in6addr_any and IN6ADDR_ANY_INIT not interchangeable?
+  back: in6addr_any is an object used in assignments; IN6ADDR_ANY_INIT is only an initializer for a declaration.
+  concept: any-form-difference
+- front: What is the IPv6 counterpart of sockaddr_in?
+  back: struct sockaddr_in6, the concrete IPv6 endpoint structure.
+  concept: ipv6-sockaddr
+- front: What is the IPv6 counterpart of struct in_addr?
+  back: struct in6_addr, which holds a 16-byte address in s6_addr.
+  concept: ipv6-inaddr
+- front: Which sockaddr_in field has no sin6_ counterpart?
+  back: sin_zero. There is no sin6_zero field; zero the whole sockaddr_in6 with memset instead.
+  concept: no-sin6-zero
+- front: How does sin_addr's field name change in sockaddr_in6?
+  back: sin_addr becomes sin6_addr, and its address bytes are in s6_addr instead of s_addr.
+  concept: addr-field-rename
+- front: How does sin_port's field name change in sockaddr_in6?
+  back: sin_port becomes sin6_port; the value still needs htons for network order.
+  concept: port-field-rename
+- front: WHY zero a sockaddr_in6 with memset before filling it?
+  back: It clears the whole IPv6 structure, including bytes that have no sin6_zero padding field, so no stale data remains.
+  concept: memset-endpoint
+- front: Which functions replace inet_aton() and inet_addr()?
+  back: inet_pton(), which converts presentation text to network binary and supports IPv6.
+  concept: pton-replacement
+- front: Which function replaces inet_ntoa()?
+  back: inet_ntop(), which converts network binary back to presentation text and supports IPv6.
+  concept: ntop-replacement
+- front: What does inet_pton() return on success, malformed text, and system error?
+  back: 1 on success, 0 on malformed text, and -1 on a system error. Only 1 means the destination is valid.
+  concept: pton-return
+- front: What must be checked after inet_ntop()?
+  back: 'Its return pointer: it returns the destination buffer on success and NULL on failure.'
+  concept: ntop-return
+- front: Which macro sizes an IPv6 text output buffer?
+  back: INET6_ADDRSTRLEN, large enough for the longest IPv6 presentation.
+  concept: ipv6-buffer
+- front: WHY can inet_aton/inet_addr/inet_ntoa not remain after an IPv6 migration?
+  back: They are IPv4-only; they cannot parse or format a 16-byte IPv6 address.
+  concept: old-converter-limit
+- front: Which function replaces gethostbyname()?
+  back: getaddrinfo(), the superior forward lookup that returns full sockaddr candidates.
+  concept: getaddrinfo-replacement
+- front: Which function replaces gethostbyaddr() for new code?
+  back: getnameinfo(), the superior reverse lookup; gethostbyaddr may still work with IPv6.
+  concept: getnameinfo-replacement
+- front: WHY start a migration with getaddrinfo()?
+  back: It prepares sockaddr information for the supported families and eliminates many hand-packing steps, keeping code version-agnostic.
+  concept: lookup-first
+- front: What does it mean for address-construction code to be version-agnostic?
+  back: It follows the sockaddr candidates the lookup returns instead of hard-coding IPv4 bytes or one family tag.
+  concept: version-agnostic
+- front: What should happen to any hard-coded IP-version choice, according to the helper rule?
+  back: Wrap it in a helper function so the decision lives in one auditable place.
+  concept: helper-rule
+- front: WHY is a helper that ignores its family input worse than no helper?
+  back: It only looks generic while still returning one hard-coded family, so it hides the IPv4 assumption.
+  concept: helper-hidden-assumption
+- front: What replaces an INADDR_ANY assignment in IPv6 code?
+  back: in6addr_any assigned to sin6_addr, or IN6ADDR_ANY_INIT in a declaration.
+  concept: any-migration
+- front: What replaces INADDR_BROADCAST in IPv6?
+  back: An IPv6 multicast address; IPv4-style broadcast no longer works.
+  concept: broadcast-replacement
+- front: WHY can INADDR_BROADCAST not be assigned to sin6_addr?
+  back: It is a 32-bit IPv4 value, while sin6_addr is a 16-byte IPv6 address structure.
+  concept: broadcast-type
+- front: What is the first item in the migration plan?
+  back: Use getaddrinfo() to obtain sockaddr information instead of packing the structures by hand.
+  concept: migration-first
+- front: In what broad order does the migration plan proceed after getaddrinfo()?
+  back: Contain family choices in helpers, change family constants, replace the wildcard, upgrade structures and fields, swap converters and lookups, then retire broadcast.
+  concept: migration-order
+- front: WHY migrate in dependency layers instead of one global find-and-replace?
+  back: Each layer type-checks against the previous one, so the compiler exposes a coherent next set of errors and mixed-family states are easier to spot.
+  concept: dependency-layers
+- front: What old lookup can still work with IPv6 but is still replaced for new code?
+  back: gethostbyaddr(), which the migration replaces with the superior getnameinfo().
+  concept: gethostbyaddr-caveat
+- front: WHY does filtering getaddrinfo results to AF_INET defeat a migration?
+  back: It discards the IPv6 candidates the lookup returned, leaving the program IPv4-only.
+  concept: filtered-lookup
+- front: WHEN should you use IN6ADDR_ANY_INIT rather than in6addr_any?
+  back: At declaration time. Use in6addr_any for assignment into an existing sin6_addr field.
+  concept: when-any-init
+- front: What happens if inet_pton() returns 0 and the program formats the destination anyway?
+  back: The destination was not given a valid address, so the program may format stale bytes into meaningless text.
+  concept: unchecked-pton
+- front: What does inet_ntop()'s family argument control?
+  back: Which binary address layout and byte count to interpret, so AF_INET6 is required for a 16-byte in6_addr.
+  concept: ntop-family
+- front: WHY is port handling unchanged by the address-family migration?
+  back: Ports are 16-bit transport identifiers for both families; they still use htons/ntohs and keep their service meaning.
+  concept: ports-unchanged

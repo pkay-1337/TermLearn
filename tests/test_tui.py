@@ -39,7 +39,9 @@ async def test_nav_home_to_study_and_help(tmp_path, monkeypatch):
     app = LearnApp()
     async with app.run_test() as pilot:
         await _wait_screen(app, pilot, HomeScreen)
-        assert app.screen.query_one("#book-list", OptionList).option_count >= 1
+        lst = app.screen.query_one("#book-list", OptionList)
+        lst.highlighted = next(i for i, o in enumerate(lst.options) if o.id == "extreme-c")
+        await pilot.pause()
         await pilot.press("enter")
         await _wait_screen(app, pilot, ChaptersScreen)
         for _ in range(9):
@@ -159,6 +161,9 @@ async def test_curriculum_chapter_names_rendered(tmp_path, monkeypatch):
     async with app.run_test() as pilot:
         await _wait_screen(app, pilot, HomeScreen)
         # Check HomeScreen book dossier markdown contains curriculum with chapter names
+        lst = app.screen.query_one("#book-list", OptionList)
+        lst.highlighted = next(i for i, o in enumerate(lst.options) if o.id == "extreme-c")
+        await pilot.pause()
         home_md = app.screen.query_one("#book-details-md", Markdown).source
         assert "Curriculum Roadmap" in home_md
         assert "Chapter 01 — Essential Features" in home_md

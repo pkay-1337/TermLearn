@@ -6,30 +6,28 @@ test:
   final_checks:
     - kind: mcq
       level: advanced
-      q: "A plant controller must (1) hand whole, prioritized records to a consumer on the same host, (2) keep an archive that consumers can read even while the producer's process is down, and (3) let newly started plant-support processes — unrelated to the producer — join later. Which combination of this chapter's techniques and storage rules serves all three?"
+      q: "A plant controller must (1) hand whole, prioritized records to a consumer on the same host, (2) keep an archive that consumers can read even while the producer's process is down, and (3) let newly started plant-support processes — unrelated to the producer — join later. Which combination of IPC techniques and storage rules serves all three?"
       choices:
         - "A POSIX pipe for records plus the pipe's kernel buffer as the archive, because pipe buffers persist between runs"
-        - "A POSIX message queue for the prioritized records, plus the filesystem (pull-based medium) as the archive, plus path-based access — like the queue's backing file — so unrelated processes reach the shared instances"
+        - "A POSIX message queue for the prioritized records, plus the filesystem (pull-based medium) as the archive, plus named/path-based access so unrelated processes can reach the shared instances"
         - "POSIX signals for all three, because signals carry the record priority field"
         - "A shared-memory medium only, because pull-based media cover priorities natively"
       answer: 1
       why: |
-        The three needs split exactly along the chapter's stored taxonomy:
+        The three requirements map directly onto IPC storage and delivery semantics:
         message queues keep whole messages with boundaries and priorities,
         and their byte pipe counterpart would lose both; persistence across
         a down producer belongs to pull-based media — filesystem, shared
         memory — because push-based kernel buffers are destroyed when the
-        owning process quits; and unrelated processes reaching a shared
-        instance by path mirrors how message queues open a backing file for
-        future processes and how named pipes rendezvous via mkfifo's path.
+        owning process quits; and unrelated processes reaching a shared instance by name/path mirrors how POSIX message queues and named pipes (mkfifo) let a later process join an existing named object.
         Option A misstates pipe-buffer persistence. Option C invents priority
         fields inside signals. Option D invents native priorities for stored
-        media that the chapter never grants.
+        media that do not provide priorities.
       concept: "technique-synthesis-mastery"
 
     - kind: predict
       level: advanced
-      q: "Predict the exact printed output of this length-prefix framing session:"
+      q: "Predict the exact printed output of this length-prefix framing session. `frame_encode` writes a 4-byte big-endian length prefix plus the payload and returns the total wire length; `frame_decoder_feed` returns the completed payload length, or 0 when it needs more bytes."
       code: |
         #include <stdio.h>
         #include <string.h>
@@ -122,9 +120,7 @@ test:
         - "Because priority 0 messages count double toward capacity"
       answer: 0
       why: |
-        The chapter separates the two capacity units deliberately: pipes own
-        a byte count, message queues count messages, and each queue caps the
-        size of every message via mq_msgsize. Four sends fill the
+        The two capacity units differ deliberately: pipes own a byte count, message queues count messages, and each queue caps the size of every message via mq_msgsize. Four sends fill the
         four-message maximum, so the fifth is the fullness refusal — while
         the byte total of 100 is behind the mixed 4×32-byte slots, not
         against a byte budget.
@@ -134,7 +130,7 @@ test:
 
     - kind: choose-better
       level: advanced
-      q: "A file-transfer daemon must deliver customer archives over the internet: every archive must arrive complete, byte order must hold end to end, and bursts of many clients are normal. Which transport design from the chapter fits, including its backlog reasoning?"
+      q: "A file-transfer daemon must deliver customer archives over the internet: every archive must arrive complete, byte order must hold end to end, and bursts of many clients are normal. Which transport design fits, including its backlog reasoning?"
       choices:
         - "Connection-less UDP datagrams: datagrams are whole units, so reassembly is free"
         - "A connection-oriented stream channel (AF_INET with SOCK_STREAM — the OS chooses TCP by default), which guarantees per-packet delivery and sequence; the listener configures a backlog matched to the program's dynamics, since low sizes reject many connections under congestion and huge sizes pile up connections that eventually time out"
@@ -148,8 +144,7 @@ test:
         the protocol attribute left for the OS to settle. The backlog is a
         number matched to the listener's dynamics: too small rejects
         connectors while the listener is congested, too large accumulates
-        pending connections that time out — the chapter's explicit sizing
-        trade-off.
+        pending connections that time out. This is the explicit sizing trade-off.
         Option A discards the order and completeness guarantees; Option C
         volunteers for kernel duties the daemon does not need; Option D
         abandons the internet scope the requirement states.

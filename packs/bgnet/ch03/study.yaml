@@ -1,0 +1,1680 @@
+blocks:
+- id: b1
+  type: model
+  title: Speak to Other Programs Through File Descriptors
+  explain_md: |
+    Unix programs do **all** I/O by reading and writing *file descriptors*.
+    A file descriptor is simply an **integer associated with an open file** —
+    and in Unix that "file" can be a network connection, a FIFO, a pipe, a
+    terminal, a real on-the-disk file, or just about anything else. That is
+    what the old hacker slogan means: *everything in Unix is a file*. It does
+    not claim the world is made of disk files; it claims every I/O target
+    answers to the same interface — an integer handle that the read/write
+    style of calls accepts.
+
+    ### The Notional Machine: the per-process descriptor table
+
+    Your process carries a private **file descriptor table**. Indexes 0, 1,
+    and 2 are usually wired up before `main()` even runs (standard input,
+    standard output, standard error). When your program *opens* anything — a
+    disk file, a pipe, a terminal, a network connection — the kernel appends
+    the next free small integer to that table. From then on your code never
+    says "write to the network"; it says `write(3, ...)`, and the **kernel**
+    resolves 3 through the table and does the actual work.
+
+    Burn these consequences in:
+
+    - A descriptor is a **handle**, not the data and not a pointer into your
+      memory. Copying the integer copies the ability to touch the same open
+      file.
+    - Descriptors are **issued by the kernel**. You cannot invent
+      `fd = 99` and expect it to mean anything; the kernel assigns numbers.
+    - The same type (`int`) covers every target. Nothing in the type system
+      tells you fd 3 is a socket — the *context* (which call produced it)
+      is what tells you.
+
+    Analogy: a coat-check ticket. The ticket is worthless paper by itself —
+    but hand it to the attendant and the *attendant* (the kernel) fetches
+    your coat. The network connection, the pipe, and the disk file all hang
+    on the same rack, and the ticket is the same kind of paper for each.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          int fd = socket(AF_INET, SOCK_STREAM, 0);  /* kernel issues it */
+          int copy = fd;                             /* a handle is data */
+
+          if (copy < 0) {
+              puts("socket call failed");
+              return 1;
+          }
+          puts("socket call succeeded: the handle is an ordinary int");
+          return 0;
+      }
+    run_expected: |
+      socket call succeeded: the handle is an ordinary int
+    explain_md: |
+      `socket()` asks the kernel for a fresh descriptor; here it just proves
+      the result is plain integer data — assigning it to `copy` is a normal
+      int copy. The guard treats a negative return as failure.
+    subgoals:
+    - label: Ask the Kernel for a Handle
+      lines:
+      - 6
+    - label: Copy the Handle as Data
+      lines:
+      - 7
+    - label: Guard the Failure Path
+      lines:
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+    - label: Confirm the Handle Exists
+      lines:
+      - 14
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'before socket():  fd 0 -> keyboard, fd 1 -> display, fd 2 -> errors; no network entry exists'
+    - 'socket() runs: the kernel takes the next free index (3) and hangs a fresh network object there'
+    - 'after socket():  fd 0/1/2 unchanged; fd 3 -> network connection — and int 3 is just data in your
+      program'
+  checks:
+  - kind: mcq
+    q: A Unix program receives the integer 3 from a system call and passes it to write(). What does that
+      integer most likely represent?
+    choices:
+    - an index the kernel maps to an open file or a network connection
+    - a pointer into memory where the program stores the file's raw bytes
+    - a byte count of what the next write() call will transfer
+    answer: 0
+    why: 'A file descriptor is an integer associated with an open file; write() hands it to the kernel,
+      which resolves it to the real target (disk file, pipe, terminal, or network connection). ''Pointer
+      into memory'' traps the address/handle confusion — descriptors name kernel-side objects, not user
+      data. ''Byte count'' traps the handle/content confusion: the integer names the channel, not the
+      payload size. (b1)'
+    concept: file-descriptor
+  - kind: predict
+    q: Trace line by line, tracking fd and copy. Which line does this program print?
+    code: |
+      int fd = socket(AF_INET, SOCK_STREAM, 0);
+      int copy = fd;
+      if (copy >= 0)
+          puts("handle ok");
+    choices:
+    - 'nothing: socket() returns nothing until a connection exists'
+    - handle ok printed twice, once for fd and once for copy
+    - 'a crash: copy is not a real descriptor at all here'
+    - handle ok printed once here, because copy >= 0 is true
+    answer: 3
+    why: 'socket() returns the descriptor immediately — no connection is required for the call to succeed
+      (that is b2''s story). The trace: fd holds a kernel-issued integer; copy copies that integer; copy
+      >= 0 is true, so ''handle ok'' prints once. ''Nothing until a connection exists'' traps the misconception
+      that acquiring the handle already requires a peer. ''Crash'' traps the idea that merely copying
+      an int can be invalid. (b1)'
+    concept: file-descriptor
+  - kind: why-fails
+    q: This program compiles but fails at run time on the write() line. Why does it fail?
+    code: |
+      int fd;                       /* declared, never opened */
+      write(fd, "x", 1);
+    choices:
+    - write() rejects variables; it needs a constant descriptor
+    - the string needs a trailing newline before write() will accept it
+    - fd was never issued by the kernel, so no open file backs it
+    answer: 2
+    why: Descriptors are kernel-issued through calls that open something (socket() here — but the author
+      never called it). fd is an uninitialized int, and write() on it fails because no entry in the per-process
+      descriptor table backs it. 'Needs a constant' traps the idea that descriptors are syntax rather
+      than issued values. 'Needs a newline' traps conflating stdio buffering rules with raw descriptor
+      I/O. (b1)
+    concept: kernel-issued-handle
+  - kind: fillblank
+    q: Fill the missing keyword. Both handles are the same kind of value because every descriptor is one
+      of these.
+    code: |
+      int net_fd = socket(AF_INET, SOCK_STREAM, 0);
+      ____ file_fd;
+      /* file_fd would come from opening an on-the-disk file */
+    answer_text: int
+    why: Every descriptor — disk file, pipe, terminal, or network connection — is an integer, so the declaration
+      keyword is int. 'FILE*' traps conflating stdio's buffered stream type with the raw descriptor; 'char'
+      traps guessing a narrower storage type. (b1)
+    concept: file-descriptor
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      int fd = socket(AF_INET, SOCK_STREAM, 0);
+      int copy = fd;
+      if (copy < 0)
+          puts("socket call failed");
+      else
+          puts("socket call succeeded");
+    choices:
+    - it obtains a kernel-issued handle and checks whether issuance succeeded
+    - it sets fd to a small value, then prints two fixed messages in order
+    - it opens a connection to a remote server and reports the server's address
+    answer: 0
+    why: 'The purpose is acquiring the kernel-issued handle and checking whether issuance worked — the
+      relational goal. ''Sets fd then prints'' is a line-by-line paraphrase with no purpose. ''Opens a
+      connection to a remote server'' traps the socket()-connects misconception: acquiring a descriptor
+      creates no connection and learns no address. (b1)'
+    concept: kernel-issued-handle
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      write(disk_fd, buf, len);      /* one target */
+      write(sock_fd, buf, len);      /* a different target, same call */
+    choices:
+    - it broadcasts buf to every descriptor that the process owns at once
+    - it copies bytes between two separate on-the-disk files through a temporary buffer
+    - it shows one descriptor interface reaching different targets — the file claim
+    answer: 2
+    why: 'The relational purpose: the SAME call and the SAME integer type serve different I/O targets
+      — that uniformity is the slogan''s actual claim. ''Copies between files'' narrows both descriptors
+      to disk; ''broadcasts to every descriptor'' invents a fan-out semantic write() does not have. (b1)'
+    concept: everything-is-a-file
+  - kind: trace
+    q: Trace the descriptor copy. What value does ok hold after Step 3?
+    code: |
+      int a = socket(AF_INET, SOCK_STREAM, 0);
+      int b = a;
+      int ok = b >= 0;
+    trace:
+      headers:
+      - Step
+      - Line
+      - Variable
+      - Value
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - a
+        - an int >= 0 (kernel-issued)
+      - step: 2
+        line: 2
+        cells:
+        - '2'
+        - b
+        - the same int as a
+      - step: 3
+        line: 3
+        cells:
+        - '3'
+        - ok
+        - ???
+    target:
+      row: 2
+      col: 2
+    choices:
+    - the value 0 (false)
+    - the descriptor handle
+    - the value -1 (error)
+    - the value 1 (true)
+    answer: 3
+    why: b >= 0 is a comparison, so ok holds 1 (true) when the descriptor is valid. '0' traps false-branch
+      confusion; '-1' traps mixing the failure sentinel into a boolean; 'the descriptor itself' traps
+      conflating the comparison result with the copied handle. (b1)
+    concept: trace-descriptor-copy
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      int fd = socket(AF_INET, SOCK_STREAM, 0);
+      write(fd, "ping", 4);
+    choices:
+    - it acquires a network handle and hands bytes to the kernel through it
+    - it prints the string to the terminal as a status message for the operator
+    - it registers a callback the kernel will invoke when data arrives
+    answer: 0
+    why: 'The purpose: acquire the descriptor, then use the plain descriptor interface — write() works
+      on a socket — to hand bytes to the kernel for delivery. ''Prints to the terminal'' traps the fd-0/1/2
+      confusion (this fd is the network one). ''Registers a callback'' invents an event mechanism the
+      call does not perform. (b1)'
+    concept: descriptor-io
+  - kind: mcq
+    q: Which of these can an open file descriptor stand for in Unix?
+    choices:
+    - only files that the process itself created during this current run
+    - a line number into the program's own source text file
+    - only regular files that live on a physical disk drive
+    - a network connection, a pipe, a terminal, or a disk file
+    answer: 3
+    why: 'The chapter''s list is the point: the descriptor''s ''file'' can be a network connection, a
+      FIFO, a pipe, a terminal, a real on-the-disk file, or just about anything else. ''Only disk files''
+      traps the literal reading of ''file''; ''only self-created files'' traps confusing ownership with
+      the descriptor mechanism. (b1)'
+    concept: everything-is-a-file
+- id: b2
+  type: model
+  title: Acquire a Network Descriptor with socket()
+  explain_md: |
+    Where does the handle for network communication come from? You make a
+    call to the `socket()` system routine. It **returns the socket
+    descriptor**, and from that moment you communicate *through* it — the
+    guide's routine pair is `send()` and `recv()`.
+
+    "But if it's a file descriptor, why can't I just use the normal
+    `read()` and `write()` calls?" You can! The short answer is exactly
+    that. The longer answer: `send()` and `recv()` offer **much greater
+    control over your data transmission** — they take a final flags
+    argument that `read()`/`write()` do not, which is why socket code
+    conventionally reaches for them.
+
+    ### The Notional Machine: what socket() actually does
+
+    `socket()` asks the kernel to build a **kernel-side socket object** —
+    send and receive buffers, protocol state — and to hang it in your
+    process's descriptor table at the next free index. The integer it
+    hands back is the only window your code has onto that object. Two
+    facts follow:
+
+    - **Nothing has been sent and no one has been contacted.** socket()
+    creates the endpoint; reaching a peer is later work (b4–b6 and the
+    system-call chapters). A program that ends right after socket()
+    produces zero network traffic.
+    - The descriptor is a full citizen of the descriptor table: the same
+    integer that `write()` would accept for a disk file is the one
+    `send()` accepts for your socket.
+
+    If the kernel cannot comply (resources exhausted, protocol family
+    unavailable), it hands back a negative value — that is why every
+    socket() call site in this chapter guards the return before use.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          int sd = socket(AF_INET, SOCK_STREAM, 0);
+
+          if (sd < 0) {
+              puts("socket call failed");
+              return 1;
+          }
+          puts("socket call succeeded: sd is a network file descriptor");
+          return 0;
+      }
+    run_expected: |
+      socket call succeeded: sd is a network file descriptor
+    explain_md: |
+      Line 6 is the whole concept: one call, one integer handle, nothing
+      on the wire yet. Lines 8–12 are the guard idiom — negative return
+      means the kernel refused, and the program reports and exits instead
+      of using a broken handle.
+    subgoals:
+    - label: Ask for a Stream Endpoint
+      lines:
+      - 6
+    - label: Guard the Kernel's Refusal
+      lines:
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+    - label: Announce the Descriptor
+      lines:
+      - 13
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'before: fd 0 -> keyboard, fd 1 -> display, fd 2 -> errors'
+    - 'socket() runs: kernel builds a socket object (buffers + protocol state) and appends index 3'
+    - 'after: fd 3 -> that socket object; the integer sd is your only window onto it'
+    - no packets exist anywhere yet — the endpoint is local until later calls reach out
+  checks:
+  - kind: predict
+    q: Trace the guard. Which output does this program produce when the kernel hands back descriptor 3?
+    code: |
+      int sd = socket(AF_INET, SOCK_STREAM, 0);
+      if (sd < 0)
+          puts("socket call failed");
+      else
+          puts("descriptor acquired");
+    choices:
+    - '''socket call failed'' printed once, from the error branch'
+    - nothing at all; socket() must be called twice before printing
+    - both lines printed in order, one from each branch
+    - '''descriptor acquired'' printed once, from the else branch'
+    answer: 3
+    why: sd is nonnegative (3), so sd < 0 is false and the else branch prints 'descriptor acquired'. 'socket
+      call failed' traps misreading the guard direction; 'both lines' traps treating the branches as sequential
+      rather than exclusive; 'must be called twice' has no basis — one call yields one descriptor. (b2)
+    concept: socket-acquire
+  - kind: mcq
+    q: What does socket() hand back on success?
+    choices:
+    - an established connection with a remote peer
+    - the number of bytes the socket can still receive
+    - a pointer to a socket struct living in your own memory
+    - a socket descriptor, the integer handle used for I/O
+    answer: 3
+    why: 'socket() returns the socket descriptor — the integer handle. ''Established connection'' traps
+      the socket()-connects misconception: creating the endpoint contacts nobody. ''Pointer to a struct
+      in your memory'' traps the handle/address confusion — the socket object lives in the kernel. ''Bytes
+      receivable'' traps confusing the handle with the buffered payload. (b2)'
+    concept: socket-acquire
+  - kind: why-fails
+    q: This program compiles without warnings but fails at run time on the send() line. Why does it fail?
+    code: |
+      int fd = puts("opening the network");
+      send(fd, "hi", 2, 0);
+    choices:
+    - the string literal lives in read-only memory, so send() cannot read it
+    - send() already happened inside puts(), so the socket is busy
+    - puts() returns a print count, not a descriptor, so fd is invalid
+    answer: 2
+    why: 'Any integer is not automatically a valid descriptor: the kernel issues descriptors through calls
+      like socket(), and puts() returns a stdio status value, not a handle — the send() acts on a bogus
+      descriptor. ''Read-only literal'' traps inventing a buffer rule that send() does not have (it reads
+      the string happily; the descriptor is what is wrong). ''Busy socket'' traps anthropomorphizing stdio
+      calls as network traffic. (b2)'
+    concept: kernel-issued-handle
+  - kind: fillblank
+    q: Fill the missing call name. This program writes one string to the socket and then reads the reply
+      back from it.
+    code: |
+      int sd = socket(AF_INET, SOCK_STREAM, 0);
+      send(sd, "ping", 4, 0);
+      ____(sd, buf, sizeof buf, 0);
+    answer_text: recv
+    why: 'The chapter''s socket pair is send() and recv(): send writes through the descriptor, recv reads
+      back through it. ''write'' would also read the socket but is not the specialized call the sentence
+      asks for; ''accept'' is the connection-accepting call, unrelated to reading bytes here. (b2)'
+    concept: send-recv-pair
+  - kind: order
+    faded: true
+    q: Order the 4 correct lines from first to last and fill the missing socket-type argument; one displayed
+      line is a distractor.
+    lines:
+    - puts('descriptor in use');
+    - int sd = socket(AF_INET, _____, 0);
+    - send(sd, 'ping', 4, 0);
+    - socket(AF_INET, SOCK_STREAM, 0);
+    - if (sd < 0) { puts('failed'); return 1; }
+    answer_order:
+    - 1
+    - 4
+    - 2
+    - 0
+    distractor_why:
+      socket(AF_INET, SOCK_STREAM, 0);: Calling socket() without keeping the return value acquires a handle
+        and immediately loses it — the discarded-result bug.
+      puts('descriptor in use');: Announcing success before the descriptor exists (or is guarded) reports
+        a lie to the user.
+    blanks:
+    - line_idx: 1
+      token: _____
+      answer_text: SOCK_STREAM
+      accepted:
+      - SOCK_STREAM
+    why: 'The sequencing principle is data flow: the descriptor must exist (acquire), then be validated
+      (guard), then be used (send); the announcement that the descriptor is in use closes the sequence.
+      The discarded socket() call traps the lost-handle bug; the early puts traps claiming state before
+      it exists. (b2)'
+    concept: acquire-guard-use
+  - kind: trace
+    q: Trace the handle being stored twice. What value does ok hold after Step 3?
+    code: |
+      int sd = socket(AF_INET, SOCK_STREAM, 0);
+      int dup = sd;
+      int ok = dup >= 0;
+    trace:
+      headers:
+      - Step
+      - Line
+      - Variable
+      - Value
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - sd
+        - a nonnegative int
+      - step: 2
+        line: 2
+        cells:
+        - '2'
+        - dup
+        - the same int as sd
+      - step: 3
+        line: 3
+        cells:
+        - '3'
+        - ok
+        - ???
+    target:
+      row: 2
+      col: 2
+    choices:
+    - the value 0 (false)
+    - the value -1 (error)
+    - the descriptor value
+    - the value 1 (true)
+    answer: 3
+    why: 'ok stores the comparison result: dup >= 0 is true, so 1. ''The descriptor value'' traps confusing
+      the boolean with the handle; ''-1'' leaks the failure sentinel into a success path; ''0'' is the
+      false value this true condition never produces. (b2)'
+    concept: trace-handle-copy
+  - kind: predict
+    q: Trace both acquisitions. What does different hold, and what does that prove about the descriptor
+      table?
+    code: |
+      int a = socket(AF_INET, SOCK_STREAM, 0);
+      int b = socket(AF_INET, SOCK_DGRAM, 0);
+      int different = a != b;
+    choices:
+    - 'different is -1: the second socket() call failed'
+    - 'different is 0: both flavors share one descriptor value'
+    - 'different is 1: each open call got its own table entry'
+    answer: 2
+    why: Two kernel-issued descriptors occupy two table entries, so the integers differ and different
+      is 1 — the fact lab2's runner asserts. 'Share one value' contradicts how the table hands out indexes;
+      '-1' needs a failed call, and success on both lines is the trace's premise. (b2)
+    concept: distinct-descriptors
+  - kind: why-fails
+    q: A teammate reviews a patch and insists every read() on a socket must be rewritten to recv() 'because
+      read() is forbidden on sockets'. Why does that claim fail?
+    code: |
+      n = read(sd, buf, sizeof buf);   /* the 'forbidden' call */
+    choices:
+    - read() works on sockets; send/recv add control, they do not forbid it
+    - read() only works on on-the-disk files, never on other targets
+    - the compiler rejects read() whenever the sys/socket.h header is included
+    answer: 0
+    why: 'The chapter''s own answer: ''You can!'' — read() and write() work on sockets; send()/recv()
+      merely add greater control over transmission. ''Only disk files'' contradicts everything-is-a-file;
+      the compiler rejects nothing — the claim invents a header rule. (b2)'
+    concept: send-recv-control
+- id: b3
+  type: model
+  title: Know the Two Internet Socket Flavors
+  explain_md: |
+    There are all kinds of sockets. There are DARPA Internet addresses
+    (**Internet Sockets** — the only ones this guide deals with), path
+    names on a local node (**Unix Sockets**), CCITT X.25 addresses
+    (**X.25 Sockets** — you can safely ignore them), and more depending on
+    your Unix flavor. One more honest confession: **Raw Sockets** also
+    exist and are very powerful — the guide sets them aside for later.
+
+    The two types that matter now:
+
+    - **Stream Sockets** — `SOCK_STREAM`. *Reliable two-way connected*
+      communication streams. Output two items in the order "1, 2" and they
+      arrive in the order "1, 2" at the other end — and error-free.
+    - **Datagram Sockets** — `SOCK_DGRAM`. Sometimes called
+      **connectionless** sockets. (Though they *can* be `connect()`'d if
+      you really want.) The facts: a datagram **may** arrive; it may
+      arrive **out of order**; if it arrives, the data **within** that
+      packet is error-free.
+
+    Read the datagram contract carefully — it is three separate claims.
+    Delivery is *best effort per packet*: dropping one datagram does not
+    corrupt its neighbors, and no packet arrives half-garbled. What UDP
+    does not promise is the two things TCP promises: that everything
+    arrives, and that it arrives in the order you sent it.
+  diagram:
+    kind: flow
+    caption: One socket() call, two flavors with different promises
+    nodes:
+    - id: A
+      label: internet socket
+    - id: B
+      label: stream SOCK_STREAM
+    - id: C
+      label: datagram SOCK_DGRAM
+    edges:
+    - from: A
+      to: B
+      label: reliable two-way
+    - from: A
+      to: C
+    steps:
+    - focus:
+      - A
+      note: one socket() call serves every flavor; the type argument tells the kernel what to build
+    - focus:
+      - A
+      - B
+      note: 'stream: reliable two-way connected traffic — telnet, ssh, HTTP'
+    - focus:
+      - A
+      - B
+      - C
+      note: 'datagram: connectionless packets — may arrive, may reorder, packet itself intact'
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'kernel socket object A (stream): buffered two-way channel, waits to be connected'
+    - 'kernel socket object B (datagram): a packet launcher; no connection bookkeeping at all'
+    - both live in the same descriptor table — the flavor lives in the kernel, not in the int
+  checks:
+  - kind: predict
+    q: A stream socket sends '1' then '2'; the peer then issues two read() calls back to back. What does
+      the peer read, in order?
+    code: |
+      send(sd, "1", 1, 0);
+      send(sd, "2", 1, 0);
+      /* peer: read once, then read again */
+    choices:
+    - 'first read: ''1'', second read: ''2'' — the send order is the read order'
+    - 'first read: ''2'', second read: ''1'' — the reads come out reversed'
+    - 'first read: ''12'', second read: nothing — streams merge sends into one blob'
+    answer: 0
+    why: 'Stream sockets preserve order: what goes in as 1-then-2 comes out as 1-then-2 — the b4 guarantee
+      in miniature. The reversed answer pastes datagram freedom onto streams; the merged-blob answer invents
+      a coalescing rule the order guarantee rules out. (b3)'
+    concept: stream-vs-datagram
+  - kind: mcq
+    q: Which statement matches the datagram socket contract from the chapter?
+    choices:
+    - a datagram either never arrives at all or arrives half-corrupted in transit
+    - every datagram arrives exactly once and in the original send order
+    - delivery speed is guaranteed above every other transport property
+    - a datagram may arrive out of order, or not at all, with error-free data
+    answer: 3
+    why: 'The chapter states all three facts together: arrival is uncertain, ordering is unguaranteed,
+      and within-packet integrity holds. ''Half-corrupted'' contradicts the per-packet integrity claim.
+      ''Exactly once in send order'' is the stream contract pasted onto datagrams — the classic flavor
+      confusion. (b3)'
+    concept: datagram-contract
+  - kind: why-fails
+    q: A game client sends its players' positions over datagram sockets and then renders the world assuming
+      arrival order. Why does this design fail in practice?
+    code: |
+      sendto(sd, "pos player1 = 10", 15, 0, dest, len);
+      sendto(sd, "pos player1 = 11", 16, 0, dest, len);
+      /* renders assuming the second packet lands after the first */
+    choices:
+    - datagrams are delivered only to processes running on the same machine
+    - sendto() cannot be called twice on the same open descriptor
+    - datagrams may arrive out of order or vanish, so later state may win
+    answer: 2
+    why: 'The datagram contract makes no ordering promise: packet two may overtake packet one, or both
+      may vanish. A renderer that assumes send order rewrites history with stale positions. ''Same machine
+      only'' invents a locality rule datagrams do not have. ''Cannot be called twice'' invents an API
+      limit; repeated sendto() is exactly the intended use. (b3)'
+    concept: datagram-ordering
+  - kind: fillblank
+    q: 'Fill the missing socket-type constant that requests the connectionless flavor:'
+    code: |
+      int sd = socket(AF_INET, ____, 0);
+      /* this flavor is sometimes called a connectionless socket */
+    answer_text: SOCK_DGRAM
+    why: SOCK_DGRAM names the datagram flavor — the connectionless one. SOCK_STREAM would create the reliable
+      two-way flavor instead, contradicting the comment; AF_INET selects the address family and cannot
+      stand in for the type. (b3)
+    concept: sock-dgram
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      int sd = socket(AF_INET, SOCK_DGRAM, 0);
+      if (sd < 0)
+          puts("socket call failed");
+      else
+          puts("datagram launcher ready");
+    choices:
+    - it counts how many datagrams the kernel will deliver to it
+    - it establishes an ordered two-way channel and prints a full connection log
+    - it creates a connectionless descriptor and reports whether it worked
+    answer: 2
+    why: 'The purpose: acquire a SOCK_DGRAM descriptor and react to the kernel''s answer — ''connectionless
+      packet traffic'' is the relational goal. ''Ordered two-way channel'' is the stream flavor mislabeled
+      — the exact contrast this block teaches. ''Counts datagrams'' confuses the descriptor with traffic
+      statistics. (b3)'
+    concept: socket-acquire
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      sendto(sd, "hi", 2, 0, &dest, destlen);
+      sendto(sd, "yo", 2, 0, &dest, destlen);
+    choices:
+    - it addresses and fires each packet independently, holding no connection
+    - it opens then closes a persistent connection, sending the data twice in between
+    - it splits one long message into two fragments for separate delivery
+    answer: 0
+    why: 'The relational purpose: connectionless sending — each sendto() carries its own destination and
+      stands alone (the chapter notes datagrams can be connect()''d if you really want, but this code
+      chooses the plain fire-and-forget form). ''Opens then closes a connection'' pastes stream bookkeeping
+      onto datagrams; ''fragments'' invents a splitting mechanism. (b3)'
+    concept: connectionless
+  - kind: mcq
+    q: The guide's examples concentrate on which family of sockets?
+    choices:
+    - raw sockets — the default type socket() returns
+    - Unix sockets — path names on a local node
+    - X.25 sockets — CCITT X.25 network addresses
+    - Internet sockets — DARPA Internet addresses
+    answer: 3
+    why: The guide deals only with Internet Sockets; Unix sockets and X.25 sockets are named and set aside
+      (X.25 'safely ignore'). Choosing Unix sockets traps conflating the everything-is-a-file theme with
+      the socket family actually taught. (b3)
+    concept: socket-families
+  - kind: mcq
+    q: A colleague wants to transfer a binary program from one host to another over a datagram socket
+      and expects it to run on arrival. What is missing from their plan?
+    choices:
+    - a larger send buffer, because datagram size is limited by the descriptor table
+    - nothing — datagrams are ordered and reliable, so the binary will be intact
+    - datagram sockets can only carry plain text, never binary payloads
+    - an application-level ACK procedure, because UDP does not guarantee delivery
+    answer: 3
+    why: Datagrams may vanish, so a raw UDP transfer can silently produce a broken binary. tftp solves
+      this with its own protocol on top of UDP — the recipient ACKs each packet and the sender retransmits
+      until the ACK lands (b6's whole idea). 'Nothing missing' pastes the stream contract onto datagrams.
+      The buffer answer invents a mechanism the chapter never mentions. (b3, teasing b6)
+    concept: udp-reliability-gap
+- id: b4
+  type: model
+  title: Trust TCP to Deliver Your Bytes in Order
+  explain_md: |
+    How do stream sockets achieve this high level of data transmission
+    quality? They use a protocol called **The Transmission Control
+    Protocol** — **TCP** (see RFC 793 for extremely detailed info). TCP
+    makes sure your data arrives **sequentially** and **error-free**.
+    You may have heard of TCP as the better half of "TCP/IP", where IP
+    stands for **Internet Protocol** (RFC 791). IP deals primarily with
+    **Internet routing** and is **not generally responsible for data
+    integrity**.
+
+    Who lives on stream sockets? `telnet` and `ssh`: every character you
+    type needs to arrive in the same order you typed it. Web browsers
+    too: **HTTP** rides stream sockets to fetch pages. The chapter's
+    favorite demo — telnet to a web site on port 80, type
+    `GET / HTTP/1.0`, hit RETURN twice, and the HTML comes pouring back.
+    That works because the *bytes* you typed crossed a TCP stream in
+    order, and the *HTTP protocol* riding on top knew what to do with
+    them. (Aside: `telnet` itself is a spec'd networking protocol, and
+    the guide's companion program `telnot` doesn't implement it at all —
+    it is just a telnet-like byte shoveler.)
+
+    ### The Notional Machine: a stream is a line of bytes, not messages
+
+    When you send on a `SOCK_STREAM` descriptor, the kernel treats your
+    bytes as one continuous river. Whatever order you push bytes in is
+    the order the peer pulls them out — the kernel and TCP handle
+    sequencing, retransmission, and checking underneath. The guarantees
+    live *below* your send calls, which is precisely why your code can
+    stay simple: you never re-send a "lost" character on a stream
+    socket; TCP already did.
+
+    One boundary worth stating (the chapter's next section exists
+    because of it): none of this machinery is free — it costs
+    bookkeeping, which is exactly what the datagram flavor skips.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+
+      int main(void)
+      {
+          const char *stream = "12";
+
+          /* what a TCP peer pulls out of the stream, byte for byte */
+          for (int i = 0; stream[i] != '\0'; i++)
+              printf("peer read byte %d: %c\n", i + 1, stream[i]);
+
+          return 0;
+      }
+    run_expected: |
+      peer read byte 1: 1
+      peer read byte 2: 2
+    explain_md: |
+      The loop models the *read side* of a TCP stream: the two bytes that
+      were written in the order 1-then-2 are pulled out in exactly that
+      order. TCP's sequencing machinery is what made the array's order
+      trustworthy at the far end.
+    subgoals:
+    - label: Model the Sent Stream
+      lines:
+      - 5
+    - label: Pull Bytes in Wire Order
+      lines:
+      - 8
+      - 9
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'sender: send(sd, ''1'', 1, 0) — byte 1 enters the kernel''s stream'
+    - 'sender: send(sd, ''2'', 1, 0) — byte 2 queues behind byte 1'
+    - 'peer: read 1 -> ''1'', read 2 -> ''2'' — TCP delivers both, error-free, in this order'
+  checks:
+  - kind: predict
+    q: Trace the loop line by line, tracking i. What is this program's complete output?
+    code: |
+      const char *stream = "12";
+      for (int i = 0; stream[i] != '\0'; i++)
+          printf("peer read byte %d: %c\n", i + 1, stream[i]);
+    choices:
+    - 'nothing: ''12'' is treated as one unit, so the loop skips it'
+    - 'peer read byte 2: 2, then peer read byte 1: 1, in reverse'
+    - 'one line only: peer read byte 0: 1, then it stops'
+    - 'peer read byte 1: 1, then peer read byte 2: 2, in order'
+    answer: 3
+    why: 'i starts at 0: stream[0] is ''1'', printed with count 1; then i = 1 prints ''2''; the terminator
+      ends the loop. Order follows the array — which is the point: a TCP stream preserves send order.
+      The reversed output traps confusing the stream''s direction; the skipped loop traps off-by-one/first-element
+      skipping; the single-unit output traps reading ''12'' as an atomic message rather than bytes. (b4)'
+    concept: tcp-order
+  - kind: mcq
+    q: Which pair of guarantees does TCP make for stream socket data?
+    choices:
+    - delivery speed and small packet size
+    - sequential arrival and error-free content
+    - no message boundaries and zero added latency
+    answer: 1
+    why: 'TCP''s contract: data arrives sequentially and error-free. ''Speed and packet size'' are datagram-world
+      virtues, not TCP promises. ''Zero latency'' is invented — reliability costs bookkeeping, never zero
+      latency. ''No message boundaries'' is a real stream property but not the guarantee pair the chapter
+      asks about. (b4)'
+    concept: tcp-guarantees
+  - kind: why-fails
+    q: 'A student says: ''I typed GET / HTTP/1.0 into a telnet session, so TCP fetched the HTML page for
+      me.'' Why does that explanation fail?'
+    code: |
+      /* bytes over the wire:   GET / HTTP/1.0\r\n\r\n   */
+      /* then the HTML arrives — who produced the HTML? */
+    choices:
+    - TCP produced the page itself; it assembles the whole HTML page out of ordered bytes
+    - telnet encrypted the request, which is exactly why the HTML came back
+    - the bytes crossed a stream in order, but the server's HTTP layer sent the page
+    answer: 2
+    why: 'Stream sockets are a byte pipe: TCP got your typed bytes there in order, error-free — but HTML
+      is the web server''s application-level reply. TCP does not know what ''a page'' is. ''TCP assembles
+      HTML'' traps attributing application semantics to the transport. ''Telnet encrypted'' invents a
+      security mechanism the chapter never mentions. (b4)'
+    concept: transport-vs-application
+  - kind: fillblank
+    q: 'Fill the missing protocol name that stream sockets ride (RFC 793):'
+    code: |
+      /* stream sockets use the ____ protocol to make data
+         arrive sequentially and error-free */
+    answer_text: TCP
+    why: TCP (Transmission Control Protocol, RFC 793) is what gives SOCK_STREAM its sequential, error-free
+      behavior. IP (RFC 791) is the tempting distractor — it routes but is 'not generally responsible
+      for data integrity'. UDP is the datagram side's protocol. (b4)
+    concept: tcp-name
+  - kind: mcq
+    q: In the TCP/IP pairing, what is IP's job?
+    choices:
+    - checksumming the payload so that bytes can never corrupt in transit
+    - keeping data error-free while TCP handles all addressing
+    - compressing the data before it crosses the physical network
+    - Internet routing, not general responsibility for data integrity
+    answer: 3
+    why: 'The chapter is explicit: IP deals primarily with Internet routing and is not generally responsible
+      for data integrity. Swapping the two protocols'' jobs traps the name-order confusion; ''compressing''
+      invents a service neither protocol claims. (b4)'
+    concept: ip-role
+  - kind: trace
+    q: Trace the ordered check. What value does in_order hold after Step 3?
+    code: |
+      const char *stream = "12";
+      int first = stream[0] - '0';
+      int in_order = first <= stream[1] - '0';
+    trace:
+      headers:
+      - Step
+      - Line
+      - Variable
+      - Value
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - stream
+        - '"12"'
+      - step: 2
+        line: 2
+        cells:
+        - '2'
+        - first
+        - '1'
+      - step: 3
+        line: 3
+        cells:
+        - '3'
+        - in_order
+        - ???
+    target:
+      row: 2
+      col: 2
+    choices:
+    - the value 0 (false)
+    - the value 2 (second)
+    - '''1'' minus ''0'' (one)'
+    - the value 1 (true)
+    answer: 3
+    why: first is 1 and stream[1] - '0' is 2, so 1 <= 2 holds and in_order is 1 — the numeric encoding
+      of 'the bytes arrived in send order'. '0' is the false value this true comparison never yields;
+      the char-arithmetic option confuses the expression with its result; '2' confuses the compared operand
+      with the boolean. (b4)
+    concept: trace-order-check
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      /* an ssh client, one keystroke at a time */
+      for (;;) {
+          key = read_next_keystroke();
+          send(sd, &key, 1, 0);
+      }
+    choices:
+    - it encrypts each keystroke before the terminal sends it across the network wire
+    - it batches many keystrokes into datagrams to save the network bandwidth
+    - it forwards each keystroke in order so the remote shell sees it as typed
+    answer: 2
+    why: 'The relational purpose: ssh lives on the stream guarantee — typed order preserved — which is
+      why the chapter names it a stream user. ''Batches into datagrams'' contradicts the code''s one-byte
+      sends and invokes the wrong flavor; ''encrypts'' invents a mechanism the transport does not provide
+      here. (b4)'
+    concept: stream-users
+  - kind: mcq
+    from_chapter: ch02
+    from_block: b1
+    q: The chapter's telnet demo reaches a web server by opening a connection from the demo program to
+      the server. In the client/server division of labor, which side is the demo program acting as, and
+      why?
+    choices:
+    - the server, because it is the side that holds the port number
+    - the client, because it actively reaches out to the server's port
+    - neither — a telnet session is a third role outside the client/server model
+    answer: 1
+    why: In the client/server split taught in the book's intro, the client is the initiator that reaches
+      out to a server already listening on a port; the demo program reaching out on port 80 is playing
+      the client. 'Server because it holds the port' reverses the roles — the *listener* holds the well-known
+      port. 'Third role' invents a taxonomy the book does not have. (from ch02 Intro)
+    concept: client-server-roles
+- id: b5
+  type: model
+  title: Fire-and-Forget with UDP Datagrams
+  explain_md: |
+    Datagram sockets also use IP for routing, but they don't use TCP —
+    they use the **User Datagram Protocol**, **UDP** (RFC 768). Why
+    "connectionless"? Because you don't maintain an open connection the
+    way stream sockets do: you **build a packet, slap an IP header on it
+    with destination information, and send it out**. No connection needed.
+
+    The honest contract, one more time: a datagram **may** arrive; it may
+    arrive **out of order**; if it arrives, the data within the packet is
+    **error-free**. Sample applications: `tftp` (trivial file transfer —
+    a little brother to FTP), `dhcpcd` (a DHCP client), multiplayer
+    games, streaming audio, video conferencing.
+
+    Why would anyone choose an unreliable underlying protocol? **Two
+    reasons: speed and speed.** It is way faster to fire-and-forget than
+    to keep track of what arrived safely and make sure it is in order.
+    The decision rule from the chapter: sending **chat messages** — TCP
+    is great; sending **40 positional updates per second** of the players
+    in the world — it does not matter so much if one or two get dropped,
+    and **UDP is a good choice**. For unreliable applications like
+    games, audio, or video you just ignore dropped packets or cleverly
+    compensate for them (Quake players know this manifestation by its
+    technical name: accursed lag).
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+
+      int main(void)
+      {
+          const char *sent[] = {"1", "2", "3"};
+          const char *arrived[] = {"2", "3", "1"};
+
+          for (int i = 0; i < 3; i++)
+              printf("sent %s, arrived %s\n", sent[i], arrived[i]);
+
+          return 0;
+      }
+    run_expected: |
+      sent 1, arrived 2
+      sent 2, arrived 3
+      sent 3, arrived 1
+    explain_md: |
+      The two arrays model a datagram session: three packets leave in
+      order 1-2-3, and the receiver's *arrival* order is 2-3-1. Nothing
+      corrupted the packets — only their delivery order differs from
+      send order, which is exactly the freedom UDP grants itself.
+    subgoals:
+    - label: Record the Send Order
+      lines:
+      - 5
+    - label: Record the Arrival Order
+      lines:
+      - 6
+    - label: Replay the Mismatch
+      lines:
+      - 8
+      - 9
+  viz:
+    kind: ascii-memory
+    steps:
+    - sender fires dgram 1 ('1'), then dgram 2 ('2'), then dgram 3 ('3') — no connection state anywhere
+    - dgram 1 is lost in transit; nobody notices immediately
+    - receiver takes dgram 2 first, then 3, then a re-sent 1 — order differs from send order
+    - 'each packet''s payload is intact: only delivery and ordering were never promised'
+  checks:
+  - kind: predict
+    q: Trace the loop, tracking i and the array indexes. What is this program's complete output?
+    code: |
+      const char *sent[] = {"1", "2", "3"};
+      const char *arrived[] = {"2", "3", "1"};
+      for (int i = 0; i < 3; i++)
+          printf("sent %s, arrived %s\n", sent[i], arrived[i]);
+    choices:
+    - 'nothing at all: the two arrays have different lengths here'
+    - 'three lines: sent 1 arrived 1, sent 2 arrived 2, and sent 3 arrived 3'
+    - 'one line only: sent 1, arrived 2, then the loop stops there'
+    - 'three lines: sent 1 arrived 2, sent 2 arrived 3, sent 3 arrived 1'
+    answer: 3
+    why: The loop pairs sent[i] with arrived[i] for i = 0,1,2 — the mismatched pairing IS the lesson (datagrams
+      reorder). The matched-pairs answer assumes arrival order equals send order — the TCP assumption
+      smuggled into datagram land. The single-line output traps loop-boundary confusion; the arrays both
+      hold 3 items. (b5)
+    concept: udp-reorder
+  - kind: mcq
+    q: Which protocol do datagram sockets use for their transport?
+    choices:
+    - TCP, because it guarantees ordered, reliable delivery
+    - UDP — datagrams use IP for routing but ride UDP, not TCP
+    - X.25, since connectionless traffic requires it at the link layer
+    answer: 1
+    why: Datagram sockets use IP for routing but their transport protocol is UDP (RFC 768). 'TCP' attaches
+      the stream protocol to the wrong flavor. 'X.25' borrows a real-but-irrelevant family name from the
+      chapter's aside. (b5)
+    concept: udp-name
+  - kind: why-fails
+    q: A chat client uses datagram sockets and displays messages in arrival order. Why does this design
+      fail to give users what they expect?
+    code: |
+      /* chat line 'hello' is datagram 1; 'how are you?' is datagram 2 */
+      /* the client prints each datagram the moment it arrives */
+    choices:
+    - chat strings exceed the maximum datagram payload, so sendto() refuses to send them
+    - datagram sockets require a maintained connection for all text traffic
+    - datagrams may arrive out of order or vanish, so replies can precede questions
+    answer: 2
+    why: 'The chapter''s own decision rule: chat messages are what TCP is great for — because conversation
+      needs every line, in order. Datagram arrival order is unguaranteed, so ''how are you?'' can beat
+      its own ''hello'' to the screen. The payload-size claim invents a limit the chapter never states;
+      the connection requirement contradicts what ''connectionless'' means. (b5)'
+    concept: tcp-vs-udp-choice
+  - kind: fillblank
+    q: 'Fill the missing call name: all you have to do for datagram sockets is encapsulate the packet
+      in the method of your choosing and ____ it out.'
+    code: |
+      int sd = socket(AF_INET, SOCK_DGRAM, 0);
+      /* build the packet, address it, and ____ it out */
+    answer_text: sendto
+    why: The chapter's datagram verb is sendto() — addressing is part of the send for connectionless traffic
+      (stream code uses send() on an already-connected descriptor). 'send' alone is the stream flavor's
+      verb; 'write' is the generic descriptor call, not the chapter's datagram word. (b5)
+    concept: sendto
+  - kind: mcq
+    q: According to the chapter, why choose an unreliable underlying protocol for a game sending 40 positional
+      updates per second?
+    choices:
+    - because game traffic must never be encrypted while it crosses the wire
+    - because dropped updates matter little and fire-and-forget is faster
+    - because datagrams are larger than stream segments really are
+    answer: 1
+    why: 'Two reasons: speed and speed — it is way faster to fire-and-forget than to track safe arrival
+      and ordering; and a dropped positional update is harmless because the next one (40 per second) supersedes
+      it. Encryption is invented. ''Larger datagrams'' reverses reality — the bookkeeping TCP adds is
+      the overhead being skipped. (b5)'
+    concept: udp-speed-rationale
+  - kind: mcq
+    q: Which application set matches the datagram-socket users the chapter names?
+    choices:
+    - only X.25 gateways, raw socket daemons, and low-level routing tools
+    - telnet, ssh, and web browsers that use the HTTP protocol
+    - tftp, dhcpcd, games, streaming audio, and video conferencing
+    answer: 2
+    why: The chapter's sample list is exactly tftp, dhcpcd, games, streaming audio, and video conferencing.
+      'telnet/ssh/browsers' are the STREAM users from b4 — the flavor-swap distractor. The X.25/raw option
+      invents exclusivity those named families never had. (b5)
+    concept: datagram-users
+  - kind: trace
+    q: Trace the drop simulation. What value does delivered hold after Step 4?
+    code: |
+      int delivered = 0;
+      int fired = 3;
+      int lost = 1;
+      int delivered = fired - lost;
+    trace:
+      headers:
+      - Step
+      - Line
+      - Variable
+      - Value
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - delivered
+        - '0'
+      - step: 2
+        line: 2
+        cells:
+        - '2'
+        - fired
+        - '3'
+      - step: 3
+        line: 3
+        cells:
+        - '3'
+        - lost
+        - '1'
+      - step: 4
+        line: 4
+        cells:
+        - '4'
+        - delivered
+        - ???
+    target:
+      row: 3
+      col: 2
+    choices:
+    - the value 4 (fired)
+    - the value 3 (stale)
+    - the value 2 (delivered)
+    - the value -1 (invalid)
+    answer: 2
+    why: 3 datagrams fired minus 1 lost leaves 2 delivered — UDP's best-effort arithmetic. '4' traps sloppy
+      addition; '3' is the stale pre-subtraction value of fired; '-1' has no source in the trace. (b5)
+    concept: trace-drop-arithmetic
+  - kind: mcq
+    q: A UDP-based game drops a packet mid-match. Per the chapter, what is the acceptable response?
+    choices:
+    - close the connection and reconnect, since datagrams need a link
+    - ignore the dropped packet or cleverly compensate for it
+    - switch that packet to TCP in the middle of the game
+    answer: 1
+    why: For unreliable applications like games, audio, or video you just ignore the dropped packets or
+      try to cleverly compensate for them — the dropped positional update is superseded by the next one
+      anyway. 'Reconnect' presumes a maintained connection that connectionless traffic never had. 'Mid-game
+      protocol switch' is not a mechanism the chapter offers. (b5)
+    concept: drop-tolerance
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      sendto(sd, buf, len, 0, &dest, destlen);
+    choices:
+    - it addresses one packet and fires it, holding no connection open
+    - it opens a persistent channel to dest for all later traffic
+    - it converts buf's bytes to network byte order before sending them
+    answer: 0
+    why: 'The relational purpose: the datagram verb — destination attached per packet, no connection maintained
+      (b5''s whole picture). ''Persistent channel'' is the stream mental model mislabeled onto SOCK_DGRAM;
+      ''byte order'' invents a conversion the chapter never discusses. (b5)'
+    concept: sendto-purpose
+- id: b6
+  type: design
+  title: Restore Reliability Above UDP with ACK-and-Retransmit
+  explain_md: |
+    "Wait a minute! tftp and dhcpcd transfer binary applications from one
+    host to another! Data can't be lost if you expect the application to
+    work when it arrives!" Right — so how do UDP users get away with it?
+    Programs like tftp carry **their own protocol on top of UDP**. The
+    tftp rule: for each packet that gets sent, the recipient has to send
+    back a packet that says **"I got it!"** — an **ACK** packet. If the
+    sender gets no reply in, say, **five seconds**, it **re-transmits**
+    the packet until it finally gets an ACK.
+
+    This acknowledgment procedure is what you buy when you pick
+    `SOCK_DGRAM` for something that still needs every byte. It is the
+    classic engineering trade of this chapter: the kernel offered you
+    *speed without guarantees* (b5), so **you** now own reliability at
+    the application layer — timeouts, retransmission, per-packet
+    bookkeeping.
+
+    ### When to rebuild reliability yourself — and when not to
+
+    If your data must arrive complete, in order, and you have no exotic
+    needs, **TCP already implements this whole procedure for you** —
+    writing an ACK loop over UDP to re-invent TCP badly is a design
+    mistake. The design earns its keep when you chose UDP for its
+    *other* virtues (no connection state, per-packet independence) and
+    need reliability only for *some* of the traffic — which is exactly
+    tftp's situation, and why its ACK procedure lives in the tftp
+    protocol rather than the kernel.
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+
+      int main(void)
+      {
+          int got_ack = 0;
+          int tries = 0;
+
+          while (!got_ack && tries < 4) {
+              printf("send packet, wait for ACK (try %d)\n", tries + 1);
+              tries++;
+              if (tries == 2) {
+                  got_ack = 1;
+                  puts("ACK arrived: packet accepted");
+              }
+          }
+          return 0;
+      }
+    run_expected: |
+      send packet, wait for ACK (try 1)
+      send packet, wait for ACK (try 2)
+      ACK arrived: packet accepted
+    explain_md: |
+      This is the tftp ACK-and-retransmit loop as a simulation: each pass
+      'sends' and waits; the first pass's ACK never lands, so the sender
+      re-transmits; the second pass's ACK arrives and the loop closes.
+      Real tftp times out after roughly five seconds per attempt.
+    subgoals:
+    - label: Track the Acknowledgment State
+      lines:
+      - 5
+      - 6
+    - label: Send and Wait, Then Resend if Silent
+      lines:
+      - 8
+      - 9
+      - 10
+    - label: Close the Loop on ACK
+      lines:
+      - 11
+      - 12
+      - 13
+  diagram:
+    kind: flow
+    caption: The tftp acknowledgment round trip
+    nodes:
+    - id: S
+      label: sender (tftp)
+    - id: R
+      label: receiver (tftp)
+    edges:
+    - from: S
+      to: R
+      label: packet
+    - from: R
+      to: S
+      label: ack
+    steps:
+    - focus:
+      - S
+      - R
+      note: sender fires a packet at the receiver
+    - focus:
+      - S
+      - R
+      note: receiver answers with an ACK — 'I got it!'
+    - focus:
+      - S
+      note: no ACK in about five seconds? retransmit until one lands
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'try 1: packet leaves; the wait timer starts; got_ack = 0'
+    - 'silence: no ACK within the timeout — the packet may never have arrived'
+    - 'try 2: the sender re-transmits the SAME packet'
+    - 'ACK lands: got_ack = 1; the loop exits with the packet confirmed'
+  checks:
+  - kind: choose-better
+    q: A new tool must move 40 MB binary updates between hosts. Which design is better for the transfer
+      itself?
+    choices:
+    - raw UDP with a bigger packet size, assuming loss cannot matter
+    - UDP plus an application-level ACK-and-retransmit procedure, like tftp's
+    - raw UDP with no acknowledgment logic — one pass or the file is left broken
+    answer: 1
+    why: 'If the application must work when it arrives, the data cannot be lost — so the transfer needs
+      the acknowledgment procedure: per-packet ACKs and retransmission on silence. Plain UDP leaves the
+      40 MB silently broken. ''Bigger packets'' is not a mechanism for loss at all — packet size never
+      prevented a drop. Boundary: if you have no special need for UDP, TCP implements this whole procedure
+      for you. (b6)'
+    concept: ack-retransmit
+  - kind: eipe
+    q: In one sentence, what is this code FOR?
+    code: |
+      while (!got_ack && tries < 4) {
+          send_packet();
+          wait_for_ack_or_timeout();
+          if (ack_arrived())
+              got_ack = 1;
+          tries++;
+      }
+    choices:
+    - it retransmits packets until the receiver's acknowledgment confirms arrival
+    - it sends exactly four packets and stops, regardless of what the receiver says
+    - it counts how many packets were lost so the log can report them
+    answer: 0
+    why: 'The relational purpose: a retransmission loop that terminates when the ACK confirms receipt
+      (the try cap is a safety valve, not the goal). ''Sends exactly four'' misreads the guard as a quota
+      — it is an upper bound, and the ACK ends the loop early. ''Counts losses'' confuses the loop''s
+      control variable with its mission. (b6)'
+    concept: ack-loop-purpose
+  - kind: mcq
+    q: In the tftp protocol's own words, what does the recipient's ACK packet say?
+    choices:
+    - '''please send the next packet within five seconds'''
+    - '''please wait five full seconds before sending the next packet'''
+    - '''received and stored safely to disk by the receiver'''
+    - '''I got it!'' — the packet has arrived safely at the receiver'
+    answer: 3
+    why: 'The chapter quotes the ACK''s meaning directly: a packet that says ''I got it!''. ''Received
+      and stored to disk'' adds a durability claim tftp''s ACK does not make here; the five-second figure
+      is the SENDER''s retransmission timer, not a message the receiver sends. (b6)'
+    concept: ack-meaning
+  - kind: mcq
+    q: When does a tftp-style sender re-transmit a packet?
+    choices:
+    - after every ACK, to confirm that the acknowledgment itself arrived safely
+    - when no reply arrives in five seconds, until an ACK finally arrives
+    - exactly once, five seconds after the first packet was sent
+    answer: 1
+    why: If the sender gets no reply in, say, five seconds, it re-transmits the packet until it finally
+      gets an ACK — an open-ended loop bounded only by its own policy. 'After every ACK' inverts the trigger
+      (an ACK STOPS the loop). 'Exactly once' undercounts the open-endedness the chapter states. (b6)
+    concept: retransmit-trigger
+  - kind: why-fails
+    q: A transfer tool moves binary applications over raw UDP with no acknowledgment procedure. Why does
+      this design fail for its stated purpose?
+    code: |
+      /* 1000 datagrams fired; none are ever re-sent */
+      /* receiver writes each arriving datagram into the file */
+    choices:
+    - 'the file may be incomplete: missing datagrams are never re-requested'
+    - the kernel will refuse to open a UDP socket for binary payloads
+    - UDP datagrams carry no destination address, so they never arrive anywhere
+    answer: 0
+    why: Raw UDP may silently drop packets; with no ACK/retransmit layer, missing datagrams are simply
+      gone and the assembled binary is incomplete — 'data can't be lost if you expect the application
+      to work' is violated. The kernel-refusal claim invents a payload restriction. The no-destination
+      claim is flatly wrong — the sender slaps the destination IP header on every datagram. (b6)
+    concept: udp-reliability-gap
+  - kind: mcq
+    q: What does implementing a reliable SOCK_DGRAM application require, per the chapter?
+    choices:
+    - nothing extra at all — SOCK_DGRAM is already reliable
+    - an acknowledgment procedure with per-packet ACKs and resends
+    - a raw socket running underneath the datagram socket at all times
+    answer: 1
+    why: The chapter names the acknowledgment procedure as very important when implementing reliable SOCK_DGRAM
+      applications — the reliability lives in YOUR protocol, above UDP. 'Reliable by itself' contradicts
+      the may-not-arrive contract. 'Raw socket underneath' invents a stacking requirement. (b6)
+    concept: reliable-sock-dgram
+- id: b7
+  type: model
+  title: See Your Data Wrapped Layer by Layer
+  explain_md: |
+    Since protocols layer, here is how networks really build a packet —
+    **Data Encapsulation**. The rule: a packet is born, then the first
+    protocol **wraps ("encapsulates")** it in a header (and rarely a
+    footer) — say the TFTP protocol. Then the whole thing (TFTP header
+    included) is encapsulated **again** by the next protocol — say UDP —
+    then again by IP, then again by the final protocol on the hardware
+    (physical) layer — say Ethernet.
+
+    On the receiving side the process runs in **reverse**: the hardware
+    strips the **Ethernet** header, the kernel strips the **IP** and
+    **UDP** headers, and the **TFTP program** strips the TFTP header —
+    and finally holds the data. Each layer's header is that layer's own
+    contract: addressing at the bottom, transport framing in the middle,
+    application payload at the top. (The chapter illustrates this with
+    its encapsulation diagram — reproduced below.)
+
+    Envelope analogy: a birthday card goes inside its envelope, that
+    envelope inside the mail carton, the carton inside the delivery van.
+    Unwrapping happens in the opposite order of wrapping, and each
+    wrapper is removed by whoever owns that wrapper.
+  diagram:
+    kind: art
+    caption: 'Encapsulation: each layer wraps everything beneath it'
+    art: |
+      +----------------------------------------------------+
+      | Ethernet frame                                     |
+      |   +--------------------------------------------+   |
+      |   | IP datagram                                |   |
+      |   |   +------------------------------------+   |   |
+      |   |   | UDP datagram                       |   |   |
+      |   |   |   +----------------------------+   |   |   |
+      |   |   |   | TFTP packet                |   |   |   |
+      |   |   |   |   +--------------------+   |   |   |   |
+      |   |   |   |   | your file data     |   |   |   |   |
+      |   |   |   |   +--------------------+   |   |   |   |
+      |   |   |   +----------------------------+   |   |   |
+      |   |   +------------------------------------+   |   |
+      |   +--------------------------------------------+   |
+      +----------------------------------------------------+
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'send side: tftp app writes its packet -> UDP wraps it -> IP wraps that -> Ethernet wraps it all'
+    - 'on the wire: one Ethernet frame whose payload is an IP datagram holding a UDP datagram holding
+      TFTP data'
+    - 'receive side: hardware strips Ethernet -> kernel strips IP + UDP -> the tftp program strips its
+      own header'
+  checks:
+  - kind: predict
+    q: Walk the encapsulation sequence by hand. Which header ends up OUTERmost — attached last, stripped
+      first — when a tftp packet crosses an Ethernet?
+    choices:
+    - the innermost TFTP application-layer header
+    - the middle UDP transport-layer header
+    - the routing IP internet-layer header
+    - the outermost Ethernet hardware header
+    answer: 3
+    why: 'Encapsulation wraps in protocol order TFTP, then UDP, then IP, then Ethernet — so Ethernet,
+      the final protocol on the hardware layer, is outermost. TFTP/UDP/IP answers each pick a MIDDLE wrap:
+      the confusion is forgetting that later protocols wrap the ENTIRE earlier packet, not sit beside
+      it. (b7)'
+    concept: encapsulation-order
+  - kind: mcq
+    q: On a receiving computer, WHO strips the Ethernet header?
+    choices:
+    - the TFTP application program running above
+    - the operating-system kernel code itself
+    - the network hardware device layer itself
+    answer: 2
+    why: 'Stripping runs in reverse wrap order, each agent removing its own wrapper: the hardware strips
+      the Ethernet header first. Assigning it to the kernel or the application shifts the stack down —
+      the classic layer-confusion error. (b7)'
+    concept: strip-order
+  - kind: mcq
+    q: On a receiving computer, who strips the IP and UDP headers?
+    choices:
+    - the TFTP application, stripping header by header
+    - the hardware, before passing the frame upward to the host
+    - the operating-system kernel itself, before the app runs
+    answer: 2
+    why: The kernel strips the IP and UDP headers (the transport and internet layers are kernel territory).
+      The application only ever removes ITS OWN header — TFTP strips TFTP. The hardware answer moves the
+      strip downward; hardware only handles the physical-layer wrapper. (b7)
+    concept: strip-order
+  - kind: eipe
+    q: In one sentence, what is this receive-side sequence FOR?
+    code: |
+      hardware strips Ethernet -> kernel strips IP + UDP -> tftp strips tftp
+    choices:
+    - it unwraps the headers in reverse order so the application gets pure data
+    - it wraps the data three separate times so it cannot be read while in transit
+    - it routes the packet through several routers before it is delivered
+    answer: 0
+    why: 'The purpose is the reverse-unwrapping discipline: whoever owns a wrapper removes it, so the
+      top application inherits clean payload. ''Wraps three times so it cannot be read'' confuses encapsulation
+      with encryption — headers are routing metadata, not secrecy. ''Routes through routers'' is IP forwarding
+      — a different job the chapter deliberately skips. (b7)'
+    concept: strip-order
+  - kind: why-fails
+    q: A student claims their tftp application must parse the Ethernet header to read incoming file data.
+      Why does that claim fail?
+    code: |
+      /* the tftp program receives: [tftp header][file data] */
+      /* the student expects:       [eth][ip][udp][tftp][data] */
+    choices:
+    - Ethernet headers are encrypted, so user applications cannot parse them
+    - the hardware and kernel have already stripped those lower layers
+    - Ethernet headers only exist on the sending side of a transfer
+    answer: 1
+    why: 'Encapsulation strips in reverse on receive: hardware removes Ethernet, the kernel removes IP
+      and UDP — the application only ever sees its own protocol''s packet. ''Encrypted'' invents a secrecy
+      property headers do not have. ''Only on the sending side'' misstates where the frame exists — it
+      exists on the wire and is removed on receipt. (b7)'
+    concept: layer-transparency
+  - kind: fillblank
+    q: 'Fill the missing final protocol: encapsulation ends at the protocol on the hardware (physical)
+      layer — here, ____. '
+    code: |
+      wrap order:  tftp -> udp -> ip -> ____
+      (the whole thing then rides the wire)
+    answer_text: Ethernet
+    why: The chapter's walk ends with Ethernet as the final protocol on the hardware (physical) layer.
+      IP or UDP are middle wraps — encapsulation continues past them; TFTP is the FIRST wrapper, not the
+      last. (b7)
+    concept: encapsulation-order
+- id: b8
+  type: model
+  title: Place Sockets on the Layered Network Model
+  explain_md: |
+    The infamous **Layered Network Model** (aka "ISO/OSI") describes a
+    system of network functionality with a big advantage: you can write
+    sockets programs exactly the same **without caring how the data is
+    physically transmitted** — serial, thin Ethernet, AUI, whatever —
+    because programs on lower levels deal with it for you. The actual
+    network hardware and topology are **transparent to the socket
+    programmer**.
+
+    The full-blown model, for network class exams:
+
+    **Application · Presentation · Session · Transport · Network ·
+    Data Link · Physical**
+
+    The Physical Layer is the hardware (serial, Ethernet, etc.); the
+    Application Layer is as far from the physical layer as you can
+    imagine — where users interact with the network. A model more
+    consistent with Unix has four layers:
+
+    **Application Layer** (telnet, ftp, etc.) · **Host-to-Host Transport
+    Layer** (TCP, UDP) · **Internet Layer** (IP and routing) · **Network
+    Access Layer** (Ethernet, wi-fi, or whatever)
+
+    These layers correspond to the encapsulation wraps from b7. And here
+    is the payoff for you, the socket programmer: **all you have to do
+    for stream sockets is `send()` the data out; all you have to do for
+    datagram sockets is encapsulate the packet in the method of your
+    choosing and `sendto()` it out. The kernel builds the Transport and
+    Internet layers for you, and the hardware does the Network Access
+    layer.** Ah, modern technology.
+
+    (Routing, for completeness of the record: the author declines to
+    teach it here — the router strips the packet to the IP header,
+    consults its routing table, and forwards. See the IP RFC if you
+    really really care.)
+  example:
+    lang: c
+    code: |
+      #include <stdio.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          int sd = socket(AF_INET, SOCK_DGRAM, 0);
+
+          if (sd < 0) {
+              puts("socket call failed");
+              return 1;
+          }
+          /* sendto() would have the kernel add UDP + IP headers,
+             and the NIC the Ethernet frame — every layer below you */
+          puts("the application layer only asked for a descriptor");
+          return 0;
+      }
+    run_expected: |
+      the application layer only asked for a descriptor
+    explain_md: |
+      One call and the whole lower stack is implied: kernel-side UDP and
+      IP headers, hardware-side framing. The socket programmer writes
+      zero layer code — the model's whole point is that the lower layers
+      are somebody else's program.
+    subgoals:
+    - label: Ask for a Datagram Endpoint
+      lines:
+      - 6
+    - label: Guard the Kernel's Refusal
+      lines:
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+    - label: Note What the Kernel Owes You
+      lines:
+      - 13
+      - 14
+  diagram:
+    kind: flow
+    caption: The Unix-consistent layered model
+    nodes:
+    - id: A
+      label: Application
+    - id: B
+      label: Host-to-Host Transport
+    - id: C
+      label: Internet (IP)
+    - id: D
+      label: Network Access
+    edges:
+    - from: A
+      to: B
+      label: telnet, ftp
+    - from: B
+      to: C
+      label: TCP, UDP
+    - from: C
+      to: D
+      label: Ethernet, wi-fi
+    steps:
+    - focus:
+      - A
+      note: your socket code lives here — telnet, ftp, your programs
+    - focus:
+      - A
+      - B
+      note: 'the kernel builds this layer for you: TCP or UDP framing'
+    - focus:
+      - A
+      - B
+      - C
+      note: IP and routing — also kernel work; hardware stays invisible
+    - focus:
+      - A
+      - B
+      - C
+      - D
+      note: Ethernet, wi-fi — the hardware's layer; transparent to socket programmers
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'your program: one send()/sendto() call at the Application layer'
+    - 'kernel: wraps on Transport (UDP/TCP) then Internet (IP) headers'
+    - 'hardware: wraps Network Access (Ethernet/wi-fi) and puts the frame on the wire'
+    - your code never mentioned a single one of those headers — that is transparency
+  checks:
+  - kind: order
+    q: 'Order all 4 displayed lines of the Unix-consistent model from top (where your program lives) down
+      to the wire:'
+    lines:
+    - Host-to-Host Transport (TCP, UDP)
+    - Application Layer (telnet, ftp)
+    - Network Access Layer (Ethernet, wi-fi)
+    - Internet Layer (IP and routing)
+    answer_order:
+    - 1
+    - 0
+    - 3
+    - 2
+    distractor_why:
+      Host-to-Host Transport (TCP, UDP): Placing TCP/UDP above the application inverts the stack — TCP/UDP
+        serve applications, they do not sit above them.
+      Network Access Layer (Ethernet, wi-fi): Putting the wire at the top confuses 'what runs first in
+        a program' with 'what is closest to the user'.
+    why: 'The sequencing principle is the stack direction: Application sits on Transport, Transport rides
+      the Internet layer, and the Internet layer meets the Network Access layer (the wire). Getting Transport
+      on top traps the inversion bug; putting Network Access on top traps the wire-first reading. (b8)'
+    concept: unix-four-layers
+  - kind: fillblank
+    q: 'Fill the missing layer name: TCP and UDP make their home in the Host-to-Host ____ Layer.'
+    code: |
+      Application Layer (telnet, ftp)
+      Host-to-Host ____ Layer (TCP, UDP)
+      Internet Layer (IP and routing)
+      Network Access Layer (Ethernet, wi-fi)
+    answer_text: Transport
+    why: The chapter's own wording is Host-to-Host Transport Layer — the layer that carries between hosts.
+      'Internet' would misplace TCP/UDP into the routing layer; 'Network Access' would bury them in the
+      wire. (b8)
+    concept: transport-layer-name
+  - kind: mcq
+    q: When you send on a stream socket, which layers does the KERNEL build for you?
+    choices:
+    - the Application and Presentation protocol layers
+    - the Presentation and Session protocol layers
+    - only the Network Access hardware layer
+    - the Transport and Internet protocol layers
+    answer: 3
+    why: The kernel builds the Transport Layer and Internet Layer for you; the hardware does the Network
+      Access layer — and you wrote none of them. 'Application/Presentation' is where YOUR code lives (and
+      Presentation belongs to the 7-layer model, not the Unix four). 'Only Network Access' gives the kernel's
+      job to the hardware. (b8)
+    concept: kernel-layers
+  - kind: choose-better
+    q: Two teams write the same file-transfer tool. Team A branches on the physical network (serial, Ethernet,
+      wi-fi) at every send. Team B writes one plain socket() + sendto() path. Which design is better,
+      and where is the boundary?
+    choices:
+    - both designs are equivalent — the descriptor table requires a branch for every open target
+    - Team A — hardware awareness lets each branch tune its packet sizes for each wire
+    - Team B — lower layers handle physical transmission, so hardware branches are redundant
+    answer: 2
+    why: 'Transparency is the model''s stated advantage: programs on lower levels deal with physical transmission,
+      so the same sockets code runs over any medium — Team A re-implements, badly, what the kernel and
+      hardware already own. ''Tune packet sizes'' invents a benefit the layers already handle; ''descriptor
+      table requires branches'' invents a constraint. Boundary: raw-frame control is a different API,
+      not more branches inside the sockets API. (b8)'
+    concept: layer-transparency
+  - kind: why-fails
+    q: A student adds hand-rolled Ethernet/IP/UDP header writers to their program so it can 'build the
+      wire headers itself, just in case the kernel skips them'. Why does that plan fail?
+    code: |
+      #include "my_own_headers.h"   /* hand-rolled UDP, IP, Ethernet writers */
+    choices:
+    - the kernel and hardware build those layers, so hand-rolled headers duplicate work
+    - header structures are considered trade secrets, so ordinary user programs may not define them
+    - the plan only fails on wi-fi, where the access point builds every frame there
+    answer: 0
+    why: 'The chapter''s payoff statement: all you do is send()/sendto() — the kernel builds Transport
+      and Internet, the hardware does Network Access. Duplicating them below the Application layer rewrites
+      the machine underneath you. ''Trade secrets'' invents a legal barrier; the wi-fi claim misplaces
+      frame construction. (b8)'
+    concept: kernel-layers
+  - kind: eipe
+    q: In one sentence, what is this datagram send code FOR?
+    code: |
+      int sd = socket(AF_INET, SOCK_DGRAM, 0);
+      sendto(sd, buf, len, 0, dest, destlen);
+    choices:
+    - it acquires a datagram endpoint and hands one whole packet to the kernel
+    - it opens a raw Ethernet connection and writes complete frames directly to the wire
+    - it reserves bandwidth so the kernel cannot add its own headers later
+    answer: 0
+    why: 'The relational purpose: socket() then sendto() = the Application layer doing its minimal job
+      while Transport/Internet/Network Access are built underneath. ''Raw Ethernet frames'' invents a
+      direct-to-wire path the socket API explicitly hides. ''Reserves bandwidth'' invents a QoS mechanism
+      the chapter never mentions. (b8)'
+    concept: sendto-layering
+  - kind: mcq
+    from_chapter: ch02
+    from_block: b1
+    q: A web browser (client) and a web server (listener) talk over the layered model. Which statement
+      places each side's program correctly?
+    choices:
+    - both programs sit at the Network Access layer, since that is where packets travel
+    - both programs sit at the Application layer; lower layers are kernel and hardware work
+    - the client sits at the Application layer but the server must sit at the Transport layer to receive
+    answer: 1
+    why: 'Application programs — browser and server alike — occupy the Application layer; Transport and
+      Internet are kernel-built, Network Access is hardware. ''Both at Network Access'' confuses where
+      packets physically flow with where programs run. ''Server at Transport'' invents a layer split by
+      role: client and server differ in who connects first (the client), not in which layer they occupy.
+      (from ch02 Intro + b8)'
+    concept: client-server-layers

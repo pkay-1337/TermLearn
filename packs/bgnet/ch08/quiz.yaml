@@ -1,0 +1,489 @@
+quiz:
+  - kind: mcq
+    level: intro
+    q: What unit does the poll() timeout argument use?
+    choices:
+      - milliseconds until the call gives up
+      - microseconds until the call gives up
+      - seconds until the call gives up
+    answer: 0
+    why: |-
+      poll uses milliseconds, so 2500 means 2.5 seconds. The microsecond unit belongs to select's timeval,
+      and seconds are too coarse for poll's field. (b2)
+    concept: quiz-poll-timeout
+  - kind: predict
+    level: core
+    q: Trace poll with three descriptors where two become ready. What does the call return?
+    code: |
+      int ready = poll(fds, 3, 1000);
+    choices:
+      - the index two, meaning the third entry is ready
+      - the count two, meaning two entries have events
+      - the descriptor with the highest ready number
+    answer: 1
+    why: |-
+      poll returns the number of entries with non-zero revents. It is not an index or a descriptor, so the
+      caller must scan all three entries. (b2)
+    concept: quiz-poll-count
+  - kind: spot-bug
+    level: advanced
+    q: The poll server never handles the ready listener. Which line is the defect?
+    code: |
+      r = poll(fds, nfds, -1);           /* 1 */
+      for (i = 0; i < nfds; i++) {       /* 2 */
+          if (fds[r].revents & POLLIN) { /* 3 */
+              handle(fds[i].fd);
+          }
+      }
+    diagnostic_log: |
+      poll returned 1
+      fds[0] has POLLIN set
+      no accept call occurred
+    target_line: 3
+    choices:
+      - Line 2 loops past the ready entry
+      - Line 1 ignores the timeout value
+      - Line 3 uses the count as an array index
+    answer: 2
+    why: |-
+      The return value counts events, so it cannot index the array. Indexing with r tests the wrong entry,
+      and the ready listener at index 0 is never accepted. (b3)
+    concept: quiz-poll-index
+  - kind: mcq
+    level: intro
+    q: A non-blocking recv finds an empty queue. What does it report?
+    choices:
+      - a failure with EAGAIN or EWOULDBLOCK
+      - a success with a zero byte count
+      - a success with the queue length
+    answer: 0
+    why: |-
+      No data is a temporary failure, reported by EAGAIN or EWOULDBLOCK. A zero success means the peer
+      closed, and recv does not return a queue length. (b1)
+    concept: quiz-nonblock-empty
+  - kind: order
+    level: core
+    q: Order the 4 correct steps for a basic select readiness call; one line is a distractor.
+    lines:
+      - clear the set with FD_ZERO
+      - add the descriptor with FD_SET
+      - call select with the highest fd plus one
+      - test the result with FD_ISSET
+      - close the descriptor before selecting
+    answer_order:
+      - 0
+      - 1
+      - 2
+      - 3
+    distractor_why:
+      close the descriptor before selecting: closing removes the descriptor from the monitored set.
+    why: |-
+      Build the set, call select, then test membership in the rewritten set. Closing first would make the
+      descriptor invalid. (b4)
+    concept: quiz-select-order
+  - kind: trace
+    level: advanced
+    q: Trace the master set. What value belongs in the target cell for read_fds after select?
+    code: |
+      FD_ZERO(&master);
+      FD_SET(4, &master);
+      FD_SET(7, &master);
+      read_fds = master;
+      select(8, &read_fds, NULL, NULL, NULL);
+    trace:
+      headers:
+        - Step
+        - master
+        - read_fds
+      rows:
+        - step: 1
+          line: 4
+          cells:
+            - 4, 7
+            - 4, 7
+        - step: 2
+          line: 5
+          cells:
+            - 4, 7
+            - ???
+    target:
+      row: 1
+      col: 2
+    choices:
+      - the same descriptors as master
+      - only the descriptors that are ready
+      - the highest descriptor plus one
+    answer: 1
+    why: |-
+      select rewrites read_fds to contain only ready descriptors. master stays unchanged, and numfds is a
+      separate integer, not a set member. (b5)
+    concept: quiz-master-copy
+  - kind: mcq
+    level: intro
+    q: Which socket type can send an IPv4 broadcast packet?
+    choices:
+      - an IPv4 TCP stream socket
+      - either UDP or TCP by default
+      - an IPv4 UDP datagram socket
+    answer: 2
+    why: |-
+      Broadcast is a datagram delivery mode. TCP is connection-oriented and cannot target every host on a
+      link. (b9)
+    concept: quiz-broadcast-type
+  - kind: fillblank
+    level: core
+    q: Complete the send loop. The helper advances by the number of ____ accepted.
+    code: |
+      sent += (size_t)n;
+    answer_text: bytes
+    why: |-
+      send returns a byte count, which may be shorter than the request. Advancing by bytes is what
+      prevents resending or skipping part of the buffer. (b6)
+    concept: quiz-sendall-advance
+  - kind: choose-better
+    level: advanced
+    q: A protocol must exchange 32-bit integers between different CPU architectures. Which design is better?
+    choices:
+      - define a width and convert with htonl and ntohl
+      - copy the native integer bytes into the packet
+      - send the integer as a pointer to the value
+    answer: 0
+    why: |-
+      A fixed width plus network byte order is portable. Native bytes depend on host endianness, and a
+      pointer transmits an address rather than the value. (b7)
+    concept: quiz-serialization-choice
+  - kind: mcq
+    level: intro
+    q: What must be enabled before a UDP socket may send to a broadcast address?
+    choices:
+      - the SO_REUSEADDR socket option
+      - the SO_BROADCAST socket option
+      - the TCP_NODELAY socket option
+    answer: 1
+    why: |-
+      SO_BROADCAST grants permission to send broadcast datagrams. Reuse-address affects binding, and
+      TCP_NODELAY is a stream option unrelated to broadcast. (b9)
+    concept: quiz-broadcast-option
+  - kind: mcq
+    level: core
+    q: What should the numfds argument to select() be?
+    choices:
+      - the number of ready descriptors after the call
+      - the number of sets passed to the call
+      - the highest descriptor in any set plus one
+    answer: 2
+    why: |-
+      select scans descriptors from zero through numfds minus one. The ready count is a return value, and
+      the number of sets is fixed at three. (b4)
+    concept: quiz-select-numfds
+  - kind: why-fails
+    level: advanced
+    q: A 512-byte send returns 412, but the sender closes the socket. Why is the message incomplete?
+    choices:
+      - the remaining 100 bytes were never offered again
+      - the kernel rejected the first 412 bytes
+      - the receiver closed before the send began
+    answer: 0
+    why: |-
+      A short send leaves the unsent suffix in the caller's buffer. Closing without another send drops
+      those bytes; the first 412 were accepted successfully. (b6)
+    concept: quiz-partial-close
+  - kind: order
+    level: intro
+    q: Order the 4 correct steps to prepare an IPv4 broadcast send; one line is a distractor.
+    lines:
+      - create an IPv4 datagram socket
+      - enable SO_BROADCAST
+      - fill a sockaddr_in with the destination
+      - call sendto with the packet
+      - call listen for replies
+    answer_order:
+      - 0
+      - 1
+      - 2
+      - 3
+    distractor_why:
+      call listen for replies: UDP sockets receive without listen, which belongs to stream servers.
+    why: |-
+      Create the datagram socket, enable broadcast, build the address, and send. UDP receivers do not use
+      a listening queue. (b9)
+    concept: quiz-broadcast-order
+  - kind: trace
+    level: core
+    q: Trace the poll count. What value belongs in the target cell for ready after the second call?
+    code: |
+      write(p[1], "x", 1);
+      ready = poll(&pfd, 1, 0);  /* 1 */
+      read(p[0], &c, 1);
+      ready = poll(&pfd, 1, 0);  /* 0 */
+    trace:
+      headers:
+        - Step
+        - pipe state
+        - ready
+      rows:
+        - step: 1
+          line: 2
+          cells:
+            - one byte queued
+            - '1'
+        - step: 2
+          line: 4
+          cells:
+            - empty queue
+            - ???
+    target:
+      row: 1
+      col: 2
+    choices:
+      - the value 1, because the pipe exists
+      - the value 0, because no entry is ready
+      - the value -1, because the read emptied it
+    answer: 1
+    why: |-
+      After the read the queue is empty, so poll with a zero timeout returns zero. An existing descriptor is
+      not automatically ready, and emptying a queue is not an error. (b2)
+    concept: quiz-poll-trace
+  - kind: mcq
+    level: advanced
+    q: Why is a struct's in-memory size often larger than the sum of its field sizes?
+    choices:
+      - the kernel reserves space for network headers
+      - every field is stored twice for checksums
+      - the compiler inserts padding for alignment
+    answer: 2
+    why: |-
+      Alignment padding can appear between fields and at the end. It is a compiler layout decision, not a
+      network header or a duplicate copy. (b8)
+    concept: quiz-struct-padding
+  - kind: fillblank
+    level: intro
+    q: A non-blocking read with no data sets errno to EAGAIN or ____.
+    code: |
+      if (errno == EAGAIN || errno == ____) { /* retry later */ }
+    answer_text: EWOULDBLOCK
+    why: Either name may be used for the same temporary condition, so portable code tests both. (b1)
+    concept: quiz-ewouldblock
+  - kind: predict
+    level: core
+    q: Trace select with a zero timeval and no ready descriptors. What does it return?
+    code: |
+      tv.tv_sec = 0;
+      tv.tv_usec = 0;
+      r = select(maxfd + 1, &rfds, NULL, NULL, &tv);
+    choices:
+      - zero, after polling the descriptors once
+      - minus one, because the timeout is invalid
+      - the highest descriptor number in any set
+    answer: 0
+    why: |-
+      A zero timeval makes select poll and return immediately. It is a valid timeout, not an error, and the
+      return value is a ready count rather than a descriptor. (b4)
+    concept: quiz-select-zero-timeout
+  - kind: choose-better
+    level: advanced
+    q: A server must watch a small fixed set of descriptors on a portable system. Which choice is reasonable?
+    choices:
+      - only poll, because select cannot watch sockets
+      - either poll or select, since both expose readiness
+      - only select, because poll cannot use timeouts
+    answer: 1
+    why: |-
+      poll and select provide similar readiness notification and differ mainly in API shape. Both can watch
+      sockets and both support timeouts. (b5)
+    concept: quiz-poll-select-compare
+  - kind: mcq
+    level: intro
+    q: Which pollfd field receives the events that actually occurred?
+    choices:
+      - the events request field
+      - the fd descriptor field
+      - the revents result field
+    answer: 2
+    why: |-
+      events is the requested mask, and revents is written by the kernel with the results. fd identifies
+      the descriptor being watched. (b2)
+    concept: quiz-revents
+  - kind: spot-bug
+    level: core
+    q: The receiver gets a truncated message. Which line is the defect?
+    code: |
+      n = send(fd, buf, len, 0);  /* 1 */
+      if (n < 0) return -1;       /* 2 */
+      return len;                 /* 3 */
+    diagnostic_log: |
+      send returned 412 for a 512-byte request
+      receiver read 412 bytes
+    target_line: 3
+    choices:
+      - Line 3 reports bytes that were not sent
+      - Line 2 treats success as an error
+      - Line 1 passes an invalid length
+    answer: 0
+    why: |-
+      A positive short return means only part was accepted. Returning the full length hides the unsent
+      suffix, so the caller never retries it. (b6)
+    concept: quiz-short-send-bug
+  - kind: order
+    level: advanced
+    q: Order the 4 correct steps to pack two integer fields; one line is a distractor.
+    lines:
+      - convert the first field to network order
+      - copy the first field at offset zero
+      - convert and append the second field
+      - advance the offset by each field width
+      - copy the whole struct at once
+    answer_order:
+      - 0
+      - 1
+      - 2
+      - 3
+    distractor_why:
+      copy the whole struct at once: struct padding and host order are not portable.
+    why: |-
+      Each field is converted and placed at a known offset, with the offset advanced by its width. A whole
+      struct copy transmits padding and host-dependent layout. (b8)
+    concept: quiz-pack-fields
+  - kind: mcq
+    level: intro
+    q: What does send() return on success?
+    choices:
+      - the number of messages placed on the wire
+      - the number of bytes the kernel accepted
+      - the peer's remaining receive capacity
+    answer: 1
+    why: |-
+      send reports accepted bytes, which may be fewer than requested. It does not report message counts or
+      the peer's buffer capacity. (b6)
+    concept: quiz-send-return
+  - kind: fillblank
+    level: core
+    q: Convert a 16-bit port to network byte order with ____().
+    code: |
+      addr.sin_port = ____(port);
+    answer_text: htons
+    why: htons converts a 16-bit host value to network order. htonl is for 32-bit values, not ports. (b7)
+    concept: quiz-htons
+  - kind: why-fails
+    level: advanced
+    q: Why does a busy loop of non-blocking reads waste CPU?
+    choices:
+      - it converts the socket back to blocking mode
+      - it forces the kernel to copy data twice
+      - it repeatedly checks readiness without sleeping
+    answer: 2
+    why: |-
+      The loop spins on failed reads instead of waiting for the kernel to report readiness. It does not
+      change blocking mode or duplicate copies. (b1)
+    concept: quiz-busy-wait
+  - kind: order
+    level: intro
+    q: Order the 4 correct non-blocking read steps; one line is a distractor.
+    lines:
+      - create the socket
+      - set O_NONBLOCK with fcntl
+      - call recv and accept EAGAIN as empty
+      - wait for readiness before retrying
+      - call listen before the first read
+    answer_order:
+      - 0
+      - 1
+      - 2
+      - 3
+    distractor_why:
+      call listen before the first read: listen is a server setup call, not a readiness step for reading.
+    why: |-
+      Create the descriptor, make it non-blocking, read, and wait for readiness before retrying. listen is
+      unrelated to per-read readiness. (b1)
+    concept: quiz-nonblock-order
+  - kind: predict
+    level: core
+    q: A listening socket is placed in poll with POLLIN. What event does readiness represent?
+    code: |
+      fds[0].fd = listener;
+      fds[0].events = POLLIN;
+    choices:
+      - a new connection is ready to accept
+      - the listener has run out of backlog
+      - the listener received application data
+    answer: 0
+    why: |-
+      A listener becomes readable when its accept queue has a pending connection. It does not receive
+      application data itself, and a full queue does not make it readable. (b3)
+    concept: quiz-listener-poll
+  - kind: trace
+    level: advanced
+    q: Trace sendall. What value belongs in the target cell for sent after the second send returns 100?
+    code: |
+      sent = 0;
+      n = send(fd, buf + sent, 512 - sent, 0); /* 412 */
+      sent += n;
+      n = send(fd, buf + sent, 512 - sent, 0); /* 100 */
+      sent += n;
+    trace:
+      headers:
+        - Step
+        - send return
+        - sent
+      rows:
+        - step: 1
+          line: 2
+          cells:
+            - '412'
+            - '0'
+        - step: 2
+          line: 3
+          cells:
+            - '412'
+            - '412'
+        - step: 3
+          line: 5
+          cells:
+            - '100'
+            - ???
+    target:
+      row: 2
+      col: 2
+    choices:
+      - the value 100, because only the last send counts
+      - the value 512, because both sends advanced it
+      - the value 412, because the first send set it
+    answer: 1
+    why: |-
+      sent accumulates every accepted count: 0 plus 412 plus 100 equals 512. The second send does not
+      replace the first count, and the loop is now complete. (b6)
+    concept: quiz-sendall-trace
+  - kind: mcq
+    level: intro
+    q: Which macro adds a descriptor to an fd_set?
+    choices:
+      - FD_ISSET tests membership
+      - FD_ZERO clears the whole set
+      - FD_SET adds one descriptor
+    answer: 2
+    why: FD_SET adds a descriptor, FD_ISSET tests membership, and FD_ZERO clears the whole set. (b4)
+    concept: quiz-fd-set
+  - kind: choose-better
+    level: core
+    q: A broadcast must not be forwarded by routers. Which destination is better?
+    choices:
+      - 255.255.255.255, the limited broadcast
+      - 192.168.1.255, the subnet broadcast
+      - 127.0.0.1, the loopback address
+    answer: 0
+    why: |-
+      Routers do not forward the limited broadcast, so it stays on the local link. Subnet broadcasts may be
+      routed, and loopback never reaches the LAN. (b9)
+    concept: quiz-broadcast-scope
+  - kind: mcq
+    level: advanced
+    q: What does IEEE-754 define for floating-point values?
+    choices:
+      - a decimal string with a fixed scale
+      - sign, exponent, and fraction bit fields
+      - an integer plus a separate sign byte
+    answer: 1
+    why: |-
+      IEEE-754 uses a sign bit, a biased exponent, and a fraction. It is a binary layout, not a decimal
+      string or a separate sign byte. (b8)
+    concept: quiz-ieee-layout

@@ -1,0 +1,149 @@
+cards:
+- front: What does a blocking socket call do when it cannot make progress?
+  back: |-
+    It sleeps until progress is possible. Why: the kernel suspends the process instead of returning a temporary failure.
+  concept: blocking-call
+- front: Which fcntl call makes an existing socket non-blocking?
+  back: |-
+    fcntl(fd, F_SETFL, O_NONBLOCK). Why: it changes the descriptor's file status flags.
+  concept: set-nonblocking
+- front: What does a non-blocking recv return when the queue is empty?
+  back: |-
+    -1 with errno EAGAIN or EWOULDBLOCK. Why: no data is a temporary condition, not a closed connection.
+  concept: nonblock-empty
+- front: Why check both EAGAIN and EWOULDBLOCK?
+  back: |-
+    Either name may report the same temporary condition. Why: portable code cannot assume which one the system chooses.
+  concept: eagain-portable
+- front: Why is busy-wait polling a socket wasteful?
+  back: |-
+    It burns CPU while no descriptor is ready. Why: the loop retries without sleeping, unlike poll or select.
+  concept: busy-wait
+- front: What does poll() return?
+  back: |-
+    The number of entries with a non-zero revents. Why: it is a count, not an array index or descriptor.
+  concept: poll-return
+- front: What does a pollfd.events field hold?
+  back: |-
+    The bitwise-OR of requested events such as POLLIN and POLLOUT. Why: revents receives the events that actually occurred.
+  concept: poll-events
+- front: What does a pollfd.revents field hold?
+  back: |-
+    The events the kernel reports for that entry. Why: it is the result mask written by poll, not the request.
+  concept: poll-revents
+- front: What unit does the poll timeout use?
+  back: |-
+    Milliseconds. Why: a timeout of 2500 means 2.5 seconds, and a negative value waits forever.
+  concept: poll-timeout
+- front: What does a listener reporting POLLIN mean?
+  back: |-
+    A new connection is ready to accept. Why: the accept queue is non-empty, not that the listener has data.
+  concept: listener-ready
+- front: How do you disable a pollfd entry without removing it?
+  back: |-
+    Set its fd field to a negative number. Why: poll ignores entries with a negative descriptor.
+  concept: poll-disable
+- front: How do you remove a pollfd entry from an active array?
+  back: |-
+    Close its descriptor, copy the last entry into its slot, and decrement the count. Why: compaction keeps the watched range dense.
+  concept: poll-remove
+- front: What does select's numfds argument equal?
+  back: |-
+    The highest descriptor in any set plus one. Why: select scans descriptors from zero through numfds minus one.
+  concept: select-numfds
+- front: What does FD_ZERO do?
+  back: |-
+    It clears every descriptor from an fd_set. Why: each select call needs a fresh set built from the master.
+  concept: fd-zero
+- front: What does FD_ISSET report after select?
+  back: |-
+    Whether a descriptor is in the returned ready set. Why: select rewrites the sets to contain only ready descriptors.
+  concept: fd-isset
+- front: What unit does timeval.tv_usec use?
+  back: |-
+    Microseconds. Why: 1000 microseconds make one millisecond, so 2500 usec is 2.5 ms.
+  concept: timeval-usec
+- front: What does a NULL select timeout mean?
+  back: |-
+    Wait indefinitely until a descriptor is ready. Why: a zero timeval, not NULL, means return immediately.
+  concept: select-null-timeout
+- front: Why keep a master fd_set in a select server?
+  back: |-
+    select modifies the set passed to it. Why: master preserves the full membership for the next iteration.
+  concept: master-set
+- front: What does recv returning 0 mean on a stream socket?
+  back: |-
+    The peer performed an orderly shutdown. Why: no more bytes will arrive, and the descriptor is readable.
+  concept: recv-zero
+- front: Why might a select server set O_NONBLOCK on client sockets?
+  back: |-
+    select can occasionally report readable when a read would still block. Why: non-blocking mode turns that race into EAGAIN instead of a stall.
+  concept: select-nonblock
+- front: What does send() return on success?
+  back: |-
+    The number of bytes the kernel accepted. Why: the count may be smaller than the requested length.
+  concept: send-return
+- front: How does sendall handle a short send?
+  back: |-
+    It advances by the accepted count and sends the remaining suffix. Why: the loop ends only when every byte is sent.
+  concept: sendall-loop
+- front: What should sendall do when send returns 0 or -1?
+  back: |-
+    Stop and report an error. Why: neither value makes progress, so retrying the same bytes would loop forever.
+  concept: sendall-error
+- front: What are the three serialization choices for binary values?
+  back: |-
+    Text conversion, raw memory bytes, or a documented binary encoding. Why: text is readable, raw is fast but non-portable, and encoded is portable.
+  concept: serialization-choices
+- front: Which integer function converts a 32-bit host value to network order?
+  back: |-
+    htonl. Why: htons handles 16-bit values such as ports.
+  concept: htonl
+- front: Why can a whole struct not be sent as a portable wire format?
+  back: |-
+    Padding, alignment, and field layout vary by compiler and system. Why: packing fields independently fixes every width and offset.
+  concept: struct-padding
+- front: What does IEEE-754 define?
+  back: |-
+    A binary float layout with sign, exponent, and fraction fields. Why: it is a bit-level standard, not a C type or string format.
+  concept: ieee754
+- front: What does pack754() do?
+  back: |-
+    It encodes a floating-point value into a defined bit layout. Why: the receiver decodes with the same width and exponent size.
+  concept: pack754
+- front: Why validate lengths when unpacking untrusted packets?
+  back: |-
+    A malformed length can overrun a buffer or read past the packet. Why: network input is attacker-controlled, so bounds checks are mandatory.
+  concept: unpack-bounds
+- front: What is data encapsulation on a stream?
+  back: |-
+    A header that identifies a packet or states its length. Why: streams have no message boundaries, so the receiver needs framing.
+  concept: encapsulation
+- front: How does a length-prefixed receiver know a packet is complete?
+  back: |-
+    The buffered byte count reaches the header length plus the length field. Why: the header says how many bytes belong to the packet.
+  concept: packet-length
+- front: Why make the receive work buffer large enough for two packets?
+  back: |-
+    One recv may contain a full packet and part of the next. Why: the extra space preserves the partial packet after the first is consumed.
+  concept: two-packet-buffer
+- front: What socket option permits IPv4 UDP broadcast?
+  back: |-
+    SO_BROADCAST. Why: without it, sendto to a broadcast address fails with a permission error.
+  concept: so-broadcast
+- front: Which transport supports IPv4 broadcast?
+  back: |-
+    UDP datagram sockets only. Why: TCP is connection-oriented and targets one peer.
+  concept: udp-broadcast
+- front: What is the limited IPv4 broadcast address?
+  back: |-
+    255.255.255.255, also INADDR_BROADCAST. Why: routers do not forward it beyond the local link.
+  concept: limited-broadcast
+- front: How is a subnet broadcast address formed?
+  back: |-
+    Set every host bit in the network address to one. Why: for 192.168.1.0/24 the result is 192.168.1.255.
+  concept: subnet-broadcast
+- front: Why use broadcast sparingly?
+  back: |-
+    Every host on the link must process the packet. Why: receivers still unwrap headers and check ports even when they discard the data.
+  concept: broadcast-cost

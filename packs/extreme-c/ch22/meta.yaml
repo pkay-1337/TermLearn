@@ -1,7 +1,7 @@
 meta:
   book: extreme-c
   chapter_id: ch22
-  title: "Chapter 19 — Single-Host IPC and Sockets"
+  title: "Single-Host IPC and Sockets"
   source_ref: "Text/single-host_ipc_and_sockets.xhtml"
   level: core
   prereqs:

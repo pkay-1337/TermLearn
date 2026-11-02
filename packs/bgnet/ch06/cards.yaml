@@ -1,0 +1,178 @@
+cards:
+- front: What does getaddrinfo() return through its fourth argument?
+  back: 'A pointer to an allocated linked list of addrinfo records. Each record carries family, socket
+    type, protocol, and an ai_addr. Why: one call resolves both name and service into socket-ready records.'
+  concept: getaddrinfo-result
+- front: Which function releases the list allocated by getaddrinfo()?
+  back: freeaddrinfo(). It walks the chain; plain free() would release only the first node.
+  concept: freeaddrinfo
+- front: What do the four arguments of getaddrinfo() mean?
+  back: 'node (host or IP), service (port or service name), hints (constraints), and res (result list
+    pointer). Why: separating constraints from results keeps the caller from packing sockaddr by hand.'
+  concept: getaddrinfo-arguments
+- front: WHY does getaddrinfo() replace gethostbyname() for new code?
+  back: It supports IPv4 and IPv6 and prepares sockaddr records, while gethostbyname is IPv4-oriented
+    and needs manual packing.
+  concept: lookup-choice
+- front: What does AF_UNSPEC in ai_family request?
+  back: 'Either IPv4 or IPv6 candidates. AF_INET or AF_INET6 would force one family. Why: the resolver
+    must be free to return whichever family works.'
+  concept: af-unspec
+- front: What does AI_PASSIVE do in lookup hints?
+  back: 'With a NULL node it asks the resolver to supply the local host''s address for binding. Why: the
+    kernel needs a local wildcard address when the server does not name one.'
+  concept: ai-passive
+- front: WHY must hints be cleared with memset() before fields are set?
+  back: Unset fields would otherwise contain indeterminate stack bytes, including stray flag bits that
+    change the lookup.
+  concept: hints-memset
+- front: What is the difference between server and client lookup hints?
+  back: 'A server uses a NULL node plus AI_PASSIVE; a client names the remote host and omits AI_PASSIVE.
+    Why: the role determines whether the lookup asks for a bindable local address or a remote peer.'
+  concept: server-client-hints
+- front: Which field of addrinfo tells you whether to cast ai_addr to sockaddr_in or sockaddr_in6?
+  back: ai_family. The family tag selects the concrete layout.
+  concept: family-cast
+- front: How do you advance through the getaddrinfo() result list?
+  back: for (p = res; p != NULL; p = p->ai_next). Each node links to the next through ai_next.
+  concept: list-traversal
+- front: In the IPv4 branch, which field holds the address bytes?
+  back: 'sin_addr inside struct sockaddr_in. The IPv6 counterpart is sin6_addr inside sockaddr_in6. Why:
+    the family tag tells you which concrete layout is valid.'
+  concept: address-field
+- front: What must the first argument to inet_ntop() match?
+  back: The address family of the pointer, usually p->ai_family. A mismatch misinterprets the bytes.
+  concept: ntop-family
+- front: WHY is freeaddrinfo() called once after the loop rather than free(p) inside it?
+  back: Freeing inside the loop invalidates the ai_next link needed for the next iteration; freeaddrinfo
+    releases the whole chain safely.
+  concept: free-loop
+- front: What are the three arguments to socket()?
+  back: 'domain (family), type (stream or datagram), and protocol. Lookup-driven code uses res->ai_family,
+    ai_socktype, and ai_protocol. Why: those three fields select a compatible transport and protocol.'
+  concept: socket-arguments
+- front: What does socket() return on success and on failure?
+  back: 'A non-negative descriptor on success, or -1 with errno set on failure. Why: the descriptor is
+    an index into the process''s open-file table.'
+  concept: socket-return
+- front: WHY should socket() use the chosen lookup record's fields?
+  back: The descriptor then matches the address family and type of the record that will be bound or connected.
+  concept: socket-record
+- front: What is the relationship between PF_INET and AF_INET?
+  back: 'They have the same numeric value on the guide''s target systems; the guide uses AF in sockaddr
+    structures and PF in socket() calls. Why: the numeric aliases let socket() and sockaddr agree without
+    conversion.'
+  concept: pf-af
+- front: What does bind() associate with a socket?
+  back: 'A local address and port, so the kernel can route matching traffic to the socket. Why: without
+    a local name the kernel cannot demultiplex incoming packets.'
+  concept: bind-role
+- front: Which lookup record fields feed bind()?
+  back: 'res->ai_addr for the address and res->ai_addrlen for its byte length. Why: the lookup record
+    already encodes the address and its length.'
+  concept: bind-arguments
+- front: Which ports are reserved from ordinary processes?
+  back: 'Ports below 1024, unless the process has superuser privilege. Ports 1024 through 65535 are available
+    if unused. Why: the privilege boundary protects well-known services from unprivileged takeover.'
+  concept: reserved-ports
+- front: WHY can bind() fail with "Address already in use" right after a restart?
+  back: A recently closed connection can leave port state in the kernel for a short time.
+  concept: address-in-use
+- front: How do you enable SO_REUSEADDR?
+  back: 'int yes = 1; setsockopt(listener, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes); before bind().
+    Why: the option must be set before bind() reserves the port.'
+  concept: reuse-address
+- front: WHEN is bind() unnecessary for a client?
+  back: When the client only calls connect(); the kernel picks an unused local port automatically.
+  concept: client-auto-bind
+- front: What are the three arguments to connect()?
+  back: 'The socket descriptor, the destination sockaddr, and its byte length. Why: connect() needs the
+    peer''s concrete address and size.'
+  concept: connect-arguments
+- front: What does connect() return on success and failure?
+  back: '0 on success, or -1 with errno set on failure. Why: errno carries the specific cause on failure.'
+  concept: connect-return
+- front: WHY should a client try each lookup record instead of only the first?
+  back: The first family or address may be unreachable; another candidate may connect successfully.
+  concept: connect-retry
+- front: What does listen() do?
+  back: 'It converts a bound socket into a listening socket that queues incoming connection requests.
+    Why: the kernel needs a queue before clients can connect.'
+  concept: listen-role
+- front: What does the backlog argument to listen() limit?
+  back: 'The number of pending connections that may wait before accept() removes them. Why: the backlog
+    bounds waiting clients before accept() drains them.'
+  concept: backlog
+- front: What is the server call order through accept()?
+  back: 'getaddrinfo(), socket(), bind(), listen(), accept(). Why: each call depends on the descriptor
+    or address produced by the previous one.'
+  concept: server-order
+- front: What does accept() return?
+  back: 'A new socket descriptor connected to one client. The original descriptor keeps listening. Why:
+    the listener stays in the queue role while the new descriptor carries data.'
+  concept: accept-return
+- front: WHY should send() and recv() use the descriptor returned by accept()?
+  back: The listening descriptor owns the queue, while the accepted descriptor is the connected channel
+    to that client.
+  concept: accepted-descriptor
+- front: What storage type is used for accept()'s peer address?
+  back: 'struct sockaddr_storage, which is large enough for either IPv4 or IPv6. Why: peer addresses can
+    be IPv4 or IPv6, so the buffer must fit either.'
+  concept: accept-storage
+- front: How is addrlen prepared for accept() or getpeername()?
+  back: 'Set it to the buffer capacity before the call; the kernel updates it with the actual address
+    length. Why: the kernel needs the capacity to avoid writing past the caller''s buffer.'
+  concept: addrlen-in-out
+- front: What does send() return on success?
+  back: 'The number of bytes actually accepted, which may be less than the requested length. Why: the
+    kernel may accept fewer bytes than requested.'
+  concept: send-return
+- front: WHY must a sender loop over send() calls?
+  back: A single call may accept only part of the buffer, so the remaining bytes must be sent later.
+  concept: partial-send
+- front: What does recv() returning 0 mean?
+  back: 'The remote peer has closed the connection. It is not an empty-buffer condition or an error. Why:
+    a zero-length read is the stream''s end-of-file signal.'
+  concept: recv-zero
+- front: What does the len argument of recv() mean?
+  back: 'The maximum number of bytes the buffer can hold, not the exact number expected. Why: recv() is
+    bounded by the buffer, not by the sender''s message size.'
+  concept: recv-length
+- front: WHEN do send() and recv() block?
+  back: recv() waits until data arrives; send() can block when the outgoing buffer is full. Blocking is
+    normal behavior.
+  concept: blocking-calls
+- front: What extra arguments do sendto() and recvfrom() add?
+  back: 'sendto() adds a destination sockaddr and its length; recvfrom() adds a source sockaddr and a
+    length pointer. Why: datagrams carry their own destination or source address.'
+  concept: datagram-arguments
+- front: WHY is sockaddr_storage preferred over sockaddr_in for datagram peers?
+  back: It is large enough for IPv4 or IPv6, while sockaddr_in cannot hold an IPv6 address.
+  concept: storage-rationale
+- front: What changes after connect() is called on a datagram socket?
+  back: 'The kernel remembers the peer, so ordinary send() and recv() can be used; the socket is still
+    UDP. Why: connected datagram sockets can use the simpler stream-style calls.'
+  concept: connected-datagram
+- front: What does close() do to a socket?
+  back: 'It prevents further reads and writes and releases the descriptor from the process table. Why:
+    the descriptor is the process''s handle, and closing it releases that handle.'
+  concept: close-role
+- front: Which shutdown() direction disallows only further sends?
+  back: 'SHUT_WR. SHUT_RD stops receives, and SHUT_RDWR stops both. Why: the send direction is separate
+    from the receive direction.'
+  concept: shutdown-directions
+- front: WHY is shutdown() alone not enough to free a descriptor?
+  back: It changes direction usability but leaves the descriptor in the process table; close() performs
+    the release.
+  concept: shutdown-not-close
+- front: What does getpeername() report?
+  back: 'The remote peer''s address for an already connected stream socket. Why: the connected socket
+    already knows its remote endpoint.'
+  concept: getpeername
+- front: What does gethostname() write into its buffer?
+  back: 'The local machine''s name in the caller''s buffer, with 0 on success and -1 on error. Why: the
+    local name is distinct from the peer name and comes from the host.'
+  concept: gethostname
+- front: WHY does getpeername() fail on an unconnected socket?
+  back: No peer endpoint has been associated with the socket yet, so there is no name to report.
+  concept: peer-unconnected

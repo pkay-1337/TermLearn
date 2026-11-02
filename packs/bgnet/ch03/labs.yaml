@@ -1,0 +1,262 @@
+labs:
+  - id: lab1
+    title: "Prove the Descriptor Is Just an Integer Handle"
+    instruction_md: |
+      ## Goal
+
+      Chapter 2's central claim is that a socket is *just a file descriptor* —
+      an integer the kernel issues, exactly like the handle for a disk file or
+      a pipe. Prove it in code.
+
+      ## What you must implement
+
+      Complete the function `socket_probe` in `descriptor.c`. It must:
+
+      1. Call `socket()` asking for an **Internet stream socket** — that is the
+         `AF_INET` domain and the `SOCK_STREAM` type.
+      2. If the kernel hands back a usable descriptor (nonnegative), store it
+         in `*fd_out` and return `1`.
+      3. If the call failed, store `-1` in `*fd_out` and return `0`.
+
+      The header (`descriptor.h`) documents the contract; `main.c` and
+      `test_runner.c` are complete and must not be edited.
+
+      ## Verify
+
+      - `t` (test) runs the unit-test runner: both assertions must PASS.
+      - `r` (run) builds and runs the interactive driver: it prints
+        `socket descriptor acquired` only when your probe works.
+
+      On the untouched starter, tests FAIL — that is the fail-first design:
+      implement, then watch them turn green.
+    files:
+      - path: descriptor.h
+        content: |
+          #ifndef DESCRIPTOR_H
+          #define DESCRIPTOR_H
+
+          /* Chapter 2 contract: a socket descriptor is an integer handle
+           * issued by the kernel.
+           *
+           * On success: stores the acquired descriptor in *fd_out, returns 1.
+           * On failure: stores -1 in *fd_out, returns 0.
+           */
+          int socket_probe(int *fd_out);
+
+          #endif
+      - path: descriptor.c
+        content: |
+          #include "descriptor.h"
+          #include <sys/socket.h>
+
+          /* TODO: ask the kernel for an AF_INET SOCK_STREAM descriptor.
+           *
+           * Success: *fd_out = the descriptor, return 1.
+           * Failure: *fd_out = -1, return 0.
+           */
+          int socket_probe(int *fd_out)
+          {
+              (void)fd_out;
+              return 0;
+          }
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "descriptor.h"
+
+          int main(void)
+          {
+              int fd = -1;
+
+              if (socket_probe(&fd) && fd >= 0)
+                  puts("socket descriptor acquired");
+              else
+                  puts("no descriptor");
+              return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include "descriptor.h"
+
+          static int failures = 0;
+
+          static void check(int cond, const char *what)
+          {
+              if (cond)
+                  printf("PASS: %s\n", what);
+              else {
+                  printf("FAIL: %s\n", what);
+                  failures++;
+              }
+          }
+
+          int main(void)
+          {
+              int fd = -1;
+
+              check(socket_probe(&fd) == 1, "socket_probe returns success");
+              check(fd >= 0, "acquired descriptor is nonnegative");
+
+              if (failures == 0)
+                  puts("ALL TESTS PASSED");
+              else
+                  printf("%d test(s) failed\n", failures);
+              return failures != 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 descriptor.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 descriptor.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "unit runner: probe succeeds and yields a nonnegative descriptor"
+        stdin: ""
+        expect: "PASS: socket_probe returns success\nPASS: acquired descriptor is nonnegative\nALL TESTS PASSED\n"
+        expect_exit: 0
+      - name: "interactive driver announces the acquired descriptor"
+        stdin: ""
+        expect: "socket descriptor acquired\n"
+        expect_exit: 0
+    hints:
+      - "socket_probe needs exactly one kernel call: socket() with the AF_INET domain and the SOCK_STREAM type — mirror the study examples."
+      - "socket() hands back the descriptor on success and a negative value on failure; keep the descriptor for *fd_out and answer with 1 or 0."
+      - "Bottom-out: int fd = socket(AF_INET, SOCK_STREAM, 0); if (fd < 0) { *fd_out = -1; return 0; } *fd_out = fd; return 1;"
+  - id: lab2
+    title: "Acquire Both Flavors from the Same socket() Call"
+    instruction_md: |
+      ## Goal
+
+      Chapter 2's two Internet socket flavors — the reliable two-way stream
+      (`SOCK_STREAM`) and the connectionless datagram (`SOCK_DGRAM`) — are
+      both minted by the very same `socket()` routine. Prove that a single
+      program can hold one of each.
+
+      ## What you must implement
+
+      Complete `stream_probe` and `dgram_probe` in `descriptor2.c`:
+
+      1. `stream_probe`: acquire an `AF_INET` / `SOCK_STREAM` descriptor.
+         Success → store it in `*stream_fd`, return `1`. Failure → store
+         `-1`, return `0`.
+      2. `dgram_probe`: the same contract with the `SOCK_DGRAM` type and
+         `*dgram_fd`.
+
+      `descriptor2.h` fixes the contract; `main.c` and `test_runner.c` are
+      complete and must not be edited.
+
+      ## Verify
+
+      - `t` (test) runs the runner: both flavors must be acquired, and the
+        runner additionally asserts the kernel issued two DISTINCT
+        descriptors (each open call gets its own handle).
+      - `r` (run) builds and runs the driver, which announces each flavor.
+
+      The untouched starter fails first; make it pass.
+    files:
+      - path: descriptor2.h
+        content: |
+          #ifndef DESCRIPTOR2_H
+          #define DESCRIPTOR2_H
+
+          /* Both flavors come from the same socket() routine.
+           *
+           * stream_probe: on success *stream_fd = AF_INET/SOCK_STREAM
+           *               descriptor, return 1; on failure *stream_fd = -1,
+           *               return 0.
+           * dgram_probe:  the same contract for AF_INET/SOCK_DGRAM and
+           *               *dgram_fd.
+           */
+          int stream_probe(int *stream_fd);
+          int dgram_probe(int *dgram_fd);
+
+          #endif
+      - path: descriptor2.c
+        content: |
+          #include "descriptor2.h"
+          #include <sys/socket.h>
+
+          /* TODO: acquire an AF_INET SOCK_STREAM descriptor.
+           * Success: *stream_fd = descriptor, return 1. Failure: -1, 0. */
+          int stream_probe(int *stream_fd)
+          {
+              (void)stream_fd;
+              return 0;
+          }
+
+          /* TODO: acquire an AF_INET SOCK_DGRAM descriptor.
+           * Success: *dgram_fd = descriptor, return 1. Failure: -1, 0. */
+          int dgram_probe(int *dgram_fd)
+          {
+              (void)dgram_fd;
+              return 0;
+          }
+      - path: main.c
+        content: |
+          #include <stdio.h>
+          #include "descriptor2.h"
+
+          int main(void)
+          {
+              int sfd = -1;
+              int dfd = -1;
+
+              if (stream_probe(&sfd) && sfd >= 0)
+                  puts("stream: SOCK_STREAM descriptor acquired");
+              else
+                  puts("stream: no descriptor");
+
+              if (dgram_probe(&dfd) && dfd >= 0)
+                  puts("datagram: SOCK_DGRAM descriptor acquired");
+              else
+                  puts("datagram: no descriptor");
+              return 0;
+          }
+      - path: test_runner.c
+        content: |
+          #include <stdio.h>
+          #include "descriptor2.h"
+
+          static int failures = 0;
+
+          static void check(int cond, const char *what)
+          {
+              if (cond)
+                  printf("PASS: %s\n", what);
+              else {
+                  printf("FAIL: %s\n", what);
+                  failures++;
+              }
+          }
+
+          int main(void)
+          {
+              int sfd = -1;
+              int dfd = -1;
+
+              check(stream_probe(&sfd) == 1, "stream descriptor acquired");
+              check(sfd >= 0, "stream descriptor is nonnegative");
+              check(dgram_probe(&dfd) == 1, "datagram descriptor acquired");
+              check(dfd >= 0, "datagram descriptor is nonnegative");
+              check(sfd != dfd, "the two flavors got distinct descriptors");
+
+              if (failures == 0)
+                  puts("ALL TESTS PASSED");
+              else
+                  printf("%d test(s) failed\n", failures);
+              return failures != 0;
+          }
+    commands:
+      run: "gcc -Wall -Wextra -std=c99 descriptor2.c main.c -o app && ./app"
+      test: "gcc -Wall -Wextra -std=c99 descriptor2.c test_runner.c -o test_runner && ./test_runner"
+    test_cases:
+      - name: "unit runner: both flavors acquired, distinct descriptors"
+        stdin: ""
+        expect: "PASS: stream descriptor acquired\nPASS: stream descriptor is nonnegative\nPASS: datagram descriptor acquired\nPASS: datagram descriptor is nonnegative\nPASS: the two flavors got distinct descriptors\nALL TESTS PASSED\n"
+        expect_exit: 0
+      - name: "interactive driver announces both flavors"
+        stdin: ""
+        expect: "stream: SOCK_STREAM descriptor acquired\ndatagram: SOCK_DGRAM descriptor acquired\n"
+        expect_exit: 0
+    hints:
+      - "Both probes wrap the same one-line kernel call; only the type argument differs — SOCK_STREAM versus SOCK_DGRAM."
+      - "Each probe follows the acquire-guard-return shape from lab1: nonnegative descriptor means *fd = descriptor and return 1; otherwise *fd = -1 and return 0."
+      - "Bottom-out: int fd = socket(AF_INET, SOCK_DGRAM, 0); if (fd < 0) { *dgram_fd = -1; return 0; } *dgram_fd = fd; return 1; (stream_probe is identical with SOCK_STREAM and *stream_fd.)"

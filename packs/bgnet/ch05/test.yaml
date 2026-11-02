@@ -1,0 +1,148 @@
+test:
+  gates:
+  - needs:
+    - b1
+    - b2
+    - b3
+    min_quiz: 70
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    min_quiz: 80
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    min_quiz: 85
+  final_checks:
+  - kind: order
+    q: Order the lines that build and expose a complete IPv6 wildcard endpoint for port 9443. One line is a distractor.
+    lines:
+    - sa6.sin6_addr = in6addr_any;
+    - char text[INET6_ADDRSTRLEN];
+    - sa6.sin6_family = AF_INET6;
+    - memset(&sa6, 0, sizeof sa6);
+    - inet_ntop(AF_INET6, &sa6.sin6_addr, text, sizeof text);
+    - memset(&sa6.sin_zero, 0, sizeof sa6.sin_zero);
+    - sa6.sin6_port = htons(9443);
+    answer_order:
+    - 3
+    - 2
+    - 6
+    - 0
+    - 1
+    - 4
+    distractor_why:
+      memset(&sa6.sin_zero, 0, sizeof sa6.sin_zero);: sockaddr_in6 has no sin_zero field; the whole-structure memset already clears padding.
+    why: 'The data flow is: clear the whole IPv6 structure, select the family, store the network-order port, copy the wildcard address, reserve a text buffer, then format the address. The sin_zero line is an IPv4 habit that does not compile against sockaddr_in6. (b2, b3, b4)'
+    concept: final-endpoint-build
+  - kind: choose-better
+    q: A legacy client hand-packs sockaddr_in structures in six functions and must now work on IPv4 and IPv6 hosts. Which migration strategy is better?
+    choices:
+    - keep all six hand-packed structures and add a second IPv6 copy of each function
+    - use getaddrinfo() to obtain candidates, then consume the sockaddr records that match the socket
+    - change only the port numbers so both families share one configuration
+    - replace every AF_INET with AF_INET6 and drop IPv4 support entirely
+    answer: 1
+    why: Lookup-driven construction removes the hand-packing and follows the families the host actually supports, which is the version-agnostic goal. Duplicating every function doubles the maintenance and still hard-codes families. Ports are unrelated to family support. Dropping IPv4 fails the dual-stack requirement. (b5, b6)
+    concept: final-lookup-strategy
+  - kind: spot-bug
+    q: A migrated server stores its port directly, and the wire shows the wrong value. Which line introduces the bug, and why?
+    code: 'struct sockaddr_in6 sa6;
+
+      memset(&sa6, 0, sizeof sa6);
+
+      sa6.sin6_family = AF_INET6;
+
+      sa6.sin6_port = 8080;
+
+      sa6.sin6_addr = in6addr_any;
+
+      '
+    diagnostic_log: '$ tcpdump -n -i any ''tcp port 8080''
+
+      IP6 ::1.32896 > ::1.80: Flags [S]
+
+      # expected source port 8080 (0x1f90), observed 32896 (0x8080)
+
+      '
+    target_line: 4
+    choices:
+    - 'Line 2: memset erased the family after it was set'
+    - 'Line 3: AF_INET6 is the wrong family for a server'
+    - 'Line 4: the port is stored in host order instead of network order'
+    - 'Line 5: in6addr_any cannot be used on a server'
+    answer: 2
+    why: The observed 32896 is the host-order bytes of 8080 read as network order, so htons is missing. The fix is sa6.sin6_port = htons(8080). memset runs before the family assignment, AF_INET6 is correct for an IPv6 server, and in6addr_any is the normal wildcard for binding. (b3; ch04 b8 byte order)
+    concept: final-port-order
+  - kind: trace
+    q: Trace the endpoint setup and the wildcard check. What value belongs in the final target cell?
+    code: "struct sockaddr_in6 sa6;\nmemset(&sa6, 0, sizeof sa6);\nsa6.sin6_family = AF_INET6;\nsa6.sin6_port = htons(53);\nsa6.sin6_addr = in6addr_any;\nint result = memcmp(&sa6.sin6_addr, &in6addr_any,\n                    sizeof sa6.sin6_addr) == 0;\n"
+    trace:
+      headers:
+      - Step
+      - Line
+      - Field / Object
+      - State
+      - result
+      rows:
+      - step: 1
+        line: 2
+        cells:
+        - '1'
+        - '2'
+        - sa6
+        - all zero
+        - '-'
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '3'
+        - sin6_family
+        - AF_INET6
+        - '-'
+      - step: 3
+        line: 4
+        cells:
+        - '3'
+        - '4'
+        - sin6_port
+        - '0x0035'
+        - '-'
+      - step: 4
+        line: 5
+        cells:
+        - '4'
+        - '5'
+        - sin6_addr
+        - 16 zero bytes
+        - '-'
+      - step: 5
+        line: 6
+        cells:
+        - '5'
+        - '6'
+        - result
+        - comparison outcome
+        - ???
+    target:
+      row: 4
+      col: 4
+    choices:
+    - '0'
+    - '1'
+    - '16'
+    - '0x0035'
+    answer: 1
+    why: The assignment copies the all-zero in6addr_any into sin6_addr, so memcmp returns 0 and the equality expression stores 1. Choosing 0 confuses memcmp's equal return with the boolean result. 16 is the compared byte count, and 0x0035 is the network-order port from the port row. (b2)
+    concept: final-wildcard-trace

@@ -1,0 +1,602 @@
+quiz:
+- kind: mcq
+  level: intro
+  q: In Unix, what is a file descriptor?
+  choices:
+  - a pointer to bytes in memory holding the file's raw contents
+  - a raw sector number on the physical disk drive here
+  - a filename string stored by the user's command shell
+  - an integer associated with an open file or connection
+  answer: 3
+  why: 'A file descriptor is simply an integer associated with an open file — network connection, FIFO,
+    pipe, terminal, or disk file. ''Pointer to bytes'' traps the address/handle confusion: the descriptor
+    names a kernel-side object, it does not address user data. ''Filename string'' traps confusing the
+    handle with the pathname used to open it. (Ch.2)'
+  concept: file-descriptor
+- kind: why-fails
+  level: core
+  q: This program compiles cleanly but fails at run time on the send() line. Why does it fail?
+  code: |
+    int fd = 99;                 /* a plausible-looking number */
+    send(fd, "x", 1, 0);
+  choices:
+  - send() rejects odd-numbered descriptors as a built-in parity check
+  - the payload 'x' is smaller than the minimum send size allowed
+  - the kernel never issued descriptor 99, so no open file backs it
+  answer: 2
+  why: 'Descriptors are kernel-issued handles: the number exists only if an open call produced it. Inventing
+    fd = 99 produces an invalid-descriptor failure, no matter how plausible the number looks. ''Parity
+    check'' invents a rule that does not exist; ''minimum send size'' invents a payload limit the API
+    does not have. (Ch.2)'
+  concept: kernel-issued-handle
+- kind: trace
+  level: advanced
+  q: Trace the ordered check. What value does ordered hold after Step 3?
+  code: |
+    const char *stream = "123";
+    int third = stream[2] - '0';
+    int ordered = stream[0] < stream[1] && stream[1] < stream[2];
+  trace:
+    headers:
+    - Step
+    - Line
+    - Variable
+    - Value
+    rows:
+    - step: 1
+      line: 1
+      cells:
+      - '1'
+      - stream
+      - '"123"'
+    - step: 2
+      line: 2
+      cells:
+      - '2'
+      - third
+      - '3'
+    - step: 3
+      line: 3
+      cells:
+      - '3'
+      - ordered
+      - ???
+  target:
+    row: 2
+    col: 2
+  choices:
+  - the value 0 (false)
+  - the value 3 (stale)
+  - the value 1 (true)
+  - the value 2 (third)
+  answer: 2
+  why: stream[0] = '1', stream[1] = '2', stream[2] = '3', and 1 < 2 && 2 < 3 is true, so ordered is 1
+    — the boolean encoding of 'the stream arrived in send order'. '3' is third's stale value leaking into
+    the answer; '2' confuses an operand with the boolean; '0' is the false value a true conjunction never
+    takes. (Ch.2)
+  concept: trace-order-check
+- kind: mcq
+  level: intro
+  q: Which constant names the stream socket type when calling socket()?
+  choices:
+  - SOCK_DGRAM — the datagram socket type
+  - SOCK_STREAM — the stream socket type
+  - SOCK_RAW — the raw socket type
+  answer: 1
+  why: Stream sockets are SOCK_STREAM; SOCK_DGRAM names the datagram flavor. SOCK_RAW exists as a real
+    socket type but is explicitly outside this guide's two-type discussion. (Ch.2)
+  concept: sock-stream
+- kind: mcq
+  level: core
+  q: Which statement restates the datagram contract exactly?
+  choices:
+  - delivery is guaranteed, ordering is guaranteed, content may be corrupted
+  - delivery is best-effort, ordering is unguaranteed, arrived data is error-free
+  - delivery is guaranteed, ordering is best-effort, and the content is error-free
+  answer: 1
+  why: 'The chapter''s three facts: it MAY arrive; it may arrive OUT OF ORDER; if it arrives, the data
+    within the packet is error-free. The other options each smuggle in a stream-style guarantee (delivery
+    or ordering) that datagrams never make. (Ch.2)'
+  concept: datagram-contract
+- kind: choose-better
+  level: advanced
+  q: Two students build a chat application. Which design is better for delivering typed conversation?
+  choices:
+  - datagram sockets, because chat packets are tiny and speed dominates everything
+  - stream sockets, because conversation needs every message in the order typed
+  - datagram sockets with no acknowledgment, because chat text is self-healing
+  answer: 1
+  why: 'The chapter''s decision rule is explicit: if you''re sending chat messages, TCP is great — conversation
+    dies when lines go missing or reorder. The datagram answers apply the game-update rationale to the
+    wrong workload: dropped or reordered chat lines are not self-healing, they are lost sentences. (Ch.2)'
+  concept: tcp-vs-udp-choice
+- kind: fillblank
+  level: intro
+  q: 'Fill the missing verb: all you have to do for datagram sockets is encapsulate the packet in the
+    method of your choosing and ____ it out.'
+  code: |
+    int sd = socket(AF_INET, SOCK_DGRAM, 0);
+    ____(sd, buf, len, 0, dest, destlen);
+  answer_text: sendto
+  why: The chapter's datagram verb is sendto() — the kernel builds the transport and internet layers;
+    you address and fire. 'send' is the stream socket's verb on an already-connected descriptor; 'recv'
+    reads rather than sends. (Ch.2)
+  concept: sendto
+- kind: predict
+  level: core
+  q: Trace the loop, tracking i and the array indexing. What is this program's complete output?
+  code: |
+    const char *sent[] = {"A", "B", "C"};
+    const char *arrived[] = {"B", "A", "C"};
+    for (int i = 0; i < 3; i++)
+        printf("sent %s, arrived %s\n", sent[i], arrived[i]);
+  choices:
+  - sent A arrived A, sent B arrived B, sent C arrived C — all matched
+  - sent A arrived B, sent B arrived A, sent C arrived C — first two swap
+  - sent B arrived A, sent A arrived B, sent C arrived C — send order is lost
+  answer: 1
+  why: 'The loop pairs sent[i] with arrived[i] positionally: i=0 pairs A with B, i=1 pairs B with A, i=2
+    pairs C with C. Pairing each letter with itself traps assuming arrival order equals send order; printing
+    arrival order alone traps ignoring the sent array the loop reads. (Ch.2)'
+  concept: udp-reorder
+- kind: mcq
+  level: intro
+  q: In the TCP/IP pairing, what is the Internet Protocol's primary responsibility?
+  choices:
+  - ordering bytes at the receiving end
+  - guaranteeing error-free delivery
+  - Internet routing between networks
+  answer: 2
+  why: IP deals primarily with Internet routing and is not generally responsible for data integrity —
+    TCP is the half that guarantees sequencing and error-freedom. Assigning integrity or ordering to IP
+    swaps the two protocols' jobs. (Ch.2)
+  concept: ip-role
+- kind: why-fails
+  level: advanced
+  q: A student writes a UDP receiver and plans to strip the UDP header themselves before reading the payload.
+    Why does that plan fail?
+  code: |
+    /* the receiver's datagram arrival: what is in the buffer
+       when the tftp-style program finally gets to read it? */
+  choices:
+  - the kernel already stripped the IP and UDP headers before the read
+  - the hardware strips the UDP header, so there is nothing left for the kernel
+  - UDP headers cannot be stripped; they must be parsed on every read
+  answer: 0
+  why: 'Encapsulation strips in reverse on receive: the hardware removes Ethernet, the KERNEL strips IP
+    and UDP, and the application removes only its own header. Planning to strip UDP duplicates kernel
+    work that has already happened. ''Hardware strips UDP'' moves the job one layer down wrongly; ''cannot
+    be stripped'' contradicts the whole unwrap discipline. (Ch.2)'
+  concept: strip-order
+- kind: mcq
+  level: intro
+  q: What does the recipient's ACK packet say, in the tftp protocol's own description?
+  choices:
+  - '''connection established'' — link ready'
+  - '''checksum failed, so please resend the packet'''
+  - '''I got it!'' — the packet has arrived safely'
+  answer: 2
+  why: 'The chapter quotes it directly: the recipient sends back a packet that says ''I got it!'' — an
+    ACK packet. The checksum reply invents a failure-reporting form the description does not use; ''connection
+    established'' belongs to connection-oriented talk, which is exactly what UDP avoids. (Ch.2)'
+  concept: ack-meaning
+- kind: fillblank
+  level: core
+  q: 'Fill the missing type constant: this flavor is sometimes called a connectionless socket.'
+  code: |
+    int sd = socket(AF_INET, ____, 0);
+    /* no open connection is maintained with this flavor */
+  answer_text: SOCK_DGRAM
+  why: 'Datagram sockets — SOCK_DGRAM — are the connectionless flavor: build a packet, slap destination
+    info on it, send. SOCK_STREAM would request the reliable two-way flavor instead. (Ch.2)'
+  concept: sock-dgram
+- kind: order
+  level: advanced
+  q: 'Order all 4 displayed lines from first applied to last applied as a tftp packet heads for the wire:'
+  lines:
+  - UDP wraps the whole tftp packet
+  - tftp wraps the file data in its own header
+  - Ethernet wraps everything for the physical layer
+  - IP wraps the whole UDP datagram for routing
+  answer_order:
+  - 1
+  - 0
+  - 3
+  - 2
+  distractor_why:
+    Ethernet wraps everything for the physical layer: Placing the physical-layer wrap first forgets that
+      later protocols wrap the ENTIRE earlier packet — Ethernet is the final, outermost wrap.
+    IP wraps the whole UDP datagram for routing: 'Putting IP before UDP reverses the stack: IP wraps the
+      UDP datagram, not the other way around.'
+  why: 'The sequencing principle is nested wrapping: each later protocol encapsulates the ENTIRE packet
+    built so far — tftp first, then UDP around it, then IP around that, then Ethernet around everything.
+    (Ch.2)'
+  concept: encapsulation-order
+- kind: mcq
+  level: intro
+  q: What does socket() hand back to your program?
+  choices:
+  - a socket descriptor used for communication
+  - an open connection to a named remote server
+  - a copy of the kernel's own routing table
+  answer: 0
+  why: socket() returns the socket descriptor — the handle your program communicates through with send()/recv().
+    'Open connection' traps the socket()-connects misconception; 'routing table' invents a data structure
+    no call hands to userland. (Ch.2)
+  concept: socket-acquire
+- kind: why-fails
+  level: core
+  q: A student adds a manual 'safety re-send' of every byte on a stream socket, convinced TCP might lose
+    one. Why is that redundant?
+  code: |
+    send(sd, "1", 1, 0);
+    send(sd, "1", 1, 0);   /* safety re-send, just in case */
+    send(sd, "2", 1, 0);
+  choices:
+  - TCP already handles sequencing and retransmission, so the re-send is a duplicate
+  - stream sockets drop one byte in five, so the manual re-send is actually insufficient
+  - the kernel reorders manual re-sends into a separate network connection
+  answer: 0
+  why: TCP's whole job on a stream socket is to make your bytes arrive sequentially and error-free — the
+    user's code never retransmits. The extra send() is therefore a REAL byte the peer will read, corrupting
+    '1 1 2' over '1 2'. 'Drops one in five' contradicts the error-free guarantee; 'separate connection'
+    invents reordering semantics that do not exist. (Ch.2)
+  concept: tcp-guarantees
+- kind: mcq
+  level: intro
+  q: What claim does the slogan 'everything in Unix is a file' actually make?
+  choices:
+  - that all Unix storage lives in regular on-disk files and nowhere else
+  - that Unix programs never use hardware devices directly at all
+  - that every I/O target is reachable through one descriptor interface
+  answer: 2
+  why: 'The slogan is about interface uniformity: network connections, FIFOs, pipes, terminals, and disk
+    files all answer to file-descriptor mechanics. ''All storage is files'' is the literal misreading;
+    ''never use devices'' overstates what uniformity implies. (Ch.2)'
+  concept: everything-is-a-file
+- kind: eipe
+  level: core
+  q: In one sentence, what is this stream-reading loop FOR?
+  code: |
+    const char *stream = "12";
+    for (int i = 0; stream[i] != '\0'; i++)
+        printf("peer read byte %d: %c\n", i + 1, stream[i]);
+  choices:
+  - it models a TCP peer reading a stream in the order bytes were sent
+  - it prints the memory addresses of each character in the input string
+  - it reverses the string so the peer receives the bytes as 2-then-1
+  answer: 0
+  why: 'The relational purpose: demonstrate the stream contract — send order equals read order, byte for
+    byte. ''Memory addresses'' is a surface-level misread of the loop''s indexing; ''reverses the string''
+    contradicts the actual output the loop produces. (Ch.2)'
+  concept: tcp-order
+- kind: mcq
+  level: advanced
+  q: Why can the same sockets program run unchanged whether the physical network is Ethernet, wi-fi, or
+    something else entirely?
+  choices:
+  - because the socket API bypasses all lower layers and speaks directly to the physical wire itself
+  - because lower layers handle physical transmission, leaving the socket interface untouched
+  - because TCP adapts the program's source code to each hardware type at compile time
+  answer: 1
+  why: 'That is the layered model''s stated advantage: you can write sockets programs exactly the same
+    without caring how data is physically transmitted, because programs on lower levels deal with it —
+    hardware and topology are transparent. ''Bypasses the lower layers'' contradicts the layering; ''adapts
+    source code'' invents a compiler trick. (Ch.2)'
+  concept: layer-transparency
+- kind: mcq
+  level: core
+  q: Which applications does the chapter name as stream-socket users?
+  choices:
+  - telnet, ssh, and web browsers using HTTP
+  - tftp, dhcpcd, and multiplayer games
+  - streaming audio and video conferencing only
+  answer: 0
+  why: telnet and ssh need every typed character in order, and HTTP rides stream sockets — those are the
+    chapter's stream users. The tftp/dhcpcd/games set is the DATAGRAM list — the flavor-swap distractor.
+    The audio/video option narrows a datagram list into a stream claim. (Ch.2)
+  concept: stream-users
+- kind: trace
+  level: advanced
+  q: Trace the drop arithmetic. What value does delivered hold after Step 4?
+  code: |
+    int fired = 5;
+    int lost = 2;
+    int delivered;
+    delivered = fired - lost;
+  trace:
+    headers:
+    - Step
+    - Line
+    - Variable
+    - Value
+    rows:
+    - step: 1
+      line: 1
+      cells:
+      - '1'
+      - fired
+      - '5'
+    - step: 2
+      line: 2
+      cells:
+      - '2'
+      - lost
+      - '2'
+    - step: 3
+      line: 3
+      cells:
+      - '3'
+      - delivered
+      - uninitialized
+    - step: 4
+      line: 4
+      cells:
+      - '4'
+      - delivered
+      - ???
+  target:
+    row: 3
+    col: 2
+  choices:
+  - the value 7 (sign error)
+  - the value 5 (stale value)
+  - the value 3 (delivered)
+  - the value 2 (subtrahend)
+  answer: 2
+  why: 5 fired minus 2 lost leaves 3 delivered — best-effort arithmetic in datagram land. '7' traps sign
+    confusion in the subtraction; '5' is the stale pre-assignment value; '2' is the subtrahend leaking
+    into the result. (Ch.2)
+  concept: trace-drop-arithmetic
+- kind: mcq
+  level: intro
+  q: Which list matches the datagram-socket applications the chapter names?
+  choices:
+  - web browsers, telnet, and ssh client programs
+  - X.25 gateways and raw socket daemons only, nothing else
+  - tftp, dhcpcd, games, streaming audio, and video
+  answer: 2
+  why: The chapter's datagram sample list is exactly tftp, dhcpcd, multiplayer games, streaming audio,
+    and video conferencing. 'Browsers and telnet' is the stream list; the X.25 option invents exclusivity.
+    (Ch.2)
+  concept: datagram-users
+- kind: why-fails
+  level: core
+  q: A game's scoreboard renders from datagram updates, assuming the LAST packet received always carries
+    the NEWEST state. Why does that assumption break?
+  code: |
+    /* update A: 'score = 10'  fired at t=0 */
+    /* update B: 'score = 20'  fired at t=1  */
+    /* the renderer trusts arrival order as truth order */
+  choices:
+  - scoreboards cannot be built from datagrams at all and must use stream sockets
+  - the scoreboard needs a bigger buffer to hold both packets at once
+  - datagrams may arrive out of order, so an older score can follow a newer one
+  answer: 2
+  why: Datagram delivery order is unguaranteed — update B may overtake A or a lost update may reappear
+    late, so arrival order is not truth order; the game must tolerate or compensate for that. 'Only from
+    streams' overstates the problem — datagram scoreboards exist, they just need order-agnostic design.
+    'Bigger buffer' treats a semantics problem as a capacity problem. (Ch.2)
+  concept: datagram-ordering
+- kind: spot-bug
+  level: advanced
+  q: 'This program will not compile. Read the gcc diagnostic: which line carries the actual mistake, and
+    what is it?'
+  code: |
+    #include <sys/socket.h>
+    int main(void)
+    {
+        int sd = socket(AF_INET, SOCK_STREAM);
+        return sd < 0;
+    }
+  diagnostic_log: |
+    /tmp/bug.c: In function 'main':
+    /tmp/bug.c:4:25: error: too few arguments to function 'socket'; expected 3, have 2
+        4 |     int sd = socket(AF_INET, SOCK_STREAM);
+        |                         ^~~~~~
+    In file included from /tmp/bug.c:1:
+    /usr/include/sys/socket.h:102:12: note: declared here
+  target_line: 4
+  choices:
+  - 'line 4: socket() needs three arguments; the protocol one is missing'
+  - 'line 6: the return comparison must use == rather than the less-than operator'
+  - 'line 1: sys/socket.h is the wrong header for the socket() call'
+  answer: 0
+  why: 'The diagnostic names the defect exactly: ''too few arguments to function socket; expected 3, have
+    2'' — the protocol argument (0 for the default) was dropped. ''Line 6'' points at a perfectly valid
+    comparison; ''wrong header'' is false — sys/socket.h declares socket(). The teachable shape: read
+    the compiler''s line + count, don''t guess. (Ch.2)'
+  concept: socket-signature
+- kind: fillblank
+  level: intro
+  q: 'Fill the missing keyword: every descriptor, whatever it points at, is declared as one of these.'
+  code: |
+    ____ net_fd;
+    net_fd = socket(AF_INET, SOCK_STREAM, 0);
+  answer_text: int
+  why: A descriptor is an integer — the declaration keyword is int. 'FILE*' confuses stdio's buffered
+    stream type with the raw descriptor; 'long' invents a wider type the interface does not use. (Ch.2)
+  concept: file-descriptor
+- kind: mcq
+  level: core
+  q: dhcpcd, a DHCP client, runs over a datagram socket. Why is that choice defensible despite the unreliable
+    transport?
+  choices:
+  - because DHCP traffic is fully encrypted, so packet loss cannot matter
+  - because its own protocol on top of UDP handles the reliability it needs
+  - because dhcpcd sends every packet exactly once and needs no acknowledgment
+  answer: 1
+  why: Datagram users like tftp and dhcpcd carry their own protocol on top of UDP — acknowledgment/retransmission
+    where needed — while keeping UDP's no-connection simplicity and speed. 'Encrypted' invents a property;
+    'exactly once' contradicts the may-not-arrive contract. (Ch.2)
+  concept: udp-reliability-gap
+- kind: eipe
+  level: advanced
+  q: In one sentence, what is this retransmission loop FOR?
+  code: |
+    for (;;) {
+        sendto(sd, pkt, pktlen, 0, dest, destlen);
+        if (!wait_for_ack(5))       /* five seconds, nothing */
+            continue;               /* re-transmit */
+        break;
+    }
+  choices:
+  - it retransmits the packet until the receiver's ACK confirms it
+  - it sends the packet five times to five different destinations
+  - it delays the packet by five seconds in order to throttle the network
+  answer: 0
+  why: 'The relational purpose is the tftp pattern: send, wait for the ACK, and on silence re-transmit
+    — the loop only exits when acknowledgment lands. ''Five destinations'' misreads the 5 as a count of
+    targets; ''throttle'' misreads the timer as a pacing delay rather than a retransmit trigger. (Ch.2)'
+  concept: ack-loop-purpose
+- kind: mcq
+  level: intro
+  q: Which naming pairs the two Internet socket types correctly?
+  choices:
+  - SOCK_TCP and SOCK_UDP, one constant per protocol
+  - SOCK_STREAM = datagram sockets; SOCK_DGRAM = stream sockets
+  - SOCK_TCP and SOCK_UDP are the actual type constants
+  - SOCK_STREAM = stream sockets; SOCK_DGRAM = datagrams
+  answer: 3
+  why: Stream sockets are SOCK_STREAM; datagram sockets are SOCK_DGRAM (sometimes called connectionless
+    sockets). The swap reverses the entire block; SOCK_TCP/SOCK_UDP are invented constants — the protocols
+    ride those socket types, they are not the type names. (Ch.2)
+  concept: socket-flavor-names
+- kind: predict
+  level: core
+  q: Trace the guard. What does this program print when socket() succeeds?
+  code: |
+    int sd = socket(AF_INET, SOCK_DGRAM, 0);
+    int online = sd >= 0;
+    if (online)
+        puts("launcher ready");
+    else
+        puts("socket call failed");
+  choices:
+  - '''socket call failed'' printed from the error else branch'
+  - nothing; the online comparison must be printed first
+  - '''launcher ready'' printed from the successful if branch'
+  answer: 2
+  why: sd is nonnegative, so online holds 1 and the if-branch prints 'launcher ready'. 'socket call failed'
+    is the else branch of a condition that never fires here. The print-first idea invents a sequencing
+    rule the program does not follow. (Ch.2)
+  concept: socket-acquire
+- kind: why-fails
+  level: advanced
+  q: 'A student claims: ''My datagrams always arrive intact because IP checks them, and they always arrive
+    in order because IP routes them.'' Why does that claim fail?'
+  code: |
+    /* three datagrams fired: 1, 2, 3 — the student predicts 1, 2, 3 */
+  choices:
+  - IP handles routing, not ordering; datagrams are never promised in-order delivery
+  - IP checksums protect only the packet headers, so the data inside remains fully unprotected
+  - the claim fails only when the packets cross more than a single router hop
+  answer: 0
+  why: IP deals primarily with Internet routing and is not generally responsible for data integrity —
+    ordering guarantees live with TCP, which datagrams do not use; arrival itself is best-effort. 'Checksums
+    protect only headers' invents a header-only scope the chapter does not claim (per-packet integrity
+    is the stated contract); the router-count claim adds a condition the chapter never states. (Ch.2)
+  concept: ip-role
+- kind: mcq
+  level: core
+  q: Which listing is the full-blown Layered Network Model (ISO/OSI) as the chapter gives it?
+  choices:
+  - 'the four-layer Unix-consistent model: Application, Host-to-Host Transport, Internet, and Network
+    Access'
+  - 'the seven-layer ISO model: Application, Presentation, Session, Transport, Network, Data Link, Physical'
+  - 'the three-layer model: Application, Transport, and Physical, with no other layers named at all'
+  answer: 1
+  why: 'The full-blown model is the seven-layer list: Application, Presentation, Session, Transport, Network,
+    Data Link, Physical. The four-layer option is the Unix-consistent model — a different list the chapter
+    presents right after; the three-layer option omits layers the chapter names. (Ch.2)'
+  concept: osi-seven-layers
+- kind: mcq
+  level: intro
+  q: What does the chapter say about raw sockets?
+  choices:
+  - they are deprecated and must never be opened by any ordinary program
+  - they are very powerful, so the guide sets them aside for now
+  - they are the default socket type returned by socket()
+  answer: 1
+  why: 'The chapter''s confession: there are more socket types than two, raw sockets are ''very powerful
+    and you should look them up'', and the guide only teaches the two main flavors. ''Deprecated'' invents
+    a status; ''default type'' is false — socket()''s type argument chooses. (Ch.2)'
+  concept: socket-families
+- kind: order
+  level: core
+  q: 'Order all 4 displayed lines from first strip to final data:'
+  lines:
+  - the tftp program strips the TFTP header
+  - the hardware strips the Ethernet header
+  - the kernel strips the IP and UDP headers
+  - the application finally holds the bare file data
+  answer_order:
+  - 1
+  - 2
+  - 0
+  - 3
+  distractor_why:
+    the tftp program strips the TFTP header: Stripping the innermost header first reverses the unwrap
+      order — outer wrappers must come off before the application sees anything.
+    the application finally holds the bare file data: Taking the bare data first is the result, not a
+      step — placing it mid-sequence confuses the goal with the work.
+  why: 'The sequencing principle is reverse unwrapping: whoever owns the outermost wrapper removes it
+    first (hardware, then kernel, then application), and the bare data is what REMAINS, not a stripping
+    step. (Ch.2)'
+  concept: strip-order
+- kind: choose-better
+  level: advanced
+  q: One datagram program calls connect() once and then uses plain send() for every packet. Another calls
+    sendto() with the destination on every packet. Both send to the same peer. Which design better matches
+    the chapter's picture of datagram sockets?
+  choices:
+  - the sendto() design — every packet carries its own destination, with no connection
+  - the connect() design, because datagram sockets cannot send without a maintained connection
+  - 'both are impossible: datagram sockets accept only recv() calls, never sendto()'
+  answer: 0
+  why: The chapter's picture of connectionless traffic is build-packet-address-send — sendto() with per-packet
+    destination — and it notes datagrams CAN be connect()'d if you really want, but that is the optional
+    path, not the model. 'Cannot send without a connection' contradicts 'connectionless'. 'Only recv()'
+    is invented. (Ch.2)
+  concept: connectionless
+- kind: mcq
+  level: core
+  q: What reasons does the chapter give for choosing an unreliable underlying protocol?
+  choices:
+  - compatibility with X.25 hardware and its addressing scheme
+  - UDP's larger packets mean fewer sends are needed overall on the wire
+  - UDP packets are larger, so fewer packets are required overall
+  - speed and speed — fire-and-forget beats tracking every packet
+  answer: 3
+  why: 'The chapter''s answer is deliberately doubled: ''Two reasons: speed and speed.'' Fire-and-forget
+    is way faster than keeping track of what arrived safely and in order. X.25 compatibility and packet
+    size are invented — and ''larger packets'' would be an argument FOR fewer, slower sends, not the stated
+    reason. (Ch.2)'
+  concept: udp-speed-rationale
+- kind: mcq
+  level: intro
+  q: What happens when you telnet to a web site on port 80, type 'GET / HTTP/1.0', and hit RETURN twice?
+  choices:
+  - the requested HTML page comes back at you in the terminal window
+  - the connection is refused outright, because HTML requires a full browser
+  - the server sends a datagram acknowledgment instead of a page
+  answer: 0
+  why: 'The chapter''s demo: the HTML is dumped back at you — HTTP rides a stream socket, so even a bare
+    telnet-style session can speak it. ''Refused without a browser'' invents a client requirement; ''datagram
+    acknowledgment'' confuses the tftp ACK pattern with HTTP traffic. (Ch.2)'
+  concept: http-stream-demo
+- kind: mcq
+  level: advanced
+  q: The Unix-consistent model has four layers. Where do the full-blown model's Presentation and Session
+    layers effectively live for a sockets programmer?
+  choices:
+  - as separate kernel layers sitting between the Transport and Network layers
+  - inside the physical wiring, managed directly by the network driver
+  - sockets belong to the Network Access hardware layer only there
+  - the Unix model does not name them; they collapse into Application
+  answer: 3
+  why: The chapter presents the 7-layer model for exams and then gives the Unix-consistent FOUR-layer
+    model — Presentation and Session simply do not appear; application-adjacent concerns collapse into
+    the Application layer. 'Separate kernel layers' and 'NIC driver' invent placements the chapter never
+    makes. (Ch.2)
+  concept: osi-seven-layers

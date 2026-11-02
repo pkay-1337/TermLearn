@@ -1,0 +1,2071 @@
+blocks:
+- id: b1
+  type: model
+  title: Model the Client-Server Split and Fork-per-Connection Loop
+  explain_md: |-
+    A client-server system has two roles. The **client** starts the exchange by asking for a service.
+    The **server** waits for requests and answers them. Both sides must agree on the socket type, such
+    as `SOCK_STREAM` or `SOCK_DGRAM` , but the roles are otherwise independent. `telnet` talks to
+    `telnetd` , `ftp` talks to `ftpd` , and a browser talks to a web server.
+
+    ### One server, many clients
+
+    A common server design keeps **one listening socket** and handles each arriving connection in a
+    **child process**. The loop is: wait for a connection, `accept()` it, `fork()` a child, and let the
+    child talk to that client while the parent returns to `accept()` .
+
+    ### The Notional Machine: fork copies the descriptor table
+
+    `fork()` creates a new process with a copy of the parent's descriptor table. Both processes
+    initially refer to the same open socket descriptions. Closing a descriptor in one process removes
+    only that process's table entry; the other process keeps its own entry. This is why the parent can
+    close the accepted descriptor after forking while the child continues to use it.
+
+    The listening socket stays open in the parent for the life of the server. The child does not need
+    it, so the child closes its copy. That division is the core ownership rule of the
+    fork-per-connection server.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <unistd.h>
+      #include <sys/wait.h>
+
+      int main(void)
+      {
+          int fds[2];
+          pid_t pid;
+          char buf[32];
+          ssize_t n;
+
+          if (pipe(fds) == -1) {
+              return 1;
+          }
+          pid = fork();
+          if (pid == -1) {
+              return 1;
+          }
+          if (pid == 0) {
+              close(fds[0]);
+              write(fds[1], "child session", 13);
+              close(fds[1]);
+              _exit(0);
+          }
+          close(fds[1]);
+          n = read(fds[0], buf, sizeof buf - 1);
+          if (n < 0) {
+              n = 0;
+          }
+          buf[n] = '\0';
+          waitpid(pid, NULL, 0);
+          printf("parent keeps listening\n");
+          printf("child handled: %s\n", buf);
+          return 0;
+      }
+    run_expected: |
+      parent keeps listening
+      child handled: child session
+    explain_md: |-
+      The parent creates a pipe and forks. The child closes the read end, writes its session result,
+      closes the write end, and exits. The parent closes the unused write end, reads the result, waits for
+      the child, and only then prints. The wait keeps the output order deterministic even though two
+      processes run.
+    subgoals:
+    - label: Create the Communication Channel
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+    - label: Run the Child Session
+      lines:
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+    - label: Collect and Report the Result
+      lines:
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+    adapted: true
+    note: |-
+      Adapted from the chapter's fork-per-connection server description: a pipe stands in for the accepted
+      socket so the process split is visible without a live network.
+  viz:
+    kind: ascii-memory
+    steps:
+    - 'parent: listening socket is open; no client is connected yet'
+    - client connects; accept() returns new_fd for that one conversation
+    - fork() copies the descriptor table into a child process
+    - parent closes new_fd and loops back to accept()
+    - child closes its copy of the listening socket and serves new_fd
+    - child exits; parent reaps it and keeps accepting new clients
+  checks:
+  - kind: mcq
+    q: In the client-server model, which side normally starts the exchange?
+    choices:
+    - the client process opens the conversation
+    - the server process opens the conversation
+    - the kernel process opens the conversation
+    answer: 0
+    why: |-
+      The client initiates a request; the server waits for and answers it. The server does not start the
+      conversation, and the kernel supplies services but is not the application role. (b1)
+    concept: client-server-roles
+  - kind: predict
+    q: Trace the fork branch. Which line is printed by the newly created child process?
+    code: |
+      pid = fork();
+      if (pid == 0) {
+          puts("child handles one connection");
+      } else {
+          puts("parent returns to accept");
+      }
+    choices:
+    - parent returns to accept
+    - child handles one connection
+    - both lines print in the child
+    answer: 1
+    why: |-
+      fork() returns 0 in the child, so the pid == 0 branch runs there. The parent receives the child PID
+      and runs the else branch. A fork creates two processes, but each process runs only one branch. (b1)
+    concept: fork-branch
+  - kind: fillblank
+    q: The server call that returns a new connected descriptor is ____().
+    code: |
+      int new_fd = ____(sockfd, NULL, NULL);
+    answer_text: accept
+    why: |-
+      accept() removes one pending connection from the listening queue and returns a new descriptor for
+      it. listen() only opens the queue, and connect() is the client-side call. (b1)
+    concept: accept-call
+  - kind: why-fails
+    q: A server accepts one client, handles it, and exits. Why can it not serve a second client?
+    choices:
+    - it closes the client before it reads
+    - it forks before it calls accept
+    - it never returns to the listening socket
+    answer: 2
+    why: |-
+      Serving one client inline and then exiting ends the process, so no loop remains to accept another
+      connection. The defect is not an early close or an early fork; it is the missing return to the
+      listening loop. (b1)
+    concept: server-loop
+  - kind: eipe
+    q: In one sentence, what is fork() FOR in a concurrent server?
+    choices:
+    - it creates a new socket for each waiting client
+    - it creates a child process to own one connection
+    - it creates a thread that reaps zombie children
+    answer: 1
+    why: |-
+      fork() gives each accepted connection its own process, so the parent can go back to accepting.
+      Sockets come from socket() or accept(), and the reaping handler is separate from the fork itself.
+      (b1)
+    concept: fork-purpose
+  - kind: choose-better
+    q: One server must handle many clients at once. Which design is better?
+    choices:
+    - accept one connection, fork a child, then loop
+    - accept one connection, handle it, then exit
+    - bind one socket per client before accepting
+    answer: 0
+    why: |-
+      Forking gives each conversation an independent process while the parent keeps the listening socket
+      active. Handling inline and exiting stops the server, and pre-binding a socket per client reverses
+      the order of operations. (b1)
+    concept: concurrency-design
+  - kind: mcq
+    q: After accept() returns a new descriptor, what happens to the listening socket?
+    choices:
+    - it closes automatically after one accept call
+    - it becomes the descriptor used for send and recv
+    - it stays open and can accept more connections
+    answer: 2
+    why: |-
+      accept() does not consume the listening socket; it only removes one pending connection from its
+      queue. The new descriptor is the data channel, while the listener remains available for later
+      clients. (b1)
+    concept: listener-lifetime
+    from_chapter: ch06
+    from_block: b9
+  common_bugs:
+  - Exiting after one client instead of returning to accept().
+  - Using the listening descriptor for send/recv instead of the accepted descriptor.
+- id: b2
+  type: syntax
+  title: Sequence a Stream Server from Socket to Listen
+  explain_md: |-
+    A stream server prepares address candidates with `getaddrinfo()` , then tries each candidate until
+    one can be used. For each candidate it creates a socket, optionally sets `SO_REUSEADDR` , and calls
+    `bind()` . The first successful bind wins; the loop breaks. After the list is freed, `listen()`
+    turns the bound socket into a listening socket.
+
+    ### The request shape
+
+    For a server, the `hints` structure usually sets `ai_family` to `AF_UNSPEC` , `ai_socktype` to
+    `SOCK_STREAM` , and `ai_flags` to `AI_PASSIVE` . Passing a NULL node with `AI_PASSIVE` asks for
+    wildcard addresses suitable for binding. The service string names the local port.
+
+    ### Why the candidate loop matters
+
+    A lookup can return several records. One family may be unavailable, or a port may already be in use
+    on one address. The server tries the next record instead of giving up after the first failure. Each
+    failed socket is closed before the next attempt so the process does not leak descriptors.
+
+    `listen(sockfd, backlog)` does not accept anything. It marks the socket as willing to queue incoming
+    connections and sets the queue limit. The server is now ready for `accept()` .
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <netdb.h>
+      #include <unistd.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+
+      int main(void)
+      {
+          struct addrinfo hints;
+          struct addrinfo *res = NULL;
+          struct addrinfo *p;
+          int sockfd = -1;
+          int yes = 1;
+
+          memset(&hints, 0, sizeof hints);
+          hints.ai_family = AF_UNSPEC;
+          hints.ai_socktype = SOCK_STREAM;
+          hints.ai_flags = AI_PASSIVE;
+          if (getaddrinfo(NULL, "0", &hints, &res) != 0) {
+              return 1;
+          }
+
+          for (p = res; p != NULL; p = p->ai_next) {
+              sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+              if (sockfd == -1) {
+                  continue;
+              }
+              setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof yes);
+              if (bind(sockfd, p->ai_addr, p->ai_addrlen) == 0) {
+                  break;
+              }
+              close(sockfd);
+              sockfd = -1;
+          }
+          freeaddrinfo(res);
+          if (sockfd == -1) {
+              return 1;
+          }
+          if (listen(sockfd, 10) == -1) {
+              return 1;
+          }
+          printf("bound and listening\n");
+          close(sockfd);
+          return 0;
+      }
+    run_expected: |
+      bound and listening
+    explain_md: |-
+      The hints request wildcard stream addresses for an ephemeral local port. The loop creates a socket,
+      asks the kernel to allow quick reuse of the address, and binds the first candidate that works. After
+      releasing the lookup list, listen() marks the bound socket ready to queue connections.
+    subgoals:
+    - label: Shape the Server Hints
+      lines:
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+    - label: Try Each Address Candidate
+      lines:
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+    - label: Open the Listening Queue
+      lines:
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+      - 43
+    adapted: true
+    note: |-
+      Adapted from the chapter's stream server setup: the service is port 0 (an ephemeral test port), the
+      error exits are compact, and the accept loop is omitted so this example focuses on bind and listen.
+  checks:
+  - kind: mcq
+    q: Which call turns a bound stream socket into a listening socket?
+    choices:
+    - listen()
+    - accept()
+    - connect()
+    answer: 0
+    why: |-
+      listen() marks the bound socket ready to queue connections and sets the backlog. accept() removes a
+      pending connection, and connect() is used by the client. (b2)
+    concept: listen-role
+  - kind: mcq
+    q: What does AI_PASSIVE tell getaddrinfo() to prepare?
+    choices:
+    - numeric addresses for a remote peer
+    - stream addresses for a client connect
+    - wildcard addresses for a local bind
+    answer: 2
+    why: |-
+      AI_PASSIVE is the server hint: with a NULL node it yields wildcard addresses that can be bound
+      locally. A client lookup names a peer and does not set this flag. (b2)
+    concept: ai-passive
+  - kind: order
+    q: Order the 5 correct server setup steps. One line is a distractor.
+    lines:
+    - clear hints and set family, type, and passive flag
+    - call getaddrinfo for the local service
+    - create a socket from the candidate record
+    - set SO_REUSEADDR on the new socket
+    - bind and stop on the first success
+    - call connect to the first candidate
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      call connect to the first candidate: connect() belongs to the client side; a server binds and listens
+        instead of connecting to itself.
+    hint: Which call belongs to the client role rather than the server role?
+    why: |-
+      The server shapes hints, resolves the local service, creates a socket, sets the reuse option, and
+      binds the first usable candidate. Connecting is the client action and would reverse the roles. (b2)
+    concept: server-setup-order
+  - kind: fillblank
+    q: Which socket option lets a server rebind a port that is still in TIME_WAIT?
+    code: |
+      setsockopt(sockfd, SOL_SOCKET, ____, &yes, sizeof yes);
+    answer_text: SO_REUSEADDR
+    why: |-
+      SO_REUSEADDR asks the kernel to allow reuse of a local address that is lingering in TIME_WAIT.
+      SO_KEEPALIVE is about probing idle connections, and SO_BROADCAST is about datagram broadcast
+      permission. (b2)
+    concept: reuseaddr
+  - kind: why-fails
+    q: A server loops over getaddrinfo results but never calls freeaddrinfo(). Why is that a defect?
+    choices:
+    - the bound socket is left listening
+    - the allocated candidate list is leaked
+    - the hints structure is overwritten
+    answer: 1
+    why: |-
+      getaddrinfo allocates the result list, so the caller owns it and must release it. The listening
+      socket is a separate resource, and the hints structure is not overwritten by freeing the list. (b2)
+    concept: freeaddrinfo-server
+  - kind: choose-better
+    q: A server fails bind() on the first candidate. Which response is better?
+    choices:
+    - close the socket and try the next candidate
+    - reuse the same socket and bind again
+    - exit without checking other candidates
+    answer: 0
+    why: |-
+      Each candidate is a separate address, so a failed bind should release that socket and move on.
+      Reusing the failed socket keeps its bad state, and exiting ignores valid later candidates. (b2)
+    concept: bind-retry
+  - kind: eipe
+    q: In one sentence, what is listen() FOR?
+    choices:
+    - it marks a bound socket ready to queue connections
+    - it creates a fresh socket for each new client
+    - it connects the server to a remote peer
+    answer: 0
+    why: |-
+      listen() changes the socket role from bound to listening and sets the pending-connection limit. It
+      does not create per-client sockets or connect to a peer. (b2)
+    concept: listen-purpose
+  - kind: mcq
+    q: What does the backlog argument to listen() control?
+    choices:
+    - the number of child processes to fork
+    - the queue length for pending connections
+    - the size of each received message
+    answer: 1
+    why: |-
+      The backlog is a hint for how many connections may wait in the accept queue. It does not set a fork
+      count or a receive buffer size. (b2)
+    concept: backlog
+  - kind: why-fails
+    q: A server calls listen() before bind(). Why does the call fail?
+    choices:
+    - the socket has no local address yet
+    - the backlog is too small to accept
+    - the socket type is still unknown
+    answer: 0
+    why: |-
+      A socket must have a local address before it can become a listener, so bind() comes before listen().
+      The backlog size is not the reason for the ordering failure, and the socket type was chosen at
+      socket() time. (b2)
+    concept: listen-before-bind
+    from_chapter: ch06
+    from_block: b8
+  common_bugs:
+  - Calling listen() before bind() on the server socket.
+  - Treating the backlog as a message size or a process count.
+- id: b3
+  type: model
+  title: Accept, Fork, and Split Descriptor Ownership
+  explain_md: |-
+    `accept()` blocks until a client is pending, then returns a new descriptor for that connection. Its
+    address arguments are optional, but when used, `addrlen` is an **in/out** parameter: the caller
+    passes the buffer capacity, and the kernel writes back the actual address length.
+
+    ### The fork split
+
+    After a successful accept, the server calls `fork()` . The parent closes the new descriptor and
+    returns to `accept()` . The child closes its copy of the listening socket and serves the new
+    descriptor. This is not optional bookkeeping: each process has its own descriptor table, and an
+    unclosed copy keeps the underlying resource alive.
+
+    ### Why the parent must close new_fd
+
+    If the parent keeps the accepted descriptor open, the connection stays alive until the parent exits,
+    and a long-running server accumulates handles. The child owns the conversation; the parent owns the
+    listening queue. Each process closes the descriptor it does not need.
+
+    ### The Notional Machine: two tables, one open file description
+
+    `fork()` copies descriptor table entries, but both entries can refer to the same underlying open
+    file description. Closing one entry decrements the reference count; the other process can still read
+    and write. The listening socket and the accepted socket are different descriptions, so closing the
+    listening copy in the child does not disturb the parent's listener.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <unistd.h>
+      #include <sys/socket.h>
+      #include <sys/wait.h>
+
+      int main(void)
+      {
+          int sv[2];
+          pid_t pid;
+          char buf[32];
+          ssize_t n;
+
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+              return 1;
+          }
+          pid = fork();
+          if (pid == -1) {
+              return 1;
+          }
+          if (pid == 0) {
+              close(sv[0]);
+              send(sv[1], "hello parent", 12, 0);
+              close(sv[1]);
+              _exit(0);
+          }
+          close(sv[1]);
+          n = recv(sv[0], buf, sizeof buf - 1, 0);
+          if (n < 0) {
+              n = 0;
+          }
+          buf[n] = '\0';
+          waitpid(pid, NULL, 0);
+          printf("child closed its listen copy\n");
+          printf("parent received: %s\n", buf);
+          return 0;
+      }
+    run_expected: |
+      child closed its listen copy
+      parent received: hello parent
+    explain_md: |-
+      socketpair() creates two connected endpoints. After fork, the child closes one endpoint and sends on
+      the other; the parent closes the endpoint it will not use and receives the message. Each process
+      owns a different table entry, so the two closes do not destroy the shared connection description.
+    subgoals:
+    - label: Create the Connected Pair
+      lines:
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+    - label: Child Closes and Serves
+      lines:
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+    - label: Parent Closes and Receives
+      lines:
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+    adapted: true
+    note: |-
+      Adapted from the chapter's accept/fork server: a socketpair replaces the accepted stream socket so
+      descriptor ownership is visible in one deterministic process tree.
+  viz:
+    kind: ascii-memory
+    steps:
+    - accept() returns new_fd=4; listening sockfd=3 is still open
+    - fork() copies the descriptor table into the child
+    - 'parent: close(new_fd); new_fd becomes -1'
+    - 'child: close(sockfd); listening copy becomes -1'
+    - child reads/writes new_fd, then exits
+    - parent reaps the child and accepts the next client on sockfd
+  checks:
+  - kind: mcq
+    q: What does accept() return on success?
+    choices:
+    - the original listening descriptor
+    - a new descriptor for the connection
+    - the peer port number as an integer
+    answer: 1
+    why: |-
+      accept() removes one pending connection and returns a fresh descriptor for it. The listening
+      descriptor remains separate, and the peer port is written into the optional address structure, not
+      returned as the function result. (b3)
+    concept: accept-return
+  - kind: predict
+    q: Trace the fork branch. What does the parent do after fork returns a positive PID?
+    code: |
+      new_fd = accept(sockfd, NULL, NULL);
+      pid = fork();
+      if (pid > 0) {
+          close(new_fd);
+          /* parent continues */
+      } else {
+          close(sockfd);
+          /* child serves */
+      }
+    choices:
+    - it closes sockfd and serves the client
+    - it closes both descriptors and exits
+    - it closes new_fd and keeps accepting
+    answer: 2
+    why: |-
+      A positive fork return means the parent. The parent no longer needs the accepted descriptor, so it
+      closes new_fd and returns to the listening loop. The child receives 0 and closes the listening copy
+      instead. (b3)
+    concept: parent-after-fork
+  - kind: fillblank
+    q: Which descriptor should the child close immediately after fork in this server?
+    code: |
+      if (pid == 0) {
+          close(____);
+          serve(new_fd);
+      }
+    answer_text: sockfd
+    why: |-
+      The child serves one accepted connection and does not accept new ones, so it closes its copy of the
+      listening descriptor. Closing new_fd would destroy the child's data channel. (b3)
+    concept: child-close
+  - kind: order
+    q: Order the 5 correct steps after accept returns. One line is a distractor.
+    lines:
+    - call accept and receive new_fd
+    - call fork to create a child
+    - parent closes new_fd
+    - child closes its listening copy
+    - child exchanges data and exits
+    - parent calls listen again on new_fd
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      parent calls listen again on new_fd: |-
+        listen() applies to the listening socket, not to an accepted connection; the parent already has a
+        listener and should return to accept().
+    hint: Which descriptor is the listening queue, and which one is the conversation?
+    why: |-
+      accept produces the conversation descriptor, fork splits the processes, each side closes the
+      descriptor it does not own, and the child serves the connection. Re-listening on new_fd confuses a
+      connected socket with a listener. (b3)
+    concept: accept-fork-order
+  - kind: why-fails
+    q: A child process calls close(sockfd) after fork. Why does the parent's listening socket stay open?
+    choices:
+    - close only shuts down the network connection
+    - fork gave each process its own descriptor table
+    - the kernel duplicates the socket for the child
+    answer: 1
+    why: |-
+      The child closes only its own table entry. The parent still has an entry for the listening socket,
+      so the listener remains usable. close() releases a descriptor; it does not globally destroy every
+      copy in other processes. (b3)
+    concept: fork-descriptor-table
+  - kind: choose-better
+    q: A server wants to handle a long session without blocking new accepts. Which is better?
+    choices:
+    - fork a child and let the parent keep accepting
+    - handle the session inside the accept loop
+    - close the listening socket during the session
+    answer: 0
+    why: |-
+      Forking moves the long session into a separate process, leaving the parent free to accept. Handling
+      inline blocks the loop, and closing the listener prevents new clients from connecting. (b3)
+    concept: fork-session-design
+  - kind: trace
+    q: |-
+      Trace the parent and child after fork. What value belongs in the target cell for the parent's
+      new_fd?
+    code: |
+      new_fd = accept(sockfd, NULL, NULL); /* returns 4 */
+      pid = fork();
+      if (pid > 0) {
+          close(new_fd);
+          new_fd = -1;
+      }
+    trace:
+      headers:
+      - Step
+      - Line
+      - Action
+      - new_fd
+      rows:
+      - step: 1
+        line: 1
+        cells:
+        - '1'
+        - '1'
+        - accept returns 4
+        - '4'
+      - step: 2
+        line: 2
+        cells:
+        - '2'
+        - '2'
+        - fork splits processes
+        - '4'
+      - step: 3
+        line: 4
+        cells:
+        - '3'
+        - '4'
+        - parent closes and resets
+        - ???
+    target:
+      row: 2
+      col: 3
+    choices:
+    - the value 4 (still open)
+    - the value 0 (stdin)
+    - the value -1 (closed)
+    - the value 2 (stderr)
+    answer: 2
+    why: |-
+      The parent closes new_fd and then assigns -1, so its table entry is gone. The value 4 was the
+      descriptor before the close; 0 and 2 are standard streams, not this connection. (b3)
+    concept: parent-close-trace
+  - kind: spot-bug
+    q: The parent uses new_fd after fork without closing it. Which line leaks a descriptor, and why?
+    code: |
+      new_fd = accept(sockfd, NULL, NULL);
+      pid = fork();
+      if (pid == 0) {
+          close(sockfd);
+          serve(new_fd);
+          _exit(0);
+      }
+      recv(new_fd, buf, sizeof buf, 0);
+    diagnostic_log: |
+      parent: recv blocks forever
+      parent: listening queue stops growing
+      child: served one connection
+    target_line: 7
+    choices:
+    - 'Line 7: parent keeps its copy of new_fd open'
+    - 'Line 4: child closes the listening socket'
+    - 'Line 5: child serves the new connection'
+    - 'Line 1: accept returns a new descriptor'
+    answer: 0
+    why: |-
+      The parent should close new_fd after fork and return to accept. Instead it blocks in recv on a
+      descriptor owned by the child, so the listener stops making progress and the parent retains an
+      unnecessary handle. The child's close and serve are correct. (b3)
+    concept: parent-leak-bug
+  - kind: mcq
+    q: Why does the parent close new_fd after fork?
+    choices:
+    - the listening socket needs the handle
+    - accept requires the handle to be free
+    - the child owns that connection now
+    answer: 2
+    why: |-
+      The child is responsible for the accepted conversation, so the parent releases its copy and returns
+      to accepting. The listener has its own descriptor, and accept does not require the previous new_fd
+      to be closed first. (b3)
+    concept: parent-close-reason
+  common_bugs:
+  - Parent keeps new_fd open and leaks one descriptor per connection.
+  - Child forgets to close its copy of the listening socket.
+- id: b4
+  type: algorithm
+  title: Reap Exited Children with SIGCHLD
+  explain_md: |-
+    When a child exits, the kernel keeps a small amount of information for the parent until the parent
+    collects it. A child in that state is a **zombie**. If the parent never reaps it, the process table
+    fills with dead entries.
+
+    ### The SIGCHLD handler
+
+    A server can install a handler for `SIGCHLD` , the signal delivered when a child changes state. The
+    handler calls `waitpid(-1, NULL, WNOHANG)` in a loop. `-1` means "any child", `WNOHANG` means "do
+    not block if none is ready", and a positive return is the PID of a reaped child. The loop stops when
+    the return is `0` (children still running) or `-1` (no children left or an error).
+
+    ### Why save errno
+
+    `waitpid()` may overwrite `errno` , and a signal handler can interrupt code that was relying on the
+    current value. The handler saves `errno` on entry and restores it before returning. This is a
+    general rule for handlers that call functions which can set `errno` .
+
+    ### Why WNOHANG matters
+
+    Without `WNOHANG` , the handler would block inside the signal handler waiting for another child.
+    That can stall the server. The non-blocking loop reaps whatever is ready and returns immediately.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <unistd.h>
+      #include <sys/wait.h>
+
+      int main(void)
+      {
+          pid_t pid;
+          int status;
+          int extra = 0;
+
+          pid = fork();
+          if (pid == -1) {
+              return 1;
+          }
+          if (pid == 0) {
+              _exit(0);
+          }
+
+          waitpid(pid, &status, 0);
+          while (waitpid(-1, NULL, WNOHANG) > 0) {
+              extra++;
+          }
+          printf("child reaped: yes\n");
+          printf("extra zombies: %d\n", extra);
+          return 0;
+      }
+    run_expected: |
+      child reaped: yes
+      extra zombies: 0
+    explain_md: |-
+      The parent blocks once with waitpid() to collect the known child. It then runs the same non-blocking
+      loop a signal handler would use: WNOHANG returns 0 when no more children are ready, so the loop ends
+      immediately. The printed count confirms that no extra zombies were left behind.
+    subgoals:
+    - label: Fork and Exit a Child
+      lines:
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+      - 14
+      - 15
+      - 16
+      - 17
+    - label: Reap the Known Child
+      lines:
+      - 18
+      - 19
+    - label: Drain Any Extra Zombies
+      lines:
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+    adapted: true
+    note: |-
+      Adapted from the chapter's SIGCHLD handler: the example calls the reaping loop directly after a
+      known child exits, so it runs deterministically without waiting for a signal.
+  checks:
+  - kind: mcq
+    q: What is a zombie process?
+    choices:
+    - a child that is still running normally
+    - an exited child that has not been reaped
+    - a parent that stopped accepting clients
+    answer: 1
+    why: |-
+      A zombie is an exited child whose exit status has not been collected by the parent. A running child
+      is not a zombie, and a parent that stops accepting is simply blocked or idle. (b4)
+    concept: zombie-definition
+  - kind: fillblank
+    q: Which call reaps an exited child and collects its status?
+    code: |
+      ____(-1, NULL, WNOHANG);
+    answer_text: waitpid
+    why: |-
+      waitpid() collects a child's termination status. fork() creates a child, and wait() is a related but
+      less flexible call; the shown arguments match waitpid(). (b4)
+    concept: waitpid-call
+  - kind: order
+    q: Order the 5 correct steps of the SIGCHLD reaping loop. One line is a distractor.
+    lines:
+    - save the current errno value
+    - call waitpid with -1 and WNOHANG
+    - stop when waitpid returns 0 or -1
+    - restore the saved errno value
+    - return from the signal handler
+    - call wait and block for each child
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      call wait and block for each child: |-
+        A blocking wait inside the handler can stall the server; the handler should drain ready children
+        with WNOHANG and return.
+    hint: Which flag keeps the handler from waiting for a child that has not exited?
+    why: |-
+      The handler preserves errno, drains ready children with a non-blocking waitpid loop, stops when none
+      are ready, restores errno, and returns. A blocking wait would defeat the purpose of the handler.
+      (b4)
+    concept: reap-order
+  - kind: why-fails
+    q: A server installs a SIGCHLD handler that calls wait(NULL) once. Why can zombies remain?
+    choices:
+    - one wait call reaps at most one child
+    - SIGCHLD is delivered only once per server
+    - wait cannot reap children of a server
+    answer: 0
+    why: |-
+      Each successful wait reaps one child, so a single call can leave other exited children behind.
+      SIGCHLD can be delivered again, and wait() can reap a server's own children. (b4)
+    concept: one-wait-bug
+  - kind: predict
+    q: |-
+      A handler calls waitpid(-1, NULL, WNOHANG) three times. The first two return child PIDs, the third
+      returns 0. What does the loop do next?
+    code: |
+      while (waitpid(-1, NULL, WNOHANG) > 0) {
+          count++;
+      }
+    choices:
+    - it stops because no child is ready
+    - it blocks until another child exits
+    - it exits the server process immediately
+    answer: 0
+    why: |-
+      A zero return from WNOHANG means no child is currently ready to be reaped, so the while condition is
+      false and the loop ends. It does not block, and it does not terminate the server. (b4)
+    concept: wnohang-zero
+  - kind: eipe
+    q: In one sentence, what is waitpid(..., WNOHANG) FOR?
+    choices:
+    - it waits for every child to exit first
+    - it reaps ready children without blocking
+    - it creates a child process for a client
+    answer: 1
+    why: |-
+      WNOHANG makes the call a poll: reap a ready child or return immediately. It does not wait for all
+      children, and it does not create processes. (b4)
+    concept: wnohang-purpose
+  - kind: mcq
+    q: Why does the handler save and restore errno?
+    choices:
+    - waitpid may overwrite the caller's errno
+    - SIGCHLD clears errno before delivery
+    - errno must be zero inside a handler
+    answer: 0
+    why: |-
+      Functions called by a handler can set errno, so the handler preserves the interrupted code's value.
+      SIGCHLD does not clear errno, and errno is not required to be zero inside a handler. (b4)
+    concept: errno-save
+  common_bugs:
+  - Calling wait() only once per SIGCHLD delivery.
+  - Forgetting to save and restore errno around waitpid().
+- id: b5
+  type: syntax
+  title: Format a Peer Address Through get_in_addr
+  explain_md: |-
+    A `struct sockaddr` is a generic header. Its `sa_family` field tells you which concrete structure
+    the bytes really represent: `sockaddr_in` for IPv4 or `sockaddr_in6` for IPv6. The helper
+    `get_in_addr()` performs that switch and returns a pointer to the address field inside the concrete
+    structure.
+
+    ### The return type
+
+    The helper returns `void *` because the two address fields have different types. The caller passes
+    that pointer to `inet_ntop()` along with the family. `inet_ntop()` writes the printable form into a
+    caller-provided buffer. A buffer of `INET6_ADDRSTRLEN` is large enough for either family.
+
+    ### Why the cast must follow the family
+
+    Casting a `sockaddr_storage` to `sockaddr_in` when the stored family is `AF_INET6` makes the fields
+    line up with the wrong layout. The family check must come first. This is the same rule that applies
+    to `accept()` , `recvfrom()` , and `getpeername()` : the generic address is safe only when you know
+    its family.
+
+    ### The Notional Machine: one header, two layouts
+
+    Think of the address as a tagged union. The family tag selects the layout. `get_in_addr()` reads the
+    tag, chooses the matching member, and returns the address of that member. `inet_ntop()` then
+    interprets the bytes according to the family and produces text.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+
+      static void *get_in_addr(struct sockaddr *sa)
+      {
+          if (sa->sa_family == AF_INET) {
+              return &(((struct sockaddr_in *)sa)->sin_addr);
+          }
+          return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+      }
+
+      int main(void)
+      {
+          struct sockaddr_in peer;
+          char text[INET6_ADDRSTRLEN];
+
+          memset(&peer, 0, sizeof peer);
+          peer.sin_family = AF_INET;
+          inet_pton(AF_INET, "192.0.2.33", &peer.sin_addr);
+          if (inet_ntop(peer.sin_family,
+                        get_in_addr((struct sockaddr *)&peer),
+                        text, sizeof text) == NULL) {
+              return 1;
+          }
+          printf("peer: %s\n", text);
+          return 0;
+      }
+    run_expected: |
+      peer: 192.0.2.33
+    explain_md: |-
+      The program fills an IPv4 address structure and tags it with AF_INET. The helper sees that tag,
+      casts to sockaddr_in, and returns the sin_addr field. inet_ntop() converts those four bytes to
+      dotted-quad text in the caller's buffer, which is sized for the longest IPv6 form.
+    subgoals:
+    - label: Build the Tagged Address
+      lines:
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+    - label: Select the Family-Specific Field
+      lines:
+      - 8
+      - 9
+      - 10
+      - 11
+      - 12
+      - 13
+    - label: Convert and Print the Address
+      lines:
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+    adapted: true
+    note: |-
+      Adapted from the chapter's get_in_addr helper and peer logging: the address is built in memory
+      instead of accepted from a live client.
+  checks:
+  - kind: mcq
+    q: What does get_in_addr() return for an AF_INET socket address?
+    choices:
+    - a pointer to the sin6_addr field
+    - a pointer to the sin_addr field
+    - a copy of the whole sockaddr
+    answer: 1
+    why: |-
+      For AF_INET the helper casts to sockaddr_in and returns the address of sin_addr. sin6_addr is the
+      IPv6 field, and the helper returns a pointer rather than copying the structure. (b5)
+    concept: get-in-addr-v4
+  - kind: predict
+    q: Trace the family switch. Which field does the helper return when sa_family is AF_INET6?
+    code: |
+      if (sa->sa_family == AF_INET) {
+          return &((struct sockaddr_in *)sa)->sin_addr;
+      }
+      return &((struct sockaddr_in6 *)sa)->sin6_addr;
+    choices:
+    - the sin_addr field of sockaddr_in
+    - the whole sockaddr_storage buffer
+    - the sin6_addr field of sockaddr_in6
+    answer: 2
+    why: |-
+      The AF_INET branch is skipped, so the fallback casts to sockaddr_in6 and returns sin6_addr. The IPv4
+      field would be the wrong layout, and the helper returns a field pointer rather than the whole
+      buffer. (b5)
+    concept: get-in-addr-v6
+  - kind: fillblank
+    q: Which function converts a binary IP address to printable text?
+    code: |
+      inet_ntop(family, addr, text, sizeof text);
+    answer_text: inet_ntop
+    why: |-
+      inet_ntop() converts a binary address to its presentation form. inet_pton() goes the other
+      direction, and getaddrinfo() performs name/service lookup. (b5)
+    concept: inet-ntop
+  - kind: why-fails
+    q: A program casts a sockaddr_storage to sockaddr_in without checking sa_family. Why is this unsafe?
+    choices:
+    - the address may be stored in network order
+    - the family may be IPv6 with a different layout
+    - the buffer may be too small for a port
+    answer: 1
+    why: |-
+      The family tag selects the layout. An IPv6 address in a sockaddr_in view is misread because the
+      fields do not line up. Network order is normal for both families, and sockaddr_storage is large
+      enough for either. (b5)
+    concept: family-cast-bug
+  - kind: order
+    q: Order the 5 correct steps to format a peer address. One line is a distractor.
+    lines:
+    - receive a generic sockaddr pointer
+    - check the sa_family tag
+    - select sin_addr or sin6_addr
+    - call inet_ntop with the matching family
+    - print the text buffer
+    - cast every address to sockaddr_in
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      cast every address to sockaddr_in: |-
+        A blind sockaddr_in cast misreads IPv6 addresses; the family check must choose the matching layout
+        first.
+    hint: Which field tells you whether the bytes are IPv4 or IPv6?
+    why: |-
+      The safe path is generic pointer, family check, matching field, inet_ntop, print. Casting every
+      address to sockaddr_in ignores the family tag and produces garbage for IPv6. (b5)
+    concept: format-order
+  - kind: choose-better
+    q: A server logs peers from both IPv4 and IPv6. Which design is better?
+    choices:
+    - one family switch returning the right address field
+    - two separate servers, one per address family
+    - cast every peer to sockaddr_in and print
+    answer: 0
+    why: |-
+      A single family switch handles both layouts and keeps one code path. Splitting the server by family
+      duplicates logic, and casting every peer to sockaddr_in corrupts IPv6 addresses. (b5)
+    concept: peer-format-design
+  - kind: mcq
+    q: Why is INET6_ADDRSTRLEN a safe buffer size for inet_ntop()?
+    choices:
+    - it equals the size of a sockaddr_in6
+    - it is the maximum length of a host name
+    - it covers the longest IPv6 text form
+    answer: 2
+    why: |-
+      INET6_ADDRSTRLEN is defined to hold the longest printable IPv6 address, so it also holds any IPv4
+      form. It is not the structure size, and host names can be longer. (b5)
+    concept: addrstrlen
+  common_bugs:
+  - Casting a sockaddr_storage to sockaddr_in before checking the family.
+  - Passing a text buffer smaller than INET6_ADDRSTRLEN to inet_ntop().
+- id: b6
+  type: syntax
+  title: Connect a Stream Client and Receive the Greeting
+  explain_md: |-
+    A stream client is the mirror image of the server setup. It fills hints with a named node and a
+    service, calls `getaddrinfo()` , and loops over the results. For each candidate it creates a socket
+    and calls `connect()` . The first successful connection wins.
+
+    ### No bind, no listen
+
+    A client normally does not call `bind()` . The kernel assigns an ephemeral local port when the
+    client connects. A client also does not call `listen()` or `accept()` ; those are server-side
+    operations.
+
+    ### Receiving the greeting
+
+    After connect succeeds, the client can call `recv()` on the connected descriptor. The return value
+    is the number of bytes read. A stream has no message boundaries, so the client must use the returned
+    count and must not assume the whole application message arrived in one call. If the buffer will be
+    printed as a C string, write a null byte after the received bytes.
+
+    `connect()` returns `0` on success and `-1` on failure. The client closes the descriptor when it is
+    done.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <unistd.h>
+      #include <sys/socket.h>
+
+      int main(void)
+      {
+          int sv[2];
+          char buf[100];
+          ssize_t n;
+
+          if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) == -1) {
+              return 1;
+          }
+          if (send(sv[0], "Hello, world!", 13, 0) == -1) {
+              return 1;
+          }
+          close(sv[0]);
+          n = recv(sv[1], buf, sizeof buf - 1, 0);
+          if (n < 0) {
+              return 1;
+          }
+          buf[n] = '\0';
+          printf("client received: %s\n", buf);
+          close(sv[1]);
+          return 0;
+      }
+    run_expected: |
+      client received: Hello, world!
+    explain_md: |-
+      The peer sends a fixed greeting and closes its end. The client receives up to 99 bytes, stores the
+      count, writes a null terminator at that position, and prints the text. In a real client the
+      connected descriptor comes from connect() instead of socketpair(), but the receive path is the same.
+    subgoals:
+    - label: Create the Connected Pair
+      lines:
+      - 7
+      - 8
+      - 9
+      - 10
+      - 11
+    - label: Peer Sends and Closes
+      lines:
+      - 12
+      - 13
+      - 14
+      - 15
+    - label: Receive, Terminate, and Print
+      lines:
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+    adapted: true
+    note: |-
+      Adapted from the chapter's stream client: a socketpair supplies the connected stream so the recv and
+      null-termination path runs without a live server.
+  checks:
+  - kind: mcq
+    q: Which call does a stream client use to reach the server?
+    choices:
+    - connect()
+    - listen()
+    - accept()
+    answer: 0
+    why: |-
+      connect() establishes the client side of a stream connection. listen() and accept() are server-side
+      calls that manage incoming connections. (b6)
+    concept: client-connect
+  - kind: fillblank
+    q: A client usually skips bind() and receives an ____ local port.
+    code: |
+      connect(sockfd, res->ai_addr, res->ai_addrlen);
+    answer_text: ephemeral
+    why: |-
+      When a client connects without binding, the kernel chooses an unused ephemeral local port. A
+      well-known port is a server-side choice, and a wildcard address is a bind input, not the port kind.
+      (b6)
+    concept: ephemeral-port
+  - kind: order
+    q: Order the 5 correct stream client steps. One line is a distractor.
+    lines:
+    - fill client hints with node and service
+    - call getaddrinfo for the peer
+    - create a socket from each candidate
+    - call connect until one succeeds
+    - receive the greeting and close
+    - call listen before connecting
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      call listen before connecting: listen() is a server operation; a client connects to a peer and never
+        opens a listening queue.
+    hint: Which call belongs to the server side of a stream connection?
+    why: |-
+      The client resolves the peer, creates a candidate socket, connects, then receives and closes.
+      Calling listen() would put the client into the server role. (b6)
+    concept: client-order
+  - kind: why-fails
+    q: |-
+      A client calls recv() with a 100-byte buffer. The server sends 150 bytes. Why may the first recv()
+      return only part of the message?
+    choices:
+    - recv rejects messages over 100 bytes
+    - the server must call send twice
+    - a stream has no message boundaries
+    answer: 2
+    why: |-
+      A stream is a byte sequence, not a packet queue, so recv returns what is available up to the buffer
+      size. The rest can arrive in later calls. recv does not reject a long logical message, and the
+      server may use one send that is split by the network stack. (b6)
+    concept: stream-partial-recv
+  - kind: predict
+    q: |-
+      recv() returns 13 for a 13-byte greeting. What must the program do before printing the buffer as a
+      string?
+    choices:
+    - clear the buffer before the next recv
+    - write a null byte after the last byte
+    - close the socket before printing it
+    answer: 1
+    why: |-
+      recv does not append a null terminator, so the program writes one at buf[n]. Clearing the buffer
+      does not create a terminator, and closing the socket is unrelated to formatting the received bytes.
+      (b6)
+    concept: recv-terminate
+  - kind: choose-better
+    q: A client must try every address candidate. Which loop is better?
+    choices:
+    - create and connect inside the candidate loop
+    - connect once to the first candidate only
+    - bind a local port before every connect
+    answer: 0
+    why: |-
+      A failed candidate should lead to the next record, with a fresh socket for each attempt. Connecting
+      only once ignores other addresses, and binding a local port before each connect is unnecessary for a
+      client. (b6)
+    concept: client-candidate-loop
+  - kind: eipe
+    q: In one sentence, what is connect() FOR on a stream client?
+    choices:
+    - it establishes a connection to one server address
+    - it creates a listening queue for new clients
+    - it binds the client to a well-known local port
+    answer: 0
+    why: |-
+      connect() starts the client-side connection to a specific candidate address. Listening and accepting
+      are server calls, and clients normally let the kernel choose an ephemeral port. (b6)
+    concept: connect-purpose
+  - kind: mcq
+    q: What does connect() return on success?
+    choices:
+    - the number minus 1
+    - the number zero
+    - a fresh descriptor
+    answer: 1
+    why: |-
+      connect returns 0 on success and -1 on failure. The connected descriptor is the one passed into
+      connect, not a new return value. (b6)
+    concept: connect-return
+  - kind: trace
+    q: Trace recv() into a 100-byte buffer. What value belongs in the target cell for buf[n]?
+    code: |
+      char buf[100];
+      n = recv(sockfd, buf, sizeof buf - 1, 0); /* returns 13 */
+      buf[n] = '\0';
+    trace:
+      headers:
+      - Step
+      - Line
+      - Action
+      - n
+      - buf[n]
+      rows:
+      - step: 1
+        line: 2
+        cells:
+        - '1'
+        - '2'
+        - recv fills 13 bytes
+        - '13'
+        - unset
+      - step: 2
+        line: 3
+        cells:
+        - '2'
+        - '3'
+        - write terminator
+        - '13'
+        - ???
+    target:
+      row: 1
+      col: 4
+    choices:
+    - a null byte
+    - the digit 1
+    - the byte at 12
+    - an unset byte
+    answer: 0
+    why: |-
+      The assignment writes a null byte at index n, which is 13. The digit 1 is not written, index 12
+      holds the last received byte, and the cell is no longer unset after the assignment. (b6)
+    concept: recv-trace
+  common_bugs:
+  - Printing a received buffer without null-terminating it.
+  - Assuming one recv() returns a complete application message.
+- id: b7
+  type: syntax
+  title: Bind a Datagram Listener and Receive a Packet
+  explain_md: |-
+    A datagram listener uses `SOCK_DGRAM` . It creates a socket, binds it to a local address and port,
+    and calls `recvfrom()` to receive one packet. There is no `listen()` and no `accept()` : datagram
+    sockets are connectionless, so there is no connection queue to manage.
+
+    ### recvfrom reports the sender
+
+    `recvfrom()` fills the payload buffer and, when given an address buffer, writes the sender's address
+    into it. The `addrlen` argument is an **in/out** value: initialize it to the capacity of the address
+    buffer; the kernel writes back the actual length. This is how a server can reply to the sender.
+
+    ### UDP is best effort
+
+    A datagram may be lost, duplicated, or reordered. The listener cannot assume that every packet sent
+    will arrive, and `recvfrom()` does not report a missing packet. It only returns data that actually
+    arrived. Null-terminating the received bytes is the application's job when the payload is text.
+
+    ### The Notional Machine: one packet per call
+
+    Unlike a stream, a datagram socket preserves message boundaries at the API level: one `recvfrom()`
+    returns one datagram (up to the buffer size). The sender's address travels with that packet, so the
+    listener can identify and answer the sender without a prior connection.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <unistd.h>
+
+      int main(void)
+      {
+          int fd;
+          struct sockaddr_in addr;
+          struct sockaddr_in peer;
+          socklen_t addrlen = sizeof addr;
+          socklen_t peerlen = sizeof peer;
+          char buf[100];
+          ssize_t n;
+
+          fd = socket(AF_INET, SOCK_DGRAM, 0);
+          if (fd == -1) {
+              return 1;
+          }
+          memset(&addr, 0, sizeof addr);
+          addr.sin_family = AF_INET;
+          addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+          addr.sin_port = htons(0);
+          if (bind(fd, (struct sockaddr *)&addr, sizeof addr) == -1) {
+              return 1;
+          }
+          if (getsockname(fd, (struct sockaddr *)&addr, &addrlen) == -1) {
+              return 1;
+          }
+          if (sendto(fd, "ping", 4, 0,
+                     (struct sockaddr *)&addr, addrlen) != 4) {
+              return 1;
+          }
+          n = recvfrom(fd, buf, sizeof buf - 1, 0,
+                       (struct sockaddr *)&peer, &peerlen);
+          if (n < 0) {
+              return 1;
+          }
+          buf[n] = '\0';
+          printf("received: %s\n", buf);
+          printf("sender family: IPv4\n");
+          close(fd);
+          return 0;
+      }
+    run_expected: |
+      received: ping
+      sender family: IPv4
+    explain_md: |-
+      The program binds a UDP socket to an ephemeral loopback port, sends one datagram to itself, and
+      receives it with recvfrom(). The sender address is written into peer and its length is updated in
+      peerlen. The payload is null-terminated before printing, and the family check confirms the captured
+      sender is IPv4.
+    subgoals:
+    - label: Create and Bind the Datagram Socket
+      lines:
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+    - label: Send and Receive One Packet
+      lines:
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+    - label: Report the Payload and Sender
+      lines:
+      - 40
+      - 41
+      - 42
+      - 43
+      - 44
+    adapted: true
+    note: |-
+      Adapted from the chapter's datagram listener: the example sends a packet to itself over loopback so
+      the recvfrom path and sender capture are deterministic.
+  checks:
+  - kind: mcq
+    q: Which socket type does a datagram listener use?
+    choices:
+    - SOCK_STREAM type
+    - SOCK_DGRAM type
+    - SOCK_RAW type
+    answer: 1
+    why: |-
+      SOCK_DGRAM is the datagram type used by UDP. SOCK_STREAM is for reliable byte streams, and SOCK_RAW
+      bypasses the normal transport framing. (b7)
+    concept: dgram-type
+  - kind: fillblank
+    q: Which call receives a datagram and records the sender?
+    code: |
+      n = ____(fd, buf, sizeof buf, 0, &peer, &peerlen);
+    answer_text: recvfrom
+    why: |-
+      recvfrom() receives one datagram and writes the sender address into the supplied structure. recv()
+      does not report the sender, and accept() is a stream-server call. (b7)
+    concept: recvfrom-call
+  - kind: order
+    q: Order the 5 correct datagram listener steps. One line is a distractor.
+    lines:
+    - create a SOCK_DGRAM socket
+    - bind it to the local service
+    - call recvfrom with a sender buffer
+    - process the payload
+    - close the socket
+    - call listen before receiving
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      call listen before receiving: Datagram sockets are connectionless and have no listen/accept queue;
+        listen() is for stream servers.
+    hint: Which server call assumes a connection queue that datagrams do not have?
+    why: |-
+      The listener creates a datagram socket, binds it, receives with recvfrom, processes the payload, and
+      closes. listen() belongs to stream sockets and has no role here. (b7)
+    concept: listener-order
+  - kind: why-fails
+    q: A datagram listener calls listen() and accept() before recvfrom(). Why is that wrong?
+    choices:
+    - recvfrom must run before bind is called
+    - accept only works after a datagram arrives
+    - datagram sockets have no connection queue
+    answer: 2
+    why: |-
+      SOCK_DGRAM sockets are connectionless, so there is no listening queue or accepted connection. The
+      listener should bind and call recvfrom directly. recvfrom does not have to precede bind, and accept
+      is not a datagram operation. (b7)
+    concept: dgram-no-listen
+  - kind: predict
+    q: recvfrom() returns 4 for the payload "ping". What does the buffer contain after null termination?
+    choices:
+    - the four bytes p-i-n-g with no null
+    - the four bytes p-i-n-g plus a null
+    - the sender address instead of the data
+    answer: 1
+    why: |-
+      recvfrom writes the payload bytes and returns 4; the program then writes a null at buf[4]. The
+      payload itself does not include a terminator, and the sender address goes into the separate address
+      buffer. (b7)
+    concept: recvfrom-payload
+  - kind: choose-better
+    q: A server must learn who sent each datagram. Which call is better?
+    choices:
+    - recvfrom() with a sockaddr_storage
+    - recv() on a connected datagram socket
+    - accept() on the datagram listener
+    answer: 0
+    why: |-
+      recvfrom() reports the sender address for each packet. recv() is appropriate only after connect
+      fixes one peer, and accept() does not exist for datagram listeners. (b7)
+    concept: sender-capture
+  - kind: eipe
+    q: In one sentence, what is recvfrom() FOR?
+    choices:
+    - it accepts a stream connection from a client
+    - it binds a socket to a local port number
+    - it receives a datagram and reports its sender
+    answer: 2
+    why: |-
+      recvfrom() is the datagram receive call that also captures the sender address. Stream acceptance is
+      accept(), and binding is bind(). (b7)
+    concept: recvfrom-purpose
+  - kind: mcq
+    q: What does addrlen mean in a recvfrom() call?
+    choices:
+    - it is the capacity in and the size out
+    - it is always the payload length in bytes
+    - it is the number of queued datagrams
+    answer: 0
+    why: |-
+      The caller sets addrlen to the address buffer capacity, and the kernel updates it to the actual
+      address length. It is not the payload length or a queue count. (b7)
+    concept: addrlen-in-out
+  common_bugs:
+  - Calling listen() or accept() on a datagram socket.
+  - Forgetting that recvfrom() updates addrlen and null-terminating text manually.
+- id: b8
+  type: syntax
+  title: Send a Datagram with sendto and No Connection
+  explain_md: |-
+    A datagram talker creates a `SOCK_DGRAM` socket and calls `sendto()` with the destination address on
+    every packet. It does not need `connect()` , `listen()` , or `accept()` . The destination travels
+    with the call, so one socket can send to different peers.
+
+    ### Fire and forget
+
+    `sendto()` returning a positive byte count means the local kernel accepted the datagram, not that
+    the receiver got it. UDP does not guarantee delivery, ordering, or duplicate suppression. A talker
+    can send successfully even when no listener is running; the packet simply disappears.
+
+    ### Matching the listener
+
+    A robust datagram pair forces both programs to `AF_INET6` so the sender and listener use the same
+    family. With unconnected datagrams there is no `connect()` error to reveal a mismatch; the packet is
+    just not received. That is why the family choice is part of the design, not an afterthought.
+
+    ### The Notional Machine: address per call
+
+    Each `sendto()` call carries a destination address. The socket itself is not bound to one peer, so
+    the kernel does not filter incoming packets by sender and does not remember a default destination.
+    The caller supplies the destination every time.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <unistd.h>
+
+      int main(void)
+      {
+          int rx;
+          int tx;
+          struct sockaddr_in addr;
+          socklen_t len = sizeof addr;
+          char buf[32];
+          ssize_t n;
+
+          rx = socket(AF_INET, SOCK_DGRAM, 0);
+          tx = socket(AF_INET, SOCK_DGRAM, 0);
+          if (rx == -1 || tx == -1) {
+              return 1;
+          }
+          memset(&addr, 0, sizeof addr);
+          addr.sin_family = AF_INET;
+          addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+          addr.sin_port = htons(0);
+          if (bind(rx, (struct sockaddr *)&addr, sizeof addr) == -1) {
+              return 1;
+          }
+          if (getsockname(rx, (struct sockaddr *)&addr, &len) == -1) {
+              return 1;
+          }
+          n = sendto(tx, "hello", 5, 0,
+                     (struct sockaddr *)&addr, len);
+          if (n != 5) {
+              return 1;
+          }
+          n = recv(rx, buf, sizeof buf - 1, 0);
+          if (n < 0) {
+              return 1;
+          }
+          buf[n] = '\0';
+          printf("sent 5 bytes\n");
+          printf("receiver got: %s\n", buf);
+          close(tx);
+          close(rx);
+          return 0;
+      }
+    run_expected: |
+      sent 5 bytes
+      receiver got: hello
+    explain_md: |-
+      The receiver binds an ephemeral loopback port; the sender never binds or connects. sendto() carries
+      the destination address on the call and returns the five bytes accepted by the local kernel. The
+      receiver then reads the payload with recv(), showing that the talker needed no connection setup.
+    subgoals:
+    - label: Create the Receiver and Sender
+      lines:
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+    - label: Bind the Receiver Address
+      lines:
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+    - label: Send and Confirm the Packet
+      lines:
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+      - 43
+      - 44
+    adapted: true
+    note: |-
+      Adapted from the chapter's talker: the receiver is a local bound socket instead of a remote
+      listener, so sendto and delivery are deterministic without external network access.
+  checks:
+  - kind: mcq
+    q: Which call sends a datagram to an explicit address?
+    choices:
+    - send() call
+    - connect() call
+    - sendto() call
+    answer: 2
+    why: |-
+      sendto() takes a destination address on each call, which is what an unconnected datagram sender
+      needs. send() works only after a peer is fixed, and connect() sets that peer rather than sending
+      data. (b8)
+    concept: sendto-call
+  - kind: fillblank
+    q: A talker does not need to call ____ before sendto().
+    code: |
+      sendto(sockfd, msg, len, 0, res->ai_addr, res->ai_addrlen);
+    answer_text: connect
+    why: |-
+      sendto() supplies the destination itself, so the socket does not need a prior connect(). bind() is
+      also unnecessary for a talker, and listen() is a server call. (b8)
+    concept: no-connect
+  - kind: order
+    q: Order the 5 correct datagram talker steps. One line is a distractor.
+    lines:
+    - fill hints with server name and service
+    - call getaddrinfo for the peer
+    - create a SOCK_DGRAM socket
+    - call sendto with the message
+    - free the list and close
+    - call listen and accept first
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      call listen and accept first: A talker is a datagram client; it neither listens nor accepts connections.
+    hint: Which two calls belong only to a stream server?
+    why: |-
+      The talker resolves the peer, creates a datagram socket, sends with sendto, and cleans up. listen
+      and accept are stream-server operations and have no role in an unconnected datagram client. (b8)
+    concept: talker-order
+  - kind: why-fails
+    q: A talker calls sendto() and exits without checking for an ACK. Why is that normal for UDP?
+    choices:
+    - sendto blocks until the receiver replies
+    - UDP does not guarantee delivery or acknowledgment
+    - the kernel retransmits every lost datagram
+    answer: 1
+    why: |-
+      UDP is best effort and has no built-in acknowledgment or retransmission. sendto does not wait for a
+      reply, and the kernel does not automatically resend lost datagrams. (b8)
+    concept: udp-no-ack
+  - kind: predict
+    q: |-
+      The talker sends 5 bytes with sendto() and no listener is running. What does sendto() normally
+      return?
+    choices:
+    - 5, because the local send succeeded
+    - -1, because no receiver exists
+    - 0, because the packet was dropped
+    answer: 0
+    why: |-
+      sendto returns the number of bytes accepted by the local kernel. With no listener, the packet is
+      dropped later; the local send can still succeed. A return of -1 would indicate a local error, and 0
+      would mean no bytes were accepted. (b8)
+    concept: sendto-no-listener
+  - kind: choose-better
+    q: A program needs to send one message to a known server. Which approach is better?
+    choices:
+    - create a datagram socket and call sendto()
+    - create a stream socket and call listen()
+    - create a datagram socket and call accept()
+    answer: 0
+    why: |-
+      A single message fits the datagram model, and sendto supplies the destination. A stream client would
+      call connect(), not listen(), and datagram sockets do not support accept(). (b8)
+    concept: talker-design
+  - kind: eipe
+    q: In one sentence, what is sendto() FOR?
+    choices:
+    - it connects a socket to a remote peer
+    - it sends one datagram to a supplied address
+    - it binds a socket to a local port number
+    answer: 1
+    why: |-
+      sendto() transmits one datagram and takes the destination address as an argument. connect() fixes a
+      default peer, and bind() sets the local address. (b8)
+    concept: sendto-purpose
+  - kind: mcq
+    q: Why does the talker force AF_INET6 in the datagram example?
+    choices:
+    - to match the listener's address family
+    - to make UDP delivery more reliable
+    - to avoid calling bind on the client side
+    answer: 0
+    why: |-
+      The talker and listener must use the same family or the datagram is silently missed. AF_INET6 does
+      not add reliability, and avoiding bind is independent of the family choice. (b8)
+    concept: family-match
+  common_bugs:
+  - Assuming sendto() success means the receiver got the packet.
+  - Mixing IPv4 and IPv6 in an unconnected datagram pair.
+- id: b9
+  type: design
+  title: Match Families and Use Connected Datagram Sockets
+  explain_md: |-
+    Datagram delivery depends on the sender and receiver agreeing on the address family. If the listener
+    is bound to an IPv6 wildcard and the talker sends to an IPv4 address, the packet is not delivered.
+    There is no `connect()` failure to make the mismatch obvious, so both sides must choose the same
+    family explicitly.
+
+    ### Connected datagram sockets
+
+    Calling `connect()` on a datagram socket does not create a stream connection. It records a default
+    peer. After that, the socket can use `send()` and `recv()` instead of `sendto()` and `recvfrom()` ,
+    and the kernel filters incoming packets to that peer. Delivery is still unreliable.
+
+    ### When to connect a datagram socket
+
+    Connect when one peer will exchange several messages. It removes the repeated destination argument
+    and rejects packets from other senders. Do not connect when one socket must talk to many peers; an
+    unconnected socket with `sendto()` is the right tool there.
+
+    ### The Notional Machine: a default address, not a handshake
+
+    For UDP, `connect()` writes a default destination into the socket's state. It does not send a SYN,
+    does not wait for a reply, and does not guarantee that the peer exists. The benefit is convenience
+    and filtering, not reliability.
+  example:
+    lang: c
+    code: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include <sys/socket.h>
+      #include <netinet/in.h>
+      #include <unistd.h>
+
+      int main(void)
+      {
+          int rx;
+          int tx;
+          struct sockaddr_in addr;
+          socklen_t len = sizeof addr;
+          char buf[32];
+          ssize_t n;
+
+          rx = socket(AF_INET, SOCK_DGRAM, 0);
+          tx = socket(AF_INET, SOCK_DGRAM, 0);
+          if (rx == -1 || tx == -1) {
+              return 1;
+          }
+          memset(&addr, 0, sizeof addr);
+          addr.sin_family = AF_INET;
+          addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+          addr.sin_port = htons(0);
+          if (bind(rx, (struct sockaddr *)&addr, sizeof addr) == -1) {
+              return 1;
+          }
+          if (getsockname(rx, (struct sockaddr *)&addr, &len) == -1) {
+              return 1;
+          }
+          if (connect(tx, (struct sockaddr *)&addr, len) == -1) {
+              return 1;
+          }
+          if (send(tx, "hi", 2, 0) != 2) {
+              return 1;
+          }
+          n = recv(rx, buf, sizeof buf - 1, 0);
+          if (n < 0) {
+              return 1;
+          }
+          buf[n] = '\0';
+          printf("connected sender used send()\n");
+          printf("receiver got: %s\n", buf);
+          close(tx);
+          close(rx);
+          return 0;
+      }
+    run_expected: |
+      connected sender used send()
+      receiver got: hi
+    explain_md: |-
+      The sender calls connect() on a datagram socket to record the receiver's address. It then uses
+      send() without repeating the destination. The receiver still uses recv() on its own bound socket.
+      The packet travels over loopback, and no stream handshake occurs.
+    subgoals:
+    - label: Create and Bind the Receiver
+      lines:
+      - 14
+      - 15
+      - 16
+      - 17
+      - 18
+      - 19
+      - 20
+      - 21
+      - 22
+      - 23
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+    - label: Connect the Datagram Sender
+      lines:
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+    - label: Send and Receive Without sendto
+      lines:
+      - 36
+      - 37
+      - 38
+      - 39
+      - 40
+      - 41
+      - 42
+      - 43
+      - 44
+      - 45
+      - 46
+    adapted: true
+    note: |-
+      Adapted from the chapter's connected-datagram discussion: a loopback receiver makes the
+      connect-then-send path deterministic without external traffic.
+  checks:
+  - kind: mcq
+    q: What happens when an IPv4 datagram client sends to an IPv6 listener?
+    choices:
+    - the listener converts the address family
+    - the packet is silently not received
+    - the client receives an immediate error
+    answer: 1
+    why: |-
+      An unconnected datagram send has no handshake to reveal a family mismatch, so the packet simply does
+      not arrive. The listener does not translate families, and sendto can succeed locally even when the
+      destination cannot receive. (b9)
+    concept: family-mismatch
+  - kind: fillblank
+    q: Calling connect() on a datagram socket sets a default ____.
+    code: |
+      connect(sockfd, (struct sockaddr *)&peer, sizeof peer);
+    answer_text: peer
+    why: |-
+      Datagram connect() records a default peer address for later send and recv calls. It does not create
+      a stream connection or a listening queue. (b9)
+    concept: connected-peer
+  - kind: order
+    q: Order the 5 correct connected-datagram steps. One line is a distractor.
+    lines:
+    - create a SOCK_DGRAM socket
+    - call connect with the peer address
+    - use send and recv on the socket
+    - close the socket
+    - handle the unreliable delivery
+    - call listen before sending
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    distractor_why:
+      call listen before sending: A connected datagram socket has no listening queue; listen() is a stream-server
+        operation.
+    hint: Which call belongs to a stream server and not to UDP?
+    why: |-
+      The datagram socket is created, connected to one peer, used with send/recv, closed, and still
+      treated as unreliable. listen() does not apply. (b9)
+    concept: connected-order
+  - kind: why-fails
+    q: |-
+      A connected datagram socket calls recv() and receives a packet from a different sender. Why does
+      that not happen?
+    choices:
+    - recv refuses packets from unknown ports
+    - the kernel rewrites the sender address
+    - connect filters the socket to one peer
+    answer: 2
+    why: |-
+      For a connected datagram socket, the kernel discards packets that do not match the connected peer.
+      recv itself has no separate sender filter, and the kernel does not rewrite the sender into the
+      expected one. (b9)
+    concept: connected-filter
+  - kind: predict
+    q: A connected UDP sender calls send() twice. What does the first send() do?
+    choices:
+    - it waits for the peer to call recv()
+    - it sends to the connected peer address
+    - it opens a new TCP connection first
+    answer: 1
+    why: |-
+      connect() already stored the default peer, so send() uses that address. UDP send does not wait for a
+      receiver, and it never opens a TCP connection. (b9)
+    concept: connected-send
+  - kind: choose-better
+    q: A datagram client will exchange several packets with one server. Which design is better?
+    choices:
+    - connect once, then use send and recv
+    - call sendto for every outgoing packet
+    - call bind before every sendto call
+    answer: 0
+    why: |-
+      A connected datagram socket fixes the peer once and simplifies repeated sends and receives.
+      Repeating sendto is valid but noisier, and rebinding before every send is unnecessary and
+      error-prone. (b9)
+    concept: connected-design
+  - kind: eipe
+    q: In one sentence, what is a connected datagram socket FOR?
+    choices:
+    - it guarantees delivery over a UDP channel
+    - it turns UDP into a reliable stream socket
+    - it fixes one peer for repeated UDP messages
+    answer: 2
+    why: |-
+      The benefit is a default peer and sender filtering, not reliability. UDP remains best effort, and a
+      connected datagram socket is still not a stream. (b9)
+    concept: connected-purpose
+  - kind: mcq
+    q: Why is a stream family mismatch easier to diagnose than a datagram mismatch?
+    choices:
+    - connect returns an error for the wrong family
+    - stream sockets retry every address family
+    - datagram sockets report every lost packet
+    answer: 0
+    why: |-
+      A stream client calls connect and can see a failure, then try another candidate. An unconnected
+      datagram send can succeed locally even when the receiver cannot accept that family, and UDP does not
+      report lost packets. (b9)
+    concept: family-diagnosis
+  common_bugs:
+  - Assuming connect() makes UDP reliable or performs a handshake.
+  - Mixing address families in an unconnected datagram pair.

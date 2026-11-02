@@ -1,0 +1,19 @@
+meta:
+  book: bgnet
+  chapter_id: ch06
+  title: System Calls or Bust
+  source_ref: Ch.5 'System Calls or Bust' (Beej's Guide to Network Programming)
+  level: core
+  prereqs:
+  - ch05
+objectives:
+- Build client and server lookup hints, then call getaddrinfo() and free the returned addrinfo list
+- Walk the addrinfo linked list, cast each ai_addr to the family-specific sockaddr, and format the address
+  with inet_ntop()
+- Create a socket descriptor from a lookup record and bind it to a local port with the documented error
+  and port rules
+- Sequence the server calls getaddrinfo, socket, bind, listen, and accept, and explain the two descriptors
+  accept returns
+- Move stream bytes with send and recv, including partial sends, blocking behavior, and the recv zero-means-closed
+  rule
+- Choose sendto/recvfrom for unconnected datagrams and close/shutdown correctly without leaking the descriptor

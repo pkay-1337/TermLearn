@@ -1,0 +1,23 @@
+meta:
+  book: bgnet
+  chapter_id: ch07
+  title: Client-Server Background
+  source_ref: Ch.6 'Client-Server Background' (Beej's Guide to Network Programming)
+  level: core
+  prereqs:
+  - ch06
+objectives:
+- |-
+  Model the client-server split and explain why a concurrent server accepts a connection and forks a
+  child
+- |-
+  Sequence a stream server through getaddrinfo, socket, setsockopt, bind, and listen with correct
+  error handling
+- |-
+  Trace accept and fork descriptor ownership so the parent keeps listening and the child owns the
+  connection
+- Reap exited children with a SIGCHLD handler and a non-blocking waitpid loop without losing errno
+- Format IPv4 and IPv6 peer addresses through a family switch and inet_ntop
+- |-
+  Build stream client and datagram listener/talker programs, including family matching and connected
+  UDP sockets

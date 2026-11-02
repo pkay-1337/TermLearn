@@ -1,0 +1,27 @@
+cards:
+  - {front: "What is a file descriptor?", back: "An integer associated with an open file — and that 'file' may be a network connection, FIFO, pipe, terminal, or disk file.", concept: file-descriptor}
+  - {front: "WHEN does a program hold a file descriptor for the network?", back: "After socket() issues it — the descriptor is the program's only handle for that connection.", concept: socket-acquire}
+  - {front: "What does the slogan 'everything in Unix is a file' claim?", back: "Every I/O target answers to the same integer-descriptor read/write interface.", concept: everything-is-a-file}
+  - {front: "WHY is a descriptor called a handle?", back: "It is worthless paper by itself; the kernel resolves it to the real object — like a coat-check ticket.", concept: file-descriptor}
+  - {front: "What does socket() return?", back: "The socket descriptor — an integer you communicate through.", concept: socket-acquire}
+  - {front: "WHY prefer send()/recv() over read()/write() on sockets?", back: "You can use read/write, but send/recv offer much greater control over data transmission.", concept: send-recv-control}
+  - {front: "Does socket() contact a peer?", back: "No — it only creates the local endpoint; nothing is sent and nobody is contacted.", concept: socket-acquire}
+  - {front: "What are the two Internet socket types?", back: "Stream sockets (SOCK_STREAM) and datagram sockets (SOCK_DGRAM).", concept: socket-flavor-names}
+  - {front: "What is the stream socket contract?", back: "Reliable two-way connected communication: order is preserved and data is error-free.", concept: stream-vs-datagram}
+  - {front: "WHY do telnet and ssh use stream sockets?", back: "Every typed character must arrive in the order it was typed.", concept: stream-users}
+  - {front: "What are the datagram socket's three facts?", back: "It may arrive; it may arrive out of order; if it arrives, the data within the packet is error-free.", concept: datagram-contract}
+  - {front: "WHY are datagram sockets called 'connectionless'?", back: "No open connection is maintained — build a packet, address it, send it.", concept: connectionless}
+  - {front: "WHY pick an unreliable underlying protocol?", back: "Two reasons: speed and speed — fire-and-forget beats arrival bookkeeping.", concept: udp-speed-rationale}
+  - {front: "WHEN is UDP a good choice over TCP?", back: "When drops don't matter much — e.g. 40 positional updates per second in a game.", concept: tcp-vs-udp-choice}
+  - {front: "WHEN is TCP the great choice?", back: "When sending chat messages — every line must arrive, in order.", concept: tcp-vs-udp-choice}
+  - {front: "Which protocol gives stream sockets their quality?", back: "TCP (RFC 793) — sequential and error-free delivery.", concept: tcp-name}
+  - {front: "What is IP responsible for?", back: "Internet routing — not data integrity.", concept: ip-role}
+  - {front: "Which protocol do datagram sockets ride?", back: "UDP (RFC 768), over IP for routing.", concept: udp-name}
+  - {front: "How does tftp get reliability above UDP?", back: "Per-packet ACKs ('I got it!') and retransmission when no reply lands in ~5 seconds.", concept: ack-retransmit}
+  - {front: "WHY must tftp add its own protocol on top of UDP?", back: "Binary data can't be lost if the application must work — UDP alone may drop packets.", concept: udp-reliability-gap}
+  - {front: "What is data encapsulation?", back: "Each protocol wraps the whole packet in its own header: TFTP, then UDP, then IP, then Ethernet.", concept: encapsulation-order}
+  - {front: "Who strips which headers on receive?", back: "Hardware strips Ethernet; the kernel strips IP and UDP; the application strips its own.", concept: strip-order}
+  - {front: "What does the kernel build for a socket programmer?", back: "The Transport and Internet layers; the hardware does Network Access.", concept: kernel-layers}
+  - {front: "WHY is hardware transparent to socket programmers?", back: "Lower layers handle physical transmission, so the same program runs over any medium.", concept: layer-transparency}
+  - {front: "What are the Unix model's four layers?", back: "Application; Host-to-Host Transport; Internet; Network Access.", concept: unix-four-layers}
+  - {front: "WHEN do you sendto() instead of send()?", back: "On datagram sockets — the connectionless flavor addresses each packet as it sends.", concept: sendto}

@@ -1,0 +1,73 @@
+test:
+  gates:
+    - needs: [b1, b2, b3]
+      min_quiz: 70
+    - needs: [b1, b2, b3, b4, b5, b6]
+      min_quiz: 80
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12]
+      min_quiz: 85
+  final_checks:
+    - kind: order
+      q: "Order the statements that build a complete IPv4 endpoint for port 443. One line is a distractor."
+      lines:
+        - "ina.sin_addr.s_addr = 0xc0000205;"
+        - "memset(&ina, 0, sizeof ina);"
+        - "ina.sin_port = htons(443);"
+        - "ina.sin_port = ntohs(443);"
+        - "struct sockaddr_in ina;"
+        - "ina.sin_family = AF_INET;"
+      answer_order: [4, 1, 5, 2, 0]
+      distractor_why:
+        "ina.sin_port = ntohs(443);": "ntohs converts network order to host order; a port being prepared for the wire needs htons."
+      why: "The data flow is: reserve the structure, zero its whole footprint (including sin_zero), set the IPv4 family, store the port in network order, store the address, and only then hand it to a socket call. Using ntohs reverses the conversion direction. (b8)"
+      concept: final-sockaddr-build
+    - kind: trace
+      q: "Trace the netmask operation for 198.51.100.77/29. What value belongs in the target cell?"
+      code: |
+        unsigned char ip[4]   = {198, 51, 100, 77};
+        unsigned char mask[4] = {255, 255, 255, 248};
+        unsigned char net[4];
+        for (int i = 0; i < 4; i++)
+            net[i] = ip[i] & mask[i];
+      trace:
+        headers: ["Step", "Byte", "Address", "Mask", "Result"]
+        rows:
+          - {step: 1, line: 1, cells: ["1", "0", "198", "255", "198"]}
+          - {step: 2, line: 2, cells: ["2", "1", "51", "255", "51"]}
+          - {step: 3, line: 3, cells: ["3", "2", "100", "255", "100"]}
+          - {step: 4, line: 4, cells: ["4", "3", "77", "248", "???"]}
+      target: {row: 3, col: 4}
+      choices: ["77", "72", "64", "248"]
+      answer: 1
+      why: "77 is 01001101 and 248 is 11111000; AND keeps 01001000, which is 72, so the network is 198.51.100.72. 77 traps forgetting to apply the mask. 64 would require the lower three host bits to be zero than 72 contains; 248 is the mask byte, not the result. (b3)"
+      concept: final-subnet-trace
+    - kind: choose-better
+      q: "Two versions of the same client must connect on both IPv4-only and IPv6-only hosts. Which lookup strategy is better?"
+      choices:
+        - "hard-code AF_INET in the addrinfo hints so the family never changes"
+        - "set AF_UNSPEC in the hints and use the first returned candidate that works"
+        - "call inet_pton on the hostname and skip the lookup entirely"
+      answer: 1
+      why: "AF_UNSPEC lets getaddrinfo return whatever family the host supports, and the practical rule is to use the first result that works. Hard-coding AF_INET fails on IPv6-only hosts. inet_pton is for numeric addresses only and does not resolve hostnames, so it cannot replace the lookup. (b7)"
+      concept: final-dual-stack-lookup
+    - kind: spot-bug
+      q: "A port appears reversed on the wire. Which line introduces the bug, and why?"
+      code: |
+        struct sockaddr_in ina;
+        memset(&ina, 0, sizeof ina);
+        ina.sin_family = AF_INET;
+        ina.sin_port = 8080;
+        /* connect(sock, (struct sockaddr *)&ina, sizeof ina); */
+      diagnostic_log: |
+        $ tcpdump -n -i any 'tcp[tcpflags] & tcp-syn != 0'
+        IP 192.0.2.5.36895 > 198.51.100.7.80: Flags [S], seq 0, win 65535
+        # expected source port 8080 (0x1f90), observed 36895 (0x901f)
+      target_line: 4
+      choices:
+        - "Line 1: sockaddr_in must be allocated on the heap"
+        - "Line 3: AF_INET is the wrong family for port 8080"
+        - "Line 4: the port is stored in host order instead of network order"
+        - "Line 2: memset erased the port after it was set"
+      answer: 2
+      why: "The observed source port 36895 is 0x901f, the byte-swapped form of 8080 (0x1f90), so the wire read the two host-order bytes as network order. The fix is htons(8080). Stack allocation is normal, AF_INET is correct for an IPv4 endpoint, and memset runs before the port assignment, so it cannot have erased it. (b8)"
+      concept: final-missing-htons

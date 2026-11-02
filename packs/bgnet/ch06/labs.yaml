@@ -1,0 +1,672 @@
+labs:
+- id: lab1
+  title: Build Client and Server Lookup Hints
+  instruction_md: |
+    ### What You Are Building
+    You are preparing two blank address forms: one for a server and one for a
+    client. Each form tells `getaddrinfo` what kind of connection you want:
+    stream sockets, any address family, and, for the server, permission to
+    accept incoming connections.
+
+    ## Goal
+
+    Practice the request side of `getaddrinfo()`: clear a `struct addrinfo`
+    and fill the fields that describe the role the program plays.
+
+    ## What you must implement
+
+    Complete the two functions in `hints.c`:
+
+    1. `hints_server(struct addrinfo *hints)` — reject a NULL pointer with
+       `-1`. Otherwise clear the whole structure with `memset`, set
+       `ai_family` to `AF_UNSPEC`, set `ai_socktype` to `SOCK_STREAM`, set
+       `ai_flags` to `AI_PASSIVE`, and return `0`.
+    2. `hints_client(struct addrinfo *hints)` — reject a NULL pointer with
+       `-1`. Otherwise clear the structure, set `ai_family` to `AF_UNSPEC`,
+       set `ai_socktype` to `SOCK_STREAM`, leave `ai_flags` at zero, and
+       return `0`.
+
+    `hints.h`, `main.c`, and `test_runner.c` are complete. Do not edit them.
+
+    ## Why the clear comes first
+
+    The test runner fills the structure with `0xAA` before calling your
+    function. If you assign fields before clearing, or forget to clear, the
+    leftover bytes remain in fields you did not set. The tests check
+    `ai_next` and the passive bit to catch that mistake.
+
+    ## Verify
+
+    - `t` (test) compiles and runs the unit runner. The untouched starter
+      returns `-1`, so the tests fail first.
+    - After implementing both functions, every assertion must PASS.
+    - `r` (run) prints the family and passive flag for both roles.
+  files:
+  - path: hints.h
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #ifndef HINTS_H
+      #define HINTS_H
+
+      #include <netdb.h>
+
+      /* Fill hints for a server: AF_UNSPEC, SOCK_STREAM, AI_PASSIVE.
+       * Return 0 on success, -1 when hints is NULL. */
+      int hints_server(struct addrinfo *hints);
+
+      /* Fill hints for a client: AF_UNSPEC, SOCK_STREAM, no AI_PASSIVE.
+       * Return 0 on success, -1 when hints is NULL. */
+      int hints_client(struct addrinfo *hints);
+
+      #endif
+  - path: hints.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include "hints.h"
+      #include <string.h>
+
+      int hints_server(struct addrinfo *hints)
+      {
+          (void)hints;
+          /* TODO: clear the structure, then set ai_family to AF_UNSPEC,
+           * ai_socktype to SOCK_STREAM, and ai_flags to AI_PASSIVE. */
+          return -1;
+      }
+
+      int hints_client(struct addrinfo *hints)
+      {
+          (void)hints;
+          /* TODO: clear the structure, then set ai_family to AF_UNSPEC
+           * and ai_socktype to SOCK_STREAM. Leave ai_flags zero. */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include "hints.h"
+
+      int main(void)
+      {
+          struct addrinfo server;
+          struct addrinfo client;
+
+          if (hints_server(&server) != 0 || hints_client(&client) != 0) {
+              puts("hints not implemented");
+              return 1;
+          }
+
+          printf("server family: %s\n",
+                 server.ai_family == AF_UNSPEC ? "either" : "fixed");
+          printf("server passive: %s\n",
+                 (server.ai_flags & AI_PASSIVE) ? "yes" : "no");
+          printf("client family: %s\n",
+                 client.ai_family == AF_UNSPEC ? "either" : "fixed");
+          printf("client passive: %s\n",
+                 (client.ai_flags & AI_PASSIVE) ? "yes" : "no");
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <netdb.h>
+      #include "hints.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      int main(void)
+      {
+          struct addrinfo hints;
+
+          memset(&hints, 0xAA, sizeof hints);
+          check(hints_server(&hints) == 0, "hints_server returns 0");
+          check(hints.ai_family == AF_UNSPEC, "server family is AF_UNSPEC");
+          check(hints.ai_socktype == SOCK_STREAM, "server type is SOCK_STREAM");
+          check((hints.ai_flags & AI_PASSIVE) != 0, "server sets AI_PASSIVE");
+          check(hints.ai_next == NULL, "server clears the whole structure");
+
+          memset(&hints, 0xAA, sizeof hints);
+          check(hints_client(&hints) == 0, "hints_client returns 0");
+          check(hints.ai_family == AF_UNSPEC, "client family is AF_UNSPEC");
+          check(hints.ai_socktype == SOCK_STREAM, "client type is SOCK_STREAM");
+          check((hints.ai_flags & AI_PASSIVE) == 0, "client does not set AI_PASSIVE");
+          check(hints.ai_next == NULL, "client clears the whole structure");
+
+          check(hints_server(NULL) == -1, "hints_server rejects NULL");
+          check(hints_client(NULL) == -1, "hints_client rejects NULL");
+
+          if (failures == 0) {
+              puts("all hint tests passed");
+          } else {
+              printf("%d hint tests failed\n", failures);
+          }
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 hints.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 hints.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      server family: either
+      server passive: yes
+      client family: either
+      client passive: no
+    expect_exit: 0
+  hints:
+  - 'Think about the two roles: a server accepts wildcard connections, while a client connects to a named
+    peer.'
+  - Clear every byte before setting fields, then set the family and socket type for both roles.
+  - Server sets AI_PASSIVE in ai_flags; client leaves ai_flags at zero.
+  lang: c
+- id: lab2
+  title: Walk a Mixed-Family addrinfo List
+  instruction_md: |
+    ### What You Are Building
+    You are given a linked list of address candidates returned by a lookup.
+    You will walk it like a checklist: count the IPv4 and IPv6 entries, give a
+    family its readable name, and turn the first matching binary address into
+    text.
+
+    ## Goal
+
+    Practice traversing a lookup result list, counting nodes by family, and
+    extracting a numeric address by casting `ai_addr` to the concrete
+    `sockaddr` type selected by `ai_family`.
+
+    ## What you must implement
+
+    Complete the three functions in `addrwalk.c`:
+
+    1. `int family_count(const struct addrinfo *list, int family)` — return
+       the number of nodes whose `ai_family` equals `family`. If `family` is
+       `AF_UNSPEC`, count every node. A NULL list has count `0`.
+    2. `const char *family_name(int family)` — return `"IPv4"` for
+       `AF_INET`, `"IPv6"` for `AF_INET6`, and `"other"` for anything else.
+    3. `int format_first(const struct addrinfo *list, int family, char *buf,
+       size_t len)` — find the first node whose family matches, cast its
+       `ai_addr`, format the address with `inet_ntop`, and return `0`.
+       Return `-1` for a NULL list, NULL buffer, zero length, an unsupported
+       family, a missing match, or a formatting failure.
+
+    `addrwalk.h`, `main.c`, and `test_runner.c` are complete. Do not edit
+    them. The test harness builds a deterministic two-node list with an IPv4
+    node and an IPv6 node, so no network lookup is performed.
+
+    ## The cast rule
+
+    For `AF_INET`, cast `p->ai_addr` to `struct sockaddr_in *` and use
+    `sin_addr`. For `AF_INET6`, cast to `struct sockaddr_in6 *` and use
+    `sin6_addr`. Pass the same family to `inet_ntop`.
+
+    ## Verify
+
+    - `t` (test) fails on the untouched stubs.
+    - After implementation, the runner prints that all address-walk tests
+      passed.
+    - `r` (run) prints both numeric addresses and the family counts.
+  files:
+  - path: addrwalk.h
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #ifndef ADDRWALK_H
+      #define ADDRWALK_H
+
+      #include <stddef.h>
+      #include <netdb.h>
+
+      /* Count nodes with the given family; AF_UNSPEC counts every node. */
+      int family_count(const struct addrinfo *list, int family);
+
+      /* Return "IPv4", "IPv6", or "other". */
+      const char *family_name(int family);
+
+      /* Format the first matching node's numeric address into buf.
+       * Return 0 on success, -1 on any failure or missing match. */
+      int format_first(const struct addrinfo *list, int family,
+                       char *buf, size_t len);
+
+      #endif
+  - path: addrwalk.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include "addrwalk.h"
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include <netinet/in.h>
+
+      int family_count(const struct addrinfo *list, int family)
+      {
+          (void)list;
+          (void)family;
+          /* TODO: walk ai_next and count matching nodes.
+           * Treat AF_UNSPEC as a match for every node. */
+          return -1;
+      }
+
+      const char *family_name(int family)
+      {
+          (void)family;
+          /* TODO: map AF_INET to "IPv4", AF_INET6 to "IPv6",
+           * and every other value to "other". */
+          return "other";
+      }
+
+      int format_first(const struct addrinfo *list, int family,
+                       char *buf, size_t len)
+      {
+          (void)list;
+          (void)family;
+          (void)buf;
+          (void)len;
+          /* TODO: find the first matching node, cast ai_addr by family,
+           * and call inet_ntop. Return 0 only on success. */
+          return -1;
+      }
+  - path: main.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include <netinet/in.h>
+      #include "addrwalk.h"
+
+      static void make_list(struct addrinfo *a4, struct addrinfo *a6,
+                            struct sockaddr_in *v4, struct sockaddr_in6 *v6)
+      {
+          memset(v4, 0, sizeof *v4);
+          v4->sin_family = AF_INET;
+          inet_pton(AF_INET, "192.0.2.88", &v4->sin_addr);
+
+          memset(v6, 0, sizeof *v6);
+          v6->sin6_family = AF_INET6;
+          inet_pton(AF_INET6, "2001:db8::171", &v6->sin6_addr);
+
+          memset(a4, 0, sizeof *a4);
+          memset(a6, 0, sizeof *a6);
+          a4->ai_family = AF_INET;
+          a4->ai_addr = (struct sockaddr *)v4;
+          a4->ai_next = a6;
+          a6->ai_family = AF_INET6;
+          a6->ai_addr = (struct sockaddr *)v6;
+      }
+
+      int main(void)
+      {
+          struct sockaddr_in v4;
+          struct sockaddr_in6 v6;
+          struct addrinfo a4, a6;
+          char text[INET6_ADDRSTRLEN];
+
+          make_list(&a4, &a6, &v4, &v6);
+
+          if (format_first(&a4, AF_INET, text, sizeof text) != 0 ||
+              format_first(&a4, AF_INET6, text, sizeof text) != 0) {
+              puts("address walk not implemented");
+              return 1;
+          }
+
+          format_first(&a4, AF_INET, text, sizeof text);
+          printf("IPv4: %s\n", text);
+          format_first(&a4, AF_INET6, text, sizeof text);
+          printf("IPv6: %s\n", text);
+          printf("counts: v4=%d v6=%d\n",
+                 family_count(&a4, AF_INET),
+                 family_count(&a4, AF_INET6));
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200112L
+      #include <stdio.h>
+      #include <string.h>
+      #include <arpa/inet.h>
+      #include <netinet/in.h>
+      #include "addrwalk.h"
+
+      static int failures;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      static void make_list(struct addrinfo *a4, struct addrinfo *a6,
+                            struct sockaddr_in *v4, struct sockaddr_in6 *v6)
+      {
+          memset(v4, 0, sizeof *v4);
+          v4->sin_family = AF_INET;
+          inet_pton(AF_INET, "192.0.2.88", &v4->sin_addr);
+
+          memset(v6, 0, sizeof *v6);
+          v6->sin6_family = AF_INET6;
+          inet_pton(AF_INET6, "2001:db8::171", &v6->sin6_addr);
+
+          memset(a4, 0, sizeof *a4);
+          memset(a6, 0, sizeof *a6);
+          a4->ai_family = AF_INET;
+          a4->ai_addr = (struct sockaddr *)v4;
+          a4->ai_next = a6;
+          a6->ai_family = AF_INET6;
+          a6->ai_addr = (struct sockaddr *)v6;
+      }
+
+      int main(void)
+      {
+          struct sockaddr_in v4;
+          struct sockaddr_in6 v6;
+          struct addrinfo a4, a6;
+          char text[INET6_ADDRSTRLEN];
+
+          make_list(&a4, &a6, &v4, &v6);
+
+          check(family_count(&a4, AF_INET) == 1, "one IPv4 node");
+          check(family_count(&a4, AF_INET6) == 1, "one IPv6 node");
+          check(family_count(&a4, AF_UNSPEC) == 2, "two total nodes");
+          check(family_count(NULL, AF_INET) == 0, "NULL list has count 0");
+
+          check(strcmp(family_name(AF_INET), "IPv4") == 0, "AF_INET is IPv4");
+          check(strcmp(family_name(AF_INET6), "IPv6") == 0, "AF_INET6 is IPv6");
+          check(strcmp(family_name(AF_UNSPEC), "other") == 0, "AF_UNSPEC is other");
+
+          check(format_first(&a4, AF_INET, text, sizeof text) == 0,
+                "format IPv4 returns 0");
+          check(strcmp(text, "192.0.2.88") == 0, "IPv4 text is correct");
+
+          check(format_first(&a4, AF_INET6, text, sizeof text) == 0,
+                "format IPv6 returns 0");
+          check(strcmp(text, "2001:db8::171") == 0, "IPv6 text is correct");
+
+          check(format_first(&a6, AF_INET, text, sizeof text) == -1,
+                "missing family returns -1");
+          check(format_first(NULL, AF_INET, text, sizeof text) == -1,
+                "NULL list returns -1");
+          check(format_first(&a4, AF_INET, NULL, sizeof text) == -1,
+                "NULL buffer returns -1");
+          check(format_first(&a4, AF_INET, text, 0) == -1,
+                "zero length returns -1");
+          check(format_first(&a4, AF_UNSPEC, text, sizeof text) == -1,
+                "AF_UNSPEC is not a concrete formatting family");
+
+          if (failures == 0) {
+              puts("all address-walk tests passed");
+          } else {
+              printf("%d address-walk tests failed\n", failures);
+          }
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 addrwalk.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 addrwalk.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      IPv4: 192.0.2.88
+      IPv6: 2001:db8::171
+      counts: v4=1 v6=1
+    expect_exit: 0
+  hints:
+  - Walk every node through the list link and stop when the pointer is NULL.
+  - The family tag tells you which concrete sockaddr to cast to before reading the address.
+  - For a matching node, call inet_ntop with the family and address field, and return 0 only on success.
+  lang: c
+- id: lab3
+  title: Send Every Byte Despite Partial Writes
+  instruction_md: |
+    ### What You Are Building
+    You are building a reliable sender. A socket may accept only part of what
+    you hand it, so you keep offering the leftover bytes until the whole
+    message has gone through. You will also classify receive results and
+    describe which direction a shutdown affects.
+
+    ## Goal
+
+    Implement the partial-send loop that the stream API requires. A single
+    `send()` may accept fewer bytes than requested, so a correct sender
+    tracks the total and retries the remainder.
+
+    ## What you must implement
+
+    Complete the three functions in `streamio.c`:
+
+    1. `int send_all(int fd, const char *msg, int len, send_fn sender)` —
+       repeatedly call `sender(fd, msg + total, len - total, 0)` until every
+       byte is accepted. Return the total number of bytes sent. Return `-1`
+       if `sender` returns `0` or a negative value, and return `-1` for a
+       NULL message or a negative length. A zero length returns `0` without
+       calling `sender`.
+    2. `int recv_status(int n)` — return `1` when `n > 0` (data received),
+       `0` when `n == 0` (peer closed), and `-1` when `n < 0` (error).
+    3. `const char *shutdown_effect(int how)` — return `"receives"` for
+       `SHUT_RD`, `"sends"` for `SHUT_WR`, `"both"` for `SHUT_RDWR`, and
+       `"unknown"` for anything else.
+
+    `streamio.h`, `main.c`, and `test_runner.c` are complete. The test harness
+    supplies fake sender functions, so no real socket is required.
+
+    ## Why the loop matters
+
+    The fake sender in the tests accepts only two or three bytes per call.
+    Returning after one positive call would leave most of the message
+    unsent. The loop must continue until `total == len`.
+
+    ## Verify
+
+    - `t` (test) fails on the untouched stubs.
+    - After implementation, the runner prints that all stream-I/O tests
+      passed.
+    - `r` (run) prints the send total, the fake peer's received text, and the
+      status and shutdown mappings.
+  files:
+  - path: streamio.h
+    content: |
+      #ifndef STREAMIO_H
+      #define STREAMIO_H
+
+      #include <stddef.h>
+
+      typedef int (*send_fn)(int fd, const void *buf, int len, int flags);
+
+      /* Send every byte, retrying partial accepts. Return total or -1. */
+      int send_all(int fd, const char *msg, int len, send_fn sender);
+
+      /* Map a recv return to 1 (data), 0 (closed), or -1 (error). */
+      int recv_status(int n);
+
+      /* Map SHUT_RD/WR/RDWR to "receives"/"sends"/"both"/"unknown". */
+      const char *shutdown_effect(int how);
+
+      #endif
+  - path: streamio.c
+    content: |
+      #include "streamio.h"
+      #include <sys/socket.h>
+
+      int send_all(int fd, const char *msg, int len, send_fn sender)
+      {
+          (void)fd;
+          (void)msg;
+          (void)len;
+          (void)sender;
+          /* TODO: loop over the remaining slice, retrying until total
+           * reaches len. Return -1 when sender returns 0 or less. */
+          return -1;
+      }
+
+      int recv_status(int n)
+      {
+          (void)n;
+          /* TODO: distinguish data, orderly close, and error. */
+          return -1;
+      }
+
+      const char *shutdown_effect(int how)
+      {
+          (void)how;
+          /* TODO: map SHUT_RD, SHUT_WR, and SHUT_RDWR to their effects. */
+          return "unknown";
+      }
+  - path: main.c
+    content: |
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include "streamio.h"
+
+      static char received[64];
+      static int received_len;
+
+      static int fake_sender(int fd, const void *buf, int len, int flags)
+      {
+          int take = len > 3 ? 3 : len;
+
+          (void)fd;
+          (void)flags;
+          memcpy(received + received_len, buf, (size_t)take);
+          received_len += take;
+          return take;
+      }
+
+      int main(void)
+      {
+          const char *message = "hello lab";
+          int total;
+
+          total = send_all(1, message, (int)strlen(message), fake_sender);
+          if (total < 0) {
+              puts("stream I/O not implemented");
+              return 1;
+          }
+
+          received[received_len] = '\0';
+          printf("send_all returned: %d\n", total);
+          printf("fake peer received: %s\n", received);
+          printf("recv_status(0): %s\n",
+                 recv_status(0) == 0 ? "closed" : "wrong");
+          printf("shutdown_effect(SHUT_WR): %s\n",
+                 shutdown_effect(SHUT_WR));
+          return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include "streamio.h"
+
+      static int failures;
+      static char captured[64];
+      static int captured_len;
+
+      static void check(int condition, const char *message)
+      {
+          if (!condition) {
+              printf("FAIL: %s\n", message);
+              failures++;
+          }
+      }
+
+      static int sender_two(int fd, const void *buf, int len, int flags)
+      {
+          int take = len > 2 ? 2 : len;
+
+          (void)fd;
+          (void)flags;
+          memcpy(captured + captured_len, buf, (size_t)take);
+          captured_len += take;
+          return take;
+      }
+
+      static int sender_zero(int fd, const void *buf, int len, int flags)
+      {
+          (void)fd;
+          (void)buf;
+          (void)len;
+          (void)flags;
+          return 0;
+      }
+
+      static int sender_error(int fd, const void *buf, int len, int flags)
+      {
+          (void)fd;
+          (void)buf;
+          (void)len;
+          (void)flags;
+          return -1;
+      }
+
+      int main(void)
+      {
+          const char *message = "abcdefghij";
+          int total;
+
+          captured_len = 0;
+          total = send_all(1, message, 10, sender_two);
+          captured[captured_len] = '\0';
+          check(total == 10, "send_all returns the full length");
+          check(strcmp(captured, message) == 0, "every byte reaches the sender");
+
+          check(send_all(1, message, 10, sender_zero) == -1,
+                "zero return aborts with -1");
+          check(send_all(1, message, 10, sender_error) == -1,
+                "negative return aborts with -1");
+          check(send_all(1, message, 0, sender_two) == 0,
+                "zero length returns 0");
+          check(send_all(1, NULL, 10, sender_two) == -1,
+                "NULL message returns -1");
+          check(send_all(1, message, -1, sender_two) == -1,
+                "negative length returns -1");
+
+          check(recv_status(5) == 1, "positive recv means data");
+          check(recv_status(0) == 0, "zero recv means closed");
+          check(recv_status(-1) == -1, "negative recv means error");
+
+          check(strcmp(shutdown_effect(SHUT_RD), "receives") == 0,
+                "SHUT_RD maps to receives");
+          check(strcmp(shutdown_effect(SHUT_WR), "sends") == 0,
+                "SHUT_WR maps to sends");
+          check(strcmp(shutdown_effect(SHUT_RDWR), "both") == 0,
+                "SHUT_RDWR maps to both");
+          check(strcmp(shutdown_effect(99), "unknown") == 0,
+                "unknown direction maps to unknown");
+
+          if (failures == 0) {
+              puts("all stream-I/O tests passed");
+          } else {
+              printf("%d stream-I/O tests failed\n", failures);
+          }
+          return failures == 0 ? 0 : 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 streamio.c main.c -o app && ./app
+    test: gcc -Wall -Wextra -std=c99 streamio.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - name: Reference run output
+    stdin: ''
+    expect: |
+      send_all returned: 9
+      fake peer received: hello lab
+      recv_status(0): closed
+      shutdown_effect(SHUT_WR): sends
+    expect_exit: 0
+  hints:
+  - A partial send means you must continue from where the previous call stopped.
+  - Track the running total and stop on a non-positive sender return.
+  - Map recv's sign to a status value, and use a switch for SHUT_RD, SHUT_WR, and SHUT_RDWR.
+  lang: c

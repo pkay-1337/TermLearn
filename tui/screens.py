@@ -24,6 +24,9 @@ class _Base(Screen):
     def action_help(self) -> None:
         self.app.action_help()
 
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
 
 class HomeScreen(_Base):
     HELP_TITLE = "books"

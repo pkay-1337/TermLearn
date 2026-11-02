@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from textual import on
+from textual import events, on
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
@@ -31,6 +31,9 @@ class _Base(Screen):
     def action_help(self) -> None:
         self.app.action_help()
 
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
     def on_unmount(self) -> None:
         con = getattr(self, "_con", None)
         if con is not None:
@@ -46,7 +49,8 @@ class StudyScreen(VimScrollMixin, _Base):
     HELP_LINES = [("1-4", "answer check"), ("n", "next page / step"),
                   ("p", "previous page / step"), ("s", "skip check"),
                   ("r", "run example"), ("i", "inspect example (toolchain)"),
-                  ("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
+                  ("j/k", "scroll"), ("d/u", "half page"),
+                  ("esc", "leave answer field"), ("q/h", "back")]
     BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 10)] +
                 [Binding("n", "next", "Next"),
                  Binding("p", "prev", "Previous"),
@@ -405,7 +409,8 @@ class QuizScreen(VimScrollMixin, _Base):
     HELP_TITLE = "quiz"
     HELP_LINES = [("1-4", "answer choice"), ("n", "next / trace step"),
                   ("p", "previous trace step"), ("j/k", "scroll / nav"),
-                  ("d/u", "half page"), ("q", "back")]
+                  ("d/u", "half page"), ("esc", "leave answer field"),
+                  ("q", "back")]
     BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 10)] +
                 [Binding("n", "next", "Next"),
                  Binding("p", "prev", "Previous", show=False),
@@ -586,6 +591,11 @@ class QuizScreen(VimScrollMixin, _Base):
 
 
 class EditCardModal(ModalScreen):
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("q", "cancel", "Cancel", show=False),
+    ]
+
     def __init__(self, front: str, back: str) -> None:
         super().__init__()
         self._front = front
@@ -610,6 +620,9 @@ class EditCardModal(ModalScreen):
 
     @on(Button.Pressed, "#edit-cancel")
     def _cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_cancel(self) -> None:
         self.dismiss(None)
 
 
@@ -837,6 +850,7 @@ class LabScreen(_Base):
         ("p/[", "previous lab"),
         ("n/]", "next lab"),
         ("tab", "switch pane"),
+        ("esc", "leave editor"),
         ("q", "back"),
     ]
     BINDINGS = [
@@ -1042,6 +1056,13 @@ class LabScreen(_Base):
     def on_mount(self) -> None:
         super().on_mount()
         self.query_one("#lab-scroll").focus()
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape":
+            from textual.widgets import TextArea
+            if isinstance(self.app.focused, TextArea):
+                event.stop()
+                self.query_one("#lab-scroll").focus()
 
     def _show_output(self, text: str) -> None:
         self.console_output = text

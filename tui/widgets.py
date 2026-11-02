@@ -95,7 +95,10 @@ class VimScrollMixin:
 class HelpModal(ModalScreen):
     """Key overlay opened by `?` on any screen. (IF-TUI-003)"""
 
-    BINDINGS = [("escape", "close", "Close")]
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("q", "close", "Close", show=False),
+    ]
 
     def __init__(self, title: str, lines: list[tuple[str, str]]) -> None:
         super().__init__()
@@ -496,6 +499,13 @@ class QuestionWidget(Static):
             yield Input(placeholder="expected output (r runs the code first)",
                         id="micro-in", classes="question-input")
         yield Static("", id="feedback", classes="feedback-msg")
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "escape":
+            from textual.widgets import Input
+            if isinstance(self.app.focused, Input):
+                event.stop()
+                self.screen.set_focus(None)
 
     def _render_trace_table(self) -> str:
         ck = self.check

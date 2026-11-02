@@ -7,6 +7,14 @@ from lib import books as books_mod
 app = typer.Typer(help="termlearn — learn technical books in the terminal. See docs/SRS.md")
 
 
+@app.callback(invoke_without_command=True)
+def _default(ctx: typer.Context) -> None:
+    """Launch the TUI when no subcommand is supplied."""
+    if ctx.invoked_subcommand is None:
+        from tui.app import run
+        run()
+
+
 @app.command()
 def books():
     """List discovered books with pack coverage + mastery. (FR-BOOK-001..002)"""

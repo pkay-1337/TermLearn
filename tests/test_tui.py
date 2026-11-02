@@ -790,3 +790,70 @@ async def test_revise_screen_renders_content(tmp_path, monkeypatch):
         await pilot.pause()
         cards = screen.query(".study-block-card")
         assert len(cards) >= 1
+
+
+async def test_chapters_q_returns_home_after_click(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.screens import ChaptersScreen, HomeScreen
+
+    app = LearnApp()
+    async with app.run_test(size=(120, 40)) as pilot:
+        await _wait_screen(app, pilot, HomeScreen)
+        await pilot.click("#book-list", offset=(5, 1))
+        await _wait_screen(app, pilot, ChaptersScreen)
+        await pilot.press("q")
+        await _wait_screen(app, pilot, HomeScreen)
+
+
+async def test_help_modal_q_closes(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.screens import HomeScreen
+    from tui.widgets import HelpModal
+
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        await _wait_screen(app, pilot, HomeScreen)
+        app.push_screen(HelpModal("test", []))
+        await _wait_screen(app, pilot, HelpModal)
+        await pilot.press("q")
+        await _wait_screen(app, pilot, HomeScreen)
+
+
+async def test_quiz_text_input_escape_then_q_returns(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.screens import HomeScreen
+
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        await _wait_screen(app, pilot, HomeScreen)
+        quiz = QuizScreen("extreme-c", "ch10", kind="fillblank")
+        app.push_screen(quiz)
+        await _wait_screen(app, pilot, QuizScreen)
+        await _wait_body(app, pilot)
+        await pilot.pause()
+        quiz.query_one("#fill-in", Input).focus()
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("q")
+        await _wait_screen(app, pilot, HomeScreen)
+
+
+async def test_lab_editor_escape_then_q_returns(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from textual.widgets import TextArea
+    from tui.screens import HomeScreen
+
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        await _wait_screen(app, pilot, HomeScreen)
+        lab = LabScreen("extreme-c", "ch10")
+        app.push_screen(lab)
+        await _wait_screen(app, pilot, LabScreen)
+        await pilot.pause()
+        lab.query_one("#lab-code", TextArea).focus()
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        await pilot.press("q")
+        await _wait_screen(app, pilot, HomeScreen)

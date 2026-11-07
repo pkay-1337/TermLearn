@@ -22,9 +22,9 @@
 # Step 6: Write 'packs/extreme-c/ch23/test.yaml' (mastery gates and certification criteria)
 #
 # [POST-GENERATION TESTING PROTOCOL (MUST TEST AFTER CREATING YAMLS)]
-# 0. MANDATORY: read prompts/checks_after_chapter_creation.md and verify every
-#    applicable item in it before declaring the chapter complete.
-# 1. Block checks & questions: each item carries 1.1–1.10.
+# 1. Block checks & questions: each item carries 1.1–1.10, including uniform choice lengths,
+#    one-word/token fillblank answers (or a stated format), and order stems that state the
+#    number of correct lines.
 # 2. Quiz stanza (if quiz: present / quiz.yaml):
 #    - Count 30–50.
 #    - Levels intro + core + advanced all present.
@@ -34,6 +34,8 @@
 #    - Each item carries 1.1–1.10.
 # 3. Labs (if labs: present / labs.yaml):
 #    - Contract — each lab has id, title, instruction_md, non-empty safe files, commands.run/test, test_cases[].expect, progressive hints.
+#    - Instruction intro — every instruction_md begins with a plain-language 'What You Are Building' section explaining the object/behavior and how it works.
+#    - Unambiguous instructions — name exact APIs/constants/fields/returns; define error precedence, boundary and lifecycle cases; include a worked example or exact run transcript; no behavior inferable only from headers/hints/tests.
 #    - Blank starters — implementation file(s) content: "" or TODO-stubbed; headers/drivers/test-runners complete.
 #    - Fail-first — running commands.test on the untouched starter must FAIL (missing symbols/compile error).
 #    - Safe commands — no denylisted patterns (rm -rf, curl, wget, ssh, mkfs, fork bombs); no network.
@@ -42,6 +44,8 @@
 # 4. Runnable code (all packs / study.yaml):
 #    - Every blocks[].example.code compiles under packs/extreme-c/book.yaml: toolchain.
 #    - If run_expected is declared, it matches actual output for a correct solution.
+#    - Every non-trivial example.code has explain_md (2–6 lines rendered under the code).
+#    - diagram stanzas (if any) valid: kind flow|art; refs resolvable; steps ≤6; art ANSI-free.
 #    - Model blocks have viz; design blocks have eipe/choose-better; syntax/algorithm blocks have order.
 # 5. Cannot be fully automated (need a solution trace):
 #    - commands.run output byte-matches test_cases[].expect for a reference solution.
@@ -77,6 +81,9 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   (runner protocol) excerpts are appended to this prompt; treat them as
   binding. All other `docs/SRS.md` references below name their section.
 - `prompts/ASK_USER.md` — interrogate the user per that file first.
+- `prompts/checks_after_chapter_creation.md` — MANDATORY post-chapter checklist:
+  after creating or editing the chapter pack, read and verify every applicable
+  item in that file before declaring the chapter complete.
 - `books/<slug>/raw_chapters/<id>.txt` — SOURCE CHAPTER TEXT: The raw, extracted
   chapter text lives here on disk (created via `python main.py extract --book <slug>`).
   The full text is also appended directly at the bottom of this prompt.
@@ -273,14 +280,19 @@ learning science, cognitive psychology, and computing education research (CER):
 
 - Split the chapter into concept-dependency order: each block teaches exactly
   ONE new falsifiable skill (e.g. `& takes an address`, not `pointers`).
-- Block shape: `id, type, title, explain_md, example?, viz?, checks[>=1], common_bugs?`.
+- Block shape: `id, type, title, explain_md, example?, diagram?, viz?, checks[>=1], common_bugs?`.
   - `explain_md`: Typically 10–25 lines of crystal-clear, comprehensible Markdown (≤120 cols).
     MUST thoroughly unpack the concept, bridge technical jargon with intuitive mental models,
     and walk through the example code and Notional Machine state changes. Never abbreviate or
     cut short to save space; depth and conceptual clarity are paramount.
   - `example`: Verified code snippet; no line-count or column caps — include exactly as much code as the concept needs, runnable where applicable.
     Every code example MUST have an accompanying breakdown of its lines, memory mutations,
-    and design rationale in `explain_md` or check `why`.
+    and design rationale in `example.explain_md` (SPEC-EXPL-003 FR-EXPL-001..002) or check `why`.
+    - `explain_md` (example-level, OPTIONAL but REQUIRED whenever the code is non-trivial
+      or `example.run_expected` is set — SPEC-EXPL-003 F1): 2–6 lines of Markdown rendered
+      DIRECTLY under the code in study/revise/export. Keep it self-contained (the app does
+      not re-print the block prose around it) and explain the code's mechanics, memory
+      effect, or design rationale — not a restatement of the block prose.
     - `subgoals` (OPTIONAL but HIGHLY RECOMMENDED for complex multi-step examples):
       Break code into purposeful functional steps:
       ```yaml
@@ -337,6 +349,12 @@ learning science, cognitive psychology, and computing education research (CER):
   (e.g. "B traps address/value confusion: `&var` is where it lives, not what
   it holds"). A distractor you cannot attach to a named misconception MUST be
   cut — filler options are worse than fewer options.
+- **Choice-Length Uniformity (MUST)**: all choices in one set MUST be roughly
+  the same length and grammatical form. The correct answer MUST NOT be
+  identifiable because it is much longer or shorter than the distractors.
+  Aim for a max/min character ratio ≤1.3 and keep the correct option within
+  20% of the longest distractor. Rewrite all options into parallel phrasing
+  rather than padding only the correct answer.
 - **Answer Position Randomization (MUST)**: NEVER default all questions or multiple questions in sequence to `answer: 0`. The correct answer MUST be varied and distributed across all valid choice positions (0, 1, 2, and 3) uniformly throughout the chapter blocks. Any pack where 100% or the vast majority of choice checks have `answer: 0` is defective and will be rejected.
 - **Self-Contained Questions & Zero External References (CRITICAL MUST)**:
   Every question stem (`q:`) in block checks and main quiz questions MUST be 100% self-contained.
@@ -358,6 +376,9 @@ learning science, cognitive psychology, and computing education research (CER):
 - Blanks MUST be load-bearing tokens (`&`, `*`, format spec, operator, keyword),
   exactly one per check, with the full program visible in `code`. The `why`
   MUST state the rule that determines the token (not "the answer is &").
+- The answer MUST be one word/token. If a multi-word expression or a line is
+  unavoidable, the stem MUST state the exact answer format, e.g.
+  "Answer format: `res->field`" or "Answer format: one line of C code".
 - Never blank two interdependent tokens in one check; never blank names the
   learner could not derive (no trivia).
 - `answer_text` MUST NOT be `?` or `help` (reserved: the app intercepts them
@@ -381,6 +402,10 @@ learning science, cognitive psychology, and computing education research (CER):
   (distractors omitted). Distractors MUST be authentic near-misses from the
   chapter (missing `&`, wrong format, off-by-one, swapped operands) — each
   with a `distractor_why` naming the bug class.
+- **State the task size (MUST)**: the stem MUST say how many correct lines to
+  place, or say that all displayed lines are used. If a distractor is present,
+  say so and give the correct count, e.g. "Order the 5 correct lines; one line
+  is a distractor."
 - **Pool Scrambling (MUST)**: In all `order` checks, `lines` MUST NOT be in sequential execution order, and `answer_order` MUST NOT be `[0, 1, 2, ...]`. The lines MUST be author-scrambled so the learner performs deliberate sequencing.
 - Provide `hint` that orients without giving order ("find the line that
   creates storage first"). The block's `why` MUST explain the ordering
@@ -487,6 +512,51 @@ learning science, cognitive psychology, and computing education research (CER):
 - `steps[]` MUST show state AFTER each executed line (var values, pointer
   targets, null-ness), 2–6 steps, aligned with the block's `example` line
   order. A viz that merely restates prose MUST be cut.
+
+### 3.8b `diagram` — structure pictures, stepped (OPTIONAL; SHOULD for model/design blocks with non-memory structure)
+
+- [Research: same dual-coding grounding as `viz` (Paivio; Mayer 2009). Use a
+  diagram when the concept's structure is RELATION (call graph, data-flow,
+  layering, protocol exchange), not MEMORY state — `viz` owns memory.]
+- Schema (docs/SRS.md §4.8, SPEC-EXPL-003 F2 — exact vocabularies, validator
+  rejects anything else):
+  ```yaml
+  diagram:
+    kind: flow            # flow = nodes+edges · art = verbatim ASCII
+    caption: "Request path through the proxy stack"   # OPTIONAL
+    nodes:                # REQUIRED for kind: flow, 2–14; id unique, label ≤32 chars
+      - {id: A, label: "client"}
+      - {id: B, label: "proxy"}
+      - {id: C, label: "server"}
+    edges:                # REQUIRED for kind: flow; from/to MUST name existing ids
+      - {from: A, to: B, label: "http"}   # label OPTIONAL
+    steps:                # OPTIONAL, ≤6; each adds focus ids → stepped reveal in study
+      - {focus: [A], note: "the client only knows the proxy address"}
+      - {focus: [A, B], note: "proxy accepts and forwards"}
+      - {focus: [A, B, C], note: "full request path"}
+  ```
+- `kind: art` takes a single `art: |` string (verbatim ASCII, `Diagram-RENDER`
+  check bans ANSI escapes). Author art when box-and-arrow cannot express the
+  picture (protocol timelines, pin maps).
+- Step reveals like `viz` — each step ADDS nodes, building the picture
+  progressively. Keep node labels noun-phrases; the story goes in step `note`s.
+- **Layout constraints** (the renderer layers nodes by longest path; the
+  validator errors above 100 rendered columns — author WITHIN these rules):
+  - Every edge must go from level `L` to level `L+1`. Same-level edges and
+    jumps beyond `+1` render as `──▶` footnote lines under the picture —
+    restructure with extra nodes instead (fork bars fan a source out to
+    several targets; join funnels merge several sources into one target;
+    upward/back edges ride side channels beside the graph).
+  - Width discipline: a node's box is `len(label) + 4` cols and each layer
+    is laid out side by side — keep the widest layer's total
+    (`Σ len(label)+4` + `4×(n−1)`) ≤ 96, else the whole picture degrades to
+    a plain edge list. Shorten labels first; never let one layer sprawl.
+  - At most ONE edge label rides each bar line; the renderer puts extra
+    labels beside the head (`▼ label`) — so label one edge per bar and let
+    the others ride the drop heads. Back-edge labels ride their channel
+    (`└─again──┃`); keep them to 1–3 words.
+  - Step `note`s word-wrap at 98 cols; keep each note one crisp sentence —
+    it is the narration for that reveal, not a paragraph.
 
 ### 3.9 `cards` — atomic retrieval units (SHOULD ≥3 per fact-dense chapter)
 
@@ -608,7 +678,8 @@ learning science, cognitive psychology, and computing education research (CER):
   at `labs/<book>/<chapter>/<lab_id>/` and MUST provide:
   - `id`: unique identifier (`lab1`, `lab2`, etc.)
   - `title`: descriptive pedagogical title
-  - `instruction_md`: complete, self-contained markdown requirements detailing what the student must implement/fix
+  - `instruction_md`: complete, self-contained markdown requirements. It MUST open with a short, plain-language **What You Are Building** section that explains the object or behavior the student will create and how it behaves, without jargon. The technical requirements follow after that intro.
+  - **Unambiguous instruction contract**: name exact APIs, constants, struct fields, return values, and error codes; define vague terms and avoid ambiguous pronouns. State validation precedence when several errors can apply, cover empty/full/zero/maximum, invalid/closed, and lifecycle cases, and include a worked example or the exact expected `run` output. The instruction must stand alone: never leave required behavior inferable only from headers, hints, tests, or the reference solution. Ask "could two reasonable implementations differ in observable behavior?" and resolve every such gap in `instruction_md`.
   - `files`: array of starter files (`path` and `content`), e.g. headers (`.h`), implementations (`.c`), drivers (`main.c`), and unit tests (`test_runner.c`)
   - `commands`: language-agnostic compile/run commands executed in `cwd = workspace_dir`:
     - `run`: interactive build & run command (e.g. `gcc -Wall -Wextra -std=c99 component.c main.c -o app && ./app`)
@@ -666,9 +737,14 @@ learning science, cognitive psychology, and computing education research (CER):
 6. Choice counts 2–4 (3 preferred), stems positive, answers in any position?
 7. Block arc intact → completion → independent present where a lab exists?
 8. Model blocks have stepwise `viz`? Design blocks have `eipe`/`choose-better`?
+   Every non-trivial `example.code` has `explain_md`? `diagram` stanzas (if any)
+   use exact vocabularies (`kind: flow|art`, valid node/edge refs, ≤6 steps)?
 9. ≥2 interleaved checks with valid `from_chapter`? Cards atomic with why/when mix?
 10. Lab runs mentally under the declared toolchain (pilot example flags:
-   `-Wall -std=c99`)? Hints general → specific? No destructive commands?
+   `-Wall -std=c99`)? Does every `instruction_md` start with a plain-language
+   **What You Are Building** intro, then state exact APIs, error precedence,
+   boundary/lifecycle cases, and a worked example without relying on hints or
+   tests? Hints general → specific? No destructive commands?
 11. Language ≠ C? Runner `run` authored per docs/SRS.md §4.9 (check/exec JSON,
     exit-0 rule, sandbox prohibitions), `toolchain:` carries `runner`,
     `version_cmd`, `smoke`; C book? No runner file emitted.
@@ -677,18 +753,19 @@ learning science, cognitive psychology, and computing education research (CER):
 
 ## 8. Post-Generation Testing & Verification Protocol (MUST execute after writing YAMLs)
 
-After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or monolithic), the AI agent MUST rigorously verify and test the generated files against this inspection checklist:
+After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or monolithic), the AI agent MUST read `prompts/checks_after_chapter_creation.md` and rigorously verify and test the generated files against that checklist and the inspection checklist below:
 
 ### 1. Block Checks & Questions (1.1–1.10)
 - **1.1 Positively-worded stem**: `q:` is clearly and positively stated without confusing negative phrasing.
 - **1.2 Choice count**: 2–4 options per check (3 preferred).
+- **1.2b Choice-length uniformity**: options are parallel in length and form; the correct answer is not the obvious longest/shortest (max/min ratio ≤1.3; correct within 20% of the longest distractor).
 - **1.3 Answer bounds**: `answer:` is a valid 0-based index (0..len(choices)-1).
 - **1.4 Answer randomization**: Correct answers are uniformly distributed across 0, 1, 2, and 3 (never all 0).
 - **1.5 100% self-contained**: Code is embedded directly via `code: |`; ZERO external references to book examples/listings/figures (e.g. NEVER write "in Example 7.2" or "in Listing 3").
 - **1.6 Elaborated why**: Provides the core principle + explicit misconception diagnosis for every distractor.
 - **1.7 Exact vocabularies**: `kind:` is exactly in (`mcq`, `predict`, `why-fails`, `fillblank`, `order`, `trace`, `spot-bug`, `eipe`, `choose-better`).
-- **1.8 Scrambled Parsons (`order`)**: Lines scrambled in `lines:`, paired distractors excluded from `answer_order:`, non-sequential order.
-- **1.9 Program completion (`fillblank`)**: Single load-bearing token, program visible in `code:`, answer not reserved `?` or `help`.
+- **1.8 Scrambled Parsons (`order`)**: Lines scrambled in `lines:`, paired distractors excluded from `answer_order:`, non-sequential order, and the stem states the number of correct lines (or that all displayed lines are used).
+- **1.9 Program completion (`fillblank`)**: Single load-bearing token, program visible in `code:`, answer not reserved `?` or `help`; one-word/token answers, with an explicit answer-format note when a multi-word expression or line is unavoidable.
 - **1.10 Line formatting**: Prose ≤120 columns; code lines carry no width cap.
 
 ### 2. Quiz Stanza (if `quiz:` present / `quiz.yaml`)
@@ -701,6 +778,8 @@ After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or mo
 
 ### 3. Labs (if `labs:` present / `labs.yaml`)
 - **Contract**: Each lab provides `id`, `title`, `instruction_md`, non-empty safe `files`, `commands.run` and `commands.test`, `test_cases[].expect`, and progressive hints.
+- **Instruction intro**: Every `instruction_md` opens with a plain-language **What You Are Building** section explaining the object/behavior and how it works.
+- **Unambiguous instructions**: Name exact APIs, constants, fields, returns, and error codes; define validation precedence, boundary/lifecycle cases, and include a worked example or exact `run` transcript. No required behavior may be inferable only from headers, hints, tests, or the reference solution.
 - **Blank starters**: Implementation file(s) content: `""` or `/* TODO: stub */`; headers, drivers, and test-runners complete and compilable.
 - **Fail-first**: Running `commands.test` on the untouched starter files MUST FAIL (missing symbols, undefined references, or assertion compile error).
 - **Safe commands**: No denylisted patterns (`rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs); strictly no network.
@@ -710,6 +789,8 @@ After authoring the YAML files (whether modular under `packs/<slug>/<id>/` or mo
 ### 4. Runnable Code (All Packs / `study.yaml`)
 - **Compilation**: Every `blocks[].example.code` compiles cleanly under `book.yaml: toolchain:`.
 - **Expected Output**: If `run_expected` is declared, it matches actual stdout byte-for-byte for a correct execution.
+- **Explanation**: Every non-trivial `example.code` carries `explain_md` (2–6 lines, self-contained; renders under the code).
+- **Diagrams**: `diagram` stanzas valid (`kind: flow` = nodes+edges with resolvable refs; `kind: art` = ANSI-free verbatim; steps ≤6, refs resolvable).
 - **Pedagogical Archetypes**: Model blocks have `viz`; design blocks have `eipe` or `choose-better`; syntax/algorithm blocks have `order`.
 
 ### 5. Cannot Be Fully Automated (Need a Solution Trace)
@@ -815,8 +896,22 @@ blocks:                        # REQUIRED, >=1
       code: "..."              # verbatim or adapted:true
       adapted: false
       run_expected: "..."
+      explain_md: "..."        # OPTIONAL (SPEC-EXPL-003 F1): 2-6 lines Markdown,
+                               # rendered DIRECTLY under the code (study/revise/
+                               # TUI/export). whitespace-only == absent
       subgoals:                # OPTIONAL, cognitive chunking for complex examples
         - {label: "...", lines: [1,2]}
+    diagram:                   # OPTIONAL (SPEC-EXPL-003 F2): structure picture,
+      kind: flow               #   kind: flow|art; use for RELATION structure
+      caption: "..."           #   (call graph, data flow), not memory state
+      nodes:                   # REQUIRED iff kind==flow, 2-14; id unique,
+        - {id: A, label: "..."}#   label <=32 chars; shapes: box|round|diamond
+      edges:                   # REQUIRED iff kind==flow; from/to MUST be node ids
+        - {from: A, to: B, label: "..."}  # label OPTIONAL
+      steps:                   # OPTIONAL <=6; focus: node ids; stepped reveal
+        - {focus: [A, B], note: "..."}   # note OPTIONAL string
+      art: |                   # REQUIRED iff kind==art: verbatim ASCII, no ANSI
+        ...
     viz:                       # SHOULD for model; otherwise OPTIONAL
       kind: ascii-memory
       steps: ["...","..."]

@@ -250,3 +250,55 @@ resolves because ids b1..b11 are kept, three blocks appended (b12-b14).
   -> OK ch23/ (exit 0); only benign EXT-SOURCE cover-page advisory remains
 - Quiz/cards/labs/test diffs: none; block ids b1..b11 retained so test.yaml
   gates stay valid
+
+# ch23 Fresh Regeneration (2026-11-07)
+
+Scope: fresh `packs/extreme-c/ch23/` authored from the prompt bundle, without
+reusing the previously deleted/restored pack files. Supersedes the stale 2026-10-26
+ch23 study note above.
+
+## Audit Trail
+
+- Idea units: 14 conceptual clusters (one per block) plus 32 artifact units
+  (28 numbered Code Boxes + 4 Shell Boxes), all taught or checked; no silent
+  omissions. The chapter has 28 unique Code Box labels, but the source reuses
+  20-26, 20-27, and 20-28 for paired server/client mains.
+- Code Boxes 20-1..20-6 -> b3/b4 checks; b4 carries an adapted runnable example
+  with a note explaining the condensation.
+- Code Boxes 20-7..20-11 (serializer interface, response serializer, `buffer_t`,
+  request deserializer, client request serializer, response deserializer) ->
+  b5 checks.
+- Code Box 20-12 (calculator service interface) -> b6 checks.
+- Code Boxes 20-13..20-16 (UDS stream main, bind, backlog, accept) -> b7.
+- Code Boxes 20-17..20-22 (UDS stream main, accept core, client handler,
+  response writer, client main, client loop) -> b7/b8/b9.
+- Code Boxes 20-23..20-26 (UDS datagram main, serve loop, response writer) ->
+  b10.
+- Code Boxes 20-27..20-28 (TCP and UDP mains) -> b11/b13.
+- Shell Boxes 20-1..20-2 (clone, tree, build) are environment-specific; their
+  reproducible architecture facts (calcser/calcsvc/srvcore/clicore and the
+  eight thin mains) are taught in b3/b14. Shell Boxes 20-3..20-4 (run server
+  and client, command-line transcript) are taught in b9. No shell transcript
+  is required to answer any check.
+
+## Pack Statistics
+
+- 14 blocks (model/design/algorithm/syntax), 92 scaffolded block checks
+- 42-question quiz (intro 12 / core 16 / advanced 14), mixed kinds including
+  order and trace; zero stems duplicate a block check
+- 24 atomic cards with unique concept tags; 3 multi-file labs; 5 final checks
+- Test gate references b1..b14 at min_quiz 80
+- Interleaved review: b1 uses ch22/b1; b7 uses ch22/b20
+- Answer positions: study 23/22/22, quiz 11/12/11, final 2/2/1
+- Choice length ratio <=1.3 and correct option >=0.8x longest on every item
+
+## Verification Notes
+
+- Strict validator: `python main.py validate --book extreme-c --chapter ch23
+  --strict` -> `OK ch23/` (exit 0)
+- All `example.code` blocks compile under gcc -Wall -Wextra -std=c99; every
+  `run_expected` matches actual stdout byte-for-byte (b4, b11, b12)
+- Labs verified in a temp workspace: untouched starters fail commands.test;
+  reference implementations pass commands.test and byte-match
+  `test_cases[].expect` for commands.run (lab1, lab2, lab3)
+- No external book references in any stem, `why:`, card, or lab instruction

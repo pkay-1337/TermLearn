@@ -15,129 +15,81 @@ test:
     - b12
     - b13
     - b14
-    - b15
-    - b16
-    - b17
-    - b18
-    - b19
-    - b20
     min_quiz: 80
   final_checks:
-  - kind: mcq
-    level: advanced
-    q: In a high-throughput microservices architecture deployed entirely on a single Linux host, why should inter-process communication favor Unix Domain Sockets over TCP loopback sockets (127.0.0.1)?
-    choices:
-    - Unix Domain Sockets use kernel-space zero-copy memory transfers and bypass the IP routing, packet framing, and checksumming overhead of the network stack
-    - TCP loopback sockets cannot support bidirectional communication between non-root user accounts
-    - Unix Domain Sockets enforce synchronous file locking across concurrent processes
-    - TCP loopback sockets restrict maximum packet payload sizes to 512 bytes
-    answer: 0
-    why: |
-      Unix Domain Sockets (AF_UNIX) transfer data directly through kernel buffers without traversing the
-      TCP/IP network protocol stack, avoiding IP header construction, TCP checksum computation, packet
-      framing, and network device emulation. Options B, C, and D state fictitious system limitations.
-    concept: uds-vs-loopback-performance
-  - kind: predict
-    level: advanced
-    q: Trace the byte values in memory on a Little Endian system. What integer does the final printf display?
-    code: |
-      #include <stdio.h>
-      #include <stdint.h>
-      #include <arpa/inet.h>
-
-      int main(void) {
-        uint16_t port = 0x1234;
-        uint16_t net_port = htons(port);
-        uint8_t* p = (uint8_t*)&net_port;
-        printf("%02x %02x\n", p[0], p[1]);
-        return 0;
-      }
-    choices:
-    - 34 12
-    - 00 34
-    - 12 34
-    - 00 12
-    answer: 2
-    why: |
-      On a Little Endian host, 0x1234 is stored in memory as low byte first: [0x34, 0x12].
-      htons() converts host byte order to Network Byte Order (Big Endian), where the most significant
-      byte comes first: [0x12, 0x34]. Thus p[0] is 0x12 and p[1] is 0x34.
-      Option A is host byte order before conversion. Options B and D are corrupt representations.
-    concept: htons-byte-order-trace
-  - kind: spot-bug
-    level: advanced
-    q: Analyze the code and error output. Which line is responsible for the server initialization failure when restarting the process?
-    code: |
-      #include <stdio.h>
-      #include <string.h>
-      #include <sys/socket.h>
-      #include <sys/un.h>
-
-      int main(void) {
-        int sd = socket(AF_UNIX, SOCK_STREAM, 0);
-        struct sockaddr_un addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sun_family = AF_UNIX;
-        strncpy(addr.sun_path, "/tmp/calc.sock", sizeof(addr.sun_path) - 1);
-        // Line 12: Missing cleanup before bind!
-        if (bind(sd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
-          perror("bind failed");
-          return 1;
-        }
-        return 0;
-      }
-    diagnostic_log: |
-      bind failed: Address already in use
-    target_line: 12
-    choices:
-    - 'Line 6: socket() must specify SOCK_DGRAM for Unix domain files'
-    - 'Line 10: sun_path cannot point to the /tmp directory without superuser privileges'
-    - 'Line 12: Omitting unlink("/tmp/calc.sock") leaves a pre-existing socket inode in the filesystem, causing bind() to fail with EADDRINUSE'
-    answer: 2
-    why: |
-      When a Unix Domain Socket binds to a filesystem path, the OS creates a socket node in the filesystem.
-      Unlike regular files, subsequent bind() calls will not overwrite existing socket files and immediately
-      fail with EADDRINUSE unless unlink(sock_path) is called first.
-      Options A and B describe non-existent API rules.
-    concept: uds-unlink-eaddrinuse
-  - kind: why-fails
-    level: advanced
-    q: Why does a Unix Domain datagram client fail to receive responses from a server if the client never invokes bind() before sending?
-    choices:
-    - The kernel assigns file descriptor 0 to unbound sockets, closing stdin
-    - Without an explicit bind() to a client socket pathname, the client socket lacks a filesystem address, leaving the server with no return address in recvfrom()
-    - AF_UNIX datagram sockets reject connect() calls unless encrypted
-    - sendto() requires root permissions when transmitting across unbound descriptors
-    answer: 1
-    why: |
-      In network sockets (AF_INET UDP), the kernel automatically assigns an ephemeral port when a client sends
-      data without binding. In Unix Domain datagram sockets (AF_UNIX SOCK_DGRAM), there is no automatic
-      pathname assignment; if the client does not bind to its own socket file, recvfrom() on the server
-      receives an empty client address and cannot route replies back.
-      Options A, C, and D are false claims.
-    concept: uds-datagram-unbound-client-failure
   - kind: choose-better
     level: advanced
-    q: Which pattern correctly implements robust message reception for a variable-length protocol over a stream socket (SOCK_STREAM)?
+    q: A team must choose one transport for a same-host bulk data pipeline that also needs per-message boundaries. Which design is better and why?
     choices:
-    - |
-      // Rely on fixed read() expecting exact message length
-      char msg[64];
-      read(sd, msg, 64);
-      parse_message(msg);
-    - |
-      // Accumulate into a buffer and search for message delimiter
-      char chunk[128];
-      while ((n = read(sd, chunk, sizeof(chunk))) > 0) {
-        ring_buf_append(rb, chunk, n);
-        while (ring_buf_find_delimiter(rb, '$', &msg)) {
-          process_message(msg);
-        }
-      }
+    - Use a UDS stream channel and frame records with a length prefix or delimiter
+    - Use a UDS datagram channel and send records larger than one datagram
+    - Use a TCP datagram channel because it preserves message boundaries
+    answer: 0
+    why: |
+      A stream gives ordered reliable bytes and framing recovers record
+      boundaries, all without leaving the host. Option B breaks the
+      one-message-per-datagram rule for oversized records. Option C names a
+      transport shape that does not exist: TCP is a stream.
+    concept: final-bulk-transport-choice
+  - kind: predict
+    level: advanced
+    q: 'Trace the byte sequence: a little-endian host stores 6666 directly in sin_port. Which value does a correct client using htons(6666) appear to dial relative to the server?'
+    code: |
+      /* server */ addr.sin_port = 6666;          /* no conversion */
+      /* client */ addr.sin_port = htons(6666);   /* correct */
+    choices:
+    - Both sides reach 6666 because the stack repairs the host value
+    - The client dials 6666 while the server is bound to 2586
+    - The client dials 2586 while the server is bound to 6666
     answer: 1
     why: |
-      Stream sockets (TCP and UDS Stream) provide continuous streams of raw bytes without message boundaries.
-      A single read() may return a fragment of a message, or multiple merged messages. Robust protocols
-      must accumulate incoming chunks in a buffer and parse complete units delimited by a boundary token (like '$')
-      or length prefix. Option A dangerously assumes network packet sizes mirror application message boundaries.
-    concept: stream-message-framing-pattern
+      The server stores raw host bytes, so the stack reads 0x0A1A = 2586. The
+      client stores network-order bytes, so it dials 6666. Option C swaps the
+      two outcomes. Option A invents an automatic repair.
+    concept: final-byte-order-mismatch
+  - kind: spot-bug
+    level: advanced
+    q: A stream server ignores short writes. Which line explains the client receiving half a response?
+    code: |
+      int ret = write(sd, buf.data, buf.len);
+      if (ret == -1) { close(sd); exit(1); }   /* line 2 */
+      free(buf.data);
+      /* execution continues even when ret < buf.len */
+    diagnostic_log: |
+      client: response ended after "1000#0#"
+    choices:
+    - 'Line 1: write must be replaced by sendto for every stream response'
+    - 'Line 3: free must run before write so the buffer cannot be truncated'
+    - 'After line 2: the code must also fail when ret is positive but less than buf.len'
+    answer: 2
+    why: |
+      Stream writes can be partial, and a short positive return is a truncated
+      response. Option A changes to a datagram call that needs a destination
+      address. Option B reverses the buffer lifetime and corrupts the send.
+    concept: final-short-write
+  - kind: why-fails
+    level: advanced
+    q: Why does a UDS datagram client fail to receive replies when it skips bind, while a UDP client over IP still works?
+    choices:
+    - The UDS server captures no return path, while the IP kernel assigns a source endpoint
+    - The UDS server rejects datagrams from clients that never set a numeric port
+    - The UDP kernel broadcasts replies so every client receives them without an address
+    answer: 0
+    why: |
+      AF_UNIX has no automatic ephemeral namespace, so an unbound client has no
+      path for the server's reply. AF_INET assigns a source endpoint on first
+      send. Option B invents ports in AF_UNIX. Option C invents broadcast.
+    concept: final-uds-bind-requirement
+  - kind: eipe
+    level: advanced
+    q: In one sentence, what is the architectural purpose of keeping calcser and calcsvc above the socket transport code?
+    choices:
+    - It makes the serializer responsible for choosing the address family at runtime
+    - It lets one protocol and one service run unchanged behind every socket type
+    - It forces every transport to share one global client socket descriptor
+    answer: 1
+    why: |
+      The protocol and calculation logic depend only on bytes and numbers, so
+      any transport can carry them. Option C invents shared descriptors. Option
+      A assigns transport selection to a layer that never sees a socket.
+    concept: final-transport-blind-layers

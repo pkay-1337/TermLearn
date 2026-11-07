@@ -12,10 +12,21 @@
 # 4. Initial verification test MUST fail on unedited starter files, and pass once implemented.
 # 5. Provide language-agnostic commands ('run' and 'test'), automated 'test_cases' with unified diffs,
 #    and 1–3 progressive hints (general -> specific).
-# 6. OUTPUT FORMAT: Single YAML document with top-level 'labs: [...]'.
+# 6. LAB INSTRUCTION QUALITY (MUST):
+#    - Begin every instruction_md with a short, plain-language '### What You Are Building' section
+#      that explains the object/behavior the student will build and how it behaves, without jargon.
+#    - After that intro, make the requirements an unambiguous contract: name exact APIs, constants,
+#      struct fields, return values, and error codes; define vague terms; avoid ambiguous pronouns.
+#    - Specify validation precedence when several errors can apply, plus empty/full/zero/maximum,
+#      invalid/closed, and lifecycle cases. Include a worked example or exact expected 'run' output.
+#    - The instruction must stand alone: do not leave required behavior inferable only from headers,
+#      hints, tests, or the reference solution. Resolve any 'could two implementations differ?' gap.
+# 7. OUTPUT FORMAT: Single YAML document with top-level 'labs: [...]'.
 #
 # [POST-GENERATION VERIFICATION FOR labs.yaml]
 # - Contract: each lab has id, title, instruction_md, non-empty safe files, commands.run/test, test_cases[].expect, progressive hints.
+# - Instruction intro: every instruction_md starts with a plain-language 'What You Are Building' section.
+# - Unambiguous contract: exact APIs/fields/returns, error precedence, boundary and lifecycle cases, and a worked example; no behavior only inferable from tests or hints.
 # - Blank starters: implementation file(s) content: "" or TODO-stubbed; headers/drivers/test-runners complete.
 # - Fail-first: running commands.test on the untouched starter must FAIL (missing symbols/compile error).
 # - Safe commands: no denylisted patterns (rm -rf, curl, wget, ssh, mkfs, fork bombs); no network.

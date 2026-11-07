@@ -531,3 +531,755 @@ labs:
   - Track how many valid bytes the buffer currently holds; ignore everything past used.
   - Scan for '$' with a loop or memchr, but do not consume bytes until capacity is confirmed.
   - After copying a frame, shift the remaining bytes to the front and reduce used.
+- id: lab4
+  title: Main Calculator Project over UDS Streams
+  instruction_md: |
+    ### What You Are Building
+
+    You are building the main calculator project as a working UDS stream
+    application. A server accepts stream clients, reads any number of
+    `$`-terminated calculator requests from each connection, computes them with
+    one stateful service object per connection, and writes one response frame per
+    request. A client sends one request and waits for exactly one response. The
+    protocol codec and the frame accumulator are provided. You implement the
+    stateful calculator service, the server core, and the client core. The server
+    main, client main, demo, and test runner are complete.
+
+    ### Files
+
+    Provided complete: `calc_proto.h`, `calc_proto.c`, `framing.h`, `framing.c`,
+    `calc_service.h`, `srvcore.h`, `clicore.h`, `server_main.h`, `server_main.c`,
+    `client_main.h`, `client_main.c`, `demo.c`, `test_runner.c`.
+
+    Implement from empty: `calc_service.c`, `srvcore.c`, `clicore.c`.
+
+    The provided frame accumulator `fp_next` returns the bytes before a `$` and
+    removes that separator. The protocol parsers require a complete wire message
+    ending in `$`. Whenever you pass a frame to `calc_parse_request` or
+    `calc_parse_response`, append a `$` at the frame length and pass `length + 1`.
+    Keep the frame buffer large enough: append only when `length + 1` fits in the
+    buffer.
+
+    ### Calculator Service API
+
+    Define `struct calc_service_t` in `calc_service.c`. It stores one `double`
+    named `mem`, the calculator memory.
+
+    - `calc_service_new` allocates the object and calls `calc_service_ctor`.
+      Return `NULL` on allocation failure.
+    - `calc_service_delete(NULL)` is a no-op. Otherwise call
+      `calc_service_dtor` and free the object.
+    - `calc_service_ctor` sets `mem` to `0.0`. `calc_service_dtor` sets it back
+      to `0.0`. Both accept `NULL` and do nothing.
+    - `calc_service_reset_mem` sets `mem` to `0.0`; `NULL` is a no-op.
+    - `calc_service_get_mem` returns `mem`, or `0.0` when the service is `NULL`.
+    - `calc_service_add(svc, a, b, false)` returns `a + b` without changing
+      `mem`. With `mem == true` it returns `a + b + svc->mem` and stores that
+      result in `svc->mem`.
+    - `calc_service_sub(svc, a, b, false)` returns `a - b`. With `mem == true`
+      it returns `a - b - svc->mem` and stores that result in `svc->mem`.
+    - `calc_service_mul(svc, a, b, false)` returns `a * b`. With `mem == true`
+      it returns `a * b * svc->mem` and stores that result in `svc->mem`.
+    - `calc_service_div(svc, a, b, result)` returns `CALC_SVC_ERROR_DIV_BY_ZERO`
+      when `b == 0.0`, when `svc == NULL`, or when `result == NULL`, and it
+      changes neither `*result` nor `mem`. Otherwise it stores `a / b` in
+      `*result` and returns `CALC_SVC_OK`. Division has no memory variant.
+    - When a memory variant updates `mem`, it stores the returned result, not the
+      old memory value. For a `NULL` service, add/sub/mul return `0.0` and do not
+      update anything.
+
+    ### Server Core API
+
+    `calc_server_handle(req, resp, svc)` sets `resp->req_id` to `req->id` and
+    starts with `status = 0`, `result = 0.0`. It returns -1 only when any pointer
+    is `NULL`. Otherwise it always returns 0 and fills the response:
+
+    - `GETMEM`: `result = calc_service_get_mem(svc)`; memory is unchanged.
+    - `RESMEM`: call `calc_service_reset_mem(svc)`; result stays `0.0`.
+    - `ADD`/`ADDM`, `SUB`/`SUBM`, `MUL`/`MULM`: call the matching service
+      function with `mem == false` for the short name and `mem == true` for the
+      `M` name, and store the return value in `result`.
+    - `DIV`: call `calc_service_div`. On `CALC_SVC_OK`, store the quotient and
+      keep `status = 0`. On division by zero, set `status = -1` and
+      `result = 0.0`.
+    - `NONE` or any other value: set `status = -2` and `result = 0.0`.
+
+    `calc_server_process(svc, request, request_len, response, response_cap)`
+    takes a complete wire message including its `$`. Return -1 when any pointer
+    is `NULL` or `response_cap == 0`. Parse with `calc_parse_request`; on failure
+    return -1. Call `calc_server_handle`; on failure return -1. Serialize with
+    `calc_serialize_response` and return the serialized length, excluding the
+    null terminator. On every failure, do not leave a partial response as a
+    successful result.
+
+    `calc_server_run_connection(conn_sd)` returns -1 when `conn_sd < 0`.
+    Otherwise it creates exactly one service object for the connection and a
+    frame parser. It then loops:
+
+    1. Read up to 128 bytes into a local input buffer.
+    2. On `read < 0`, retry only for `EINTR`; for any other error, delete the
+       service and return -1.
+    3. On `read == 0`, the peer closed; delete the service and return 0.
+    4. Feed the bytes to `fp_feed`. On failure, delete the service and return -1.
+    5. Drain every complete frame with `fp_next` into a `FRAME_BUFFER_CAP`-byte
+       frame buffer. On `fp_next == -1`, delete the service and return -1. For
+       each frame, let `frame_len = strlen(frame)`. If `frame_len + 1` does not
+       fit in the frame buffer, delete the service and return -1. Otherwise
+       append `$`, call `calc_server_process`, and write every response byte with
+       a loop that retries short writes. A write returning 0 or a negative value
+       is an error: delete the service and return -1.
+    6. When `fp_next` returns 0, go back to step 1.
+
+    `calc_server_run_connection` must delete the service object on every exit
+    path and must not close `conn_sd`.
+
+    ### Client Core API
+
+    `calc_client_exchange(conn_sd, req, resp)` returns -1 when `conn_sd < 0` or
+    when `req` or `resp` is `NULL`. Serialize `req` into a 64-byte buffer with
+    `calc_serialize_request`; on failure return -1. Write every request byte with
+    a loop that retries short writes. Then read up to 128 bytes at a time and feed
+    a frame parser until `fp_next` returns 1. A `read` return of 0 or a negative
+    value is an error. A `fp_feed` or `fp_next` failure is an error. When a frame
+    arrives, let `frame_len = strlen(frame)`. If `frame_len + 1` does not fit in
+    the `FRAME_BUFFER_CAP`-byte frame buffer, return -1. Otherwise append `$`,
+    parse it with `calc_parse_response`, and return 0 on success or -1 on parse
+    failure. `calc_client_exchange` does not close
+    `conn_sd` and has no timeout.
+
+    ### Worked Example
+
+    ```c
+    struct calc_service_t *svc = calc_service_new();
+    char out[64];
+    int n = calc_server_process(svc, "42#MUL#2.0#3.0$",
+                                strlen("42#MUL#2.0#3.0$"), out, sizeof(out));
+    /* n == 9 and out is "42#0#6.0$" */
+    calc_service_delete(svc);
+    ```
+
+    A connection that sends `1#ADD#1.5#5.6$` receives `1#0#7.1$`. A connection
+    that sends `8#DIV#1.0#0.0$` receives `8#-1#0.0$`.
+
+    ### Expected Demo Transcript
+
+    `commands.run` builds and runs the demo. It prints exactly:
+
+    ```
+    1 status=0 result=7.1
+    2 status=0 result=3.0
+    3 status=0 result=3.0
+    4 status=0 result=5.0
+    5 status=0 result=30.0
+    6 status=0 result=0.0
+    7 status=0 result=0.0
+    8 status=-1 result=0.0
+    9 status=0 result=3.0
+    10 status=-2 result=0.0
+    ```
+
+    `commands.test` prints `LAB4 TESTS PASSED` and exits 0 when all service,
+    dispatch, and socket integration assertions pass.
+
+    ### Hints
+
+    1. Implement and test the service first; most server failures come from
+       memory variants or division by zero.
+    2. The frame accumulator removes `$`. Restore it before calling a parser.
+    3. Drain every complete frame after each read and use a write loop; do not
+       assume one read equals one message or that one write sends every byte.
+  files:
+  - path: calc_service.c
+    content: ''
+  - path: srvcore.c
+    content: ''
+  - path: clicore.c
+    content: ''
+  - path: calc_proto.h
+    content: |
+      #ifndef CALC_PROTO_H
+      #define CALC_PROTO_H
+
+      #include <stddef.h>
+
+      typedef enum {
+        NONE,
+        GETMEM,
+        RESMEM,
+        ADD,
+        ADDM,
+        SUB,
+        SUBM,
+        MUL,
+        MULM,
+        DIV
+      } method_t;
+
+      struct calc_req {
+        int id;
+        method_t method;
+        double operand1;
+        double operand2;
+      };
+
+      struct calc_resp {
+        int req_id;
+        int status;
+        double result;
+      };
+
+      int calc_method_to_str(method_t m, char *out, size_t cap);
+      int calc_method_from_str(const char *s, method_t *out);
+      int calc_serialize_request(const struct calc_req *req, char *out, size_t cap);
+      int calc_parse_request(const char *msg, size_t len, struct calc_req *out);
+      int calc_serialize_response(const struct calc_resp *resp, char *out, size_t cap);
+      int calc_parse_response(const char *msg, size_t len, struct calc_resp *out);
+
+      #endif
+  - path: calc_proto.c
+    content: |
+      #include <stdio.h>
+      #include <stdlib.h>
+      #include <string.h>
+      #include "calc_proto.h"
+
+      static const char *names[] = {"NONE","GETMEM","RESMEM","ADD","ADDM","SUB","SUBM","MUL","MULM","DIV"};
+
+      int calc_method_to_str(method_t m, char *out, size_t cap) {
+        if (!out || m < NONE || m > DIV) return -1;
+        size_t n = strlen(names[m]);
+        if (n + 1 > cap) return -1;
+        memcpy(out, names[m], n + 1);
+        return 0;
+      }
+
+      int calc_method_from_str(const char *s, method_t *out) {
+        if (!s || !out) return -1;
+        for (int i = NONE; i <= DIV; i++) {
+          if (strcmp(s, names[i]) == 0) { *out = (method_t)i; return 0; }
+        }
+        return -1;
+      }
+
+      static int split_fields(const char *msg, size_t len, char *copy, size_t cap, char *fields[], int want) {
+        if (!msg || len < 1 || msg[len - 1] != '$') return -1;
+        if (len > cap) return -1;
+        memcpy(copy, msg, len - 1);
+        copy[len - 1] = '\0';
+        int count = 0;
+        char *start = copy;
+        while (1) {
+          if (count >= want) return -1;
+          fields[count++] = start;
+          char *hash = strchr(start, '#');
+          if (!hash) break;
+          *hash = '\0';
+          start = hash + 1;
+        }
+        if (count != want) return -1;
+        for (int i = 0; i < want; i++) if (fields[i][0] == '\0') return -1;
+        return 0;
+      }
+
+      static int parse_int_field(const char *s, int *out) {
+        char *end = NULL;
+        long v = strtol(s, &end, 10);
+        if (!end || *end != '\0') return -1;
+        *out = (int)v;
+        return 0;
+      }
+
+      static int parse_double_field(const char *s, double *out) {
+        char *end = NULL;
+        double v = strtod(s, &end);
+        if (!end || *end != '\0') return -1;
+        *out = v;
+        return 0;
+      }
+
+      int calc_serialize_request(const struct calc_req *req, char *out, size_t cap) {
+        if (!req || !out) return -1;
+        char m[16];
+        if (calc_method_to_str(req->method, m, sizeof(m)) != 0) return -1;
+        int n = snprintf(out, cap, "%d#%s#%.1f#%.1f$", req->id, m, req->operand1, req->operand2);
+        if (n < 0 || (size_t)n >= cap) return -1;
+        return n;
+      }
+
+      int calc_parse_request(const char *msg, size_t len, struct calc_req *out) {
+        char copy[256];
+        char *f[4];
+        if (!out || split_fields(msg, len, copy, sizeof(copy), f, 4) != 0) return -1;
+        struct calc_req tmp;
+        method_t m;
+        if (parse_int_field(f[0], &tmp.id) != 0) return -1;
+        if (calc_method_from_str(f[1], &m) != 0) return -1;
+        tmp.method = m;
+        if (parse_double_field(f[2], &tmp.operand1) != 0) return -1;
+        if (parse_double_field(f[3], &tmp.operand2) != 0) return -1;
+        *out = tmp;
+        return 0;
+      }
+
+      int calc_serialize_response(const struct calc_resp *resp, char *out, size_t cap) {
+        if (!resp || !out) return -1;
+        int n = snprintf(out, cap, "%d#%d#%.1f$", resp->req_id, resp->status, resp->result);
+        if (n < 0 || (size_t)n >= cap) return -1;
+        return n;
+      }
+
+      int calc_parse_response(const char *msg, size_t len, struct calc_resp *out) {
+        char copy[256];
+        char *f[3];
+        if (!out || split_fields(msg, len, copy, sizeof(copy), f, 3) != 0) return -1;
+        struct calc_resp tmp;
+        if (parse_int_field(f[0], &tmp.req_id) != 0) return -1;
+        if (parse_int_field(f[1], &tmp.status) != 0) return -1;
+        if (parse_double_field(f[2], &tmp.result) != 0) return -1;
+        *out = tmp;
+        return 0;
+      }
+  - path: framing.h
+    content: |
+      #ifndef FRAMING_H
+      #define FRAMING_H
+
+      #include <stddef.h>
+
+      #define FRAME_BUFFER_CAP 256
+
+      struct frame_parser {
+        char buffer[FRAME_BUFFER_CAP];
+        size_t used;
+      };
+
+      void fp_init(struct frame_parser *p);
+      int fp_feed(struct frame_parser *p, const char *data, size_t n);
+      int fp_next(struct frame_parser *p, char *out, size_t out_cap);
+
+      #endif
+  - path: framing.c
+    content: |
+      #include <string.h>
+      #include "framing.h"
+
+      void fp_init(struct frame_parser *p) {
+        if (p) p->used = 0;
+      }
+
+      int fp_feed(struct frame_parser *p, const char *data, size_t n) {
+        if (!p) return -1;
+        if (n > 0 && !data) return -1;
+        if (p->used + n > FRAME_BUFFER_CAP) return -1;
+        if (n > 0) memcpy(p->buffer + p->used, data, n);
+        p->used += n;
+        return 0;
+      }
+
+      int fp_next(struct frame_parser *p, char *out, size_t out_cap) {
+        if (!p || !out) return -1;
+        char *sep = memchr(p->buffer, '$', p->used);
+        if (!sep) return 0;
+        size_t frame_len = (size_t)(sep - p->buffer);
+        if (frame_len + 1 > out_cap) return -1;
+        memcpy(out, p->buffer, frame_len);
+        out[frame_len] = '\0';
+        size_t consumed = frame_len + 1;
+        size_t remain = p->used - consumed;
+        memmove(p->buffer, p->buffer + consumed, remain);
+        p->used = remain;
+        return 1;
+      }
+  - path: calc_service.h
+    content: |
+      #ifndef CALC_SERVICE_H
+      #define CALC_SERVICE_H
+
+      #include <stdbool.h>
+
+      #define CALC_SVC_OK 0
+      #define CALC_SVC_ERROR_DIV_BY_ZERO (-1)
+
+      struct calc_service_t;
+
+      struct calc_service_t *calc_service_new(void);
+      void calc_service_delete(struct calc_service_t *svc);
+      void calc_service_ctor(struct calc_service_t *svc);
+      void calc_service_dtor(struct calc_service_t *svc);
+      void calc_service_reset_mem(struct calc_service_t *svc);
+      double calc_service_get_mem(struct calc_service_t *svc);
+      double calc_service_add(struct calc_service_t *svc, double a, double b, bool mem);
+      double calc_service_sub(struct calc_service_t *svc, double a, double b, bool mem);
+      double calc_service_mul(struct calc_service_t *svc, double a, double b, bool mem);
+      int calc_service_div(struct calc_service_t *svc, double a, double b, double *result);
+
+      #endif
+  - path: srvcore.h
+    content: |
+      #ifndef SRVCORE_H
+      #define SRVCORE_H
+
+      #include <stddef.h>
+      #include "calc_proto.h"
+      #include "calc_service.h"
+
+      int calc_server_handle(const struct calc_req *req, struct calc_resp *resp,
+                             struct calc_service_t *svc);
+      int calc_server_process(struct calc_service_t *svc, const char *request,
+                              size_t request_len, char *response,
+                              size_t response_cap);
+      int calc_server_run_connection(int conn_sd);
+
+      #endif
+  - path: clicore.h
+    content: |
+      #ifndef CLICORE_H
+      #define CLICORE_H
+
+      #include "calc_proto.h"
+
+      int calc_client_exchange(int conn_sd, const struct calc_req *req,
+                               struct calc_resp *resp);
+
+      #endif
+  - path: server_main.h
+    content: |
+      #ifndef SERVER_MAIN_H
+      #define SERVER_MAIN_H
+
+      int calc_server_run_forever(const char *sock_path);
+
+      #endif
+  - path: server_main.c
+    content: |
+      #include <errno.h>
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <sys/un.h>
+      #include <unistd.h>
+      #include "server_main.h"
+      #include "srvcore.h"
+
+      int calc_server_run_forever(const char *sock_path) {
+        if (!sock_path || !*sock_path) return -1;
+        if (strlen(sock_path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) return -1;
+
+        int server_sd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (server_sd < 0) return -1;
+
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+
+        unlink(sock_path);
+        if (bind(server_sd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+          close(server_sd);
+          return -1;
+        }
+        if (listen(server_sd, 10) < 0) {
+          close(server_sd);
+          unlink(sock_path);
+          return -1;
+        }
+
+        for (;;) {
+          int conn_sd = accept(server_sd, NULL, NULL);
+          if (conn_sd < 0) {
+            if (errno == EINTR) continue;
+            close(server_sd);
+            unlink(sock_path);
+            return -1;
+          }
+          int rc = calc_server_run_connection(conn_sd);
+          close(conn_sd);
+          if (rc != 0) {
+            close(server_sd);
+            unlink(sock_path);
+            return -1;
+          }
+        }
+      }
+
+      #ifdef CALC_STANDALONE
+      int main(int argc, char **argv) {
+        const char *path = argc > 1 ? argv[1] : "/tmp/calc_lab4.sock";
+        return calc_server_run_forever(path) == 0 ? 0 : 1;
+      }
+
+      #endif
+  - path: client_main.h
+    content: |
+      #ifndef CLIENT_MAIN_H
+      #define CLIENT_MAIN_H
+
+      int calc_client_run(const char *sock_path);
+
+      #endif
+  - path: client_main.c
+    content: |
+      #include <stdio.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <sys/un.h>
+      #include <unistd.h>
+      #include "calc_proto.h"
+      #include "clicore.h"
+      #include "client_main.h"
+
+      int calc_client_run(const char *sock_path) {
+        if (!sock_path || !*sock_path) return -1;
+        if (strlen(sock_path) >= sizeof(((struct sockaddr_un *)0)->sun_path)) return -1;
+
+        int conn_sd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (conn_sd < 0) return -1;
+
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+
+        if (connect(conn_sd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+          close(conn_sd);
+          return -1;
+        }
+
+        const struct calc_req reqs[] = {
+          {1, ADD, 1.5, 5.6},
+          {2, ADDM, 1.0, 2.0},
+          {3, GETMEM, 0.0, 0.0},
+          {4, SUBM, 10.0, 2.0},
+          {5, MULM, 2.0, 3.0},
+          {6, RESMEM, 0.0, 0.0},
+          {7, GETMEM, 0.0, 0.0},
+          {8, DIV, 1.0, 0.0},
+          {9, DIV, 9.0, 3.0},
+          {10, NONE, 0.0, 0.0}
+        };
+
+        for (size_t i = 0; i < sizeof(reqs) / sizeof(reqs[0]); i++) {
+          struct calc_resp resp;
+          if (calc_client_exchange(conn_sd, &reqs[i], &resp) != 0) {
+            close(conn_sd);
+            return -1;
+          }
+          printf("%d status=%d result=%.1f\n", reqs[i].id, resp.status, resp.result);
+        }
+
+        close(conn_sd);
+        return 0;
+      }
+
+      #ifdef CALC_STANDALONE
+      int main(int argc, char **argv) {
+        const char *path = argc > 1 ? argv[1] : "/tmp/calc_lab4.sock";
+        return calc_client_run(path) == 0 ? 0 : 1;
+      }
+
+      #endif
+  - path: demo.c
+    content: |
+      #define _POSIX_C_SOURCE 200809L
+      #include <signal.h>
+      #include <stdio.h>
+      #include <stdlib.h>
+      #include <sys/wait.h>
+      #include <time.h>
+      #include <unistd.h>
+      #include "client_main.h"
+      #include "server_main.h"
+
+      static int wait_for_path(const char *path) {
+        for (int i = 0; i < 200; i++) {
+          if (access(path, F_OK) == 0) return 0;
+          struct timespec ts = {0, 10000000};
+          nanosleep(&ts, NULL);
+        }
+        return -1;
+      }
+
+      int main(void) {
+        const char *path = "/tmp/calc_lab4_demo.sock";
+        unlink(path);
+
+        pid_t pid = fork();
+        if (pid < 0) {
+          printf("demo: fork failed\n");
+          return 1;
+        }
+        if (pid == 0) {
+          int rc = calc_server_run_forever(path);
+          _exit(rc == 0 ? 0 : 1);
+        }
+
+        int rc = -1;
+        if (wait_for_path(path) == 0) rc = calc_client_run(path);
+
+        kill(pid, SIGTERM);
+        waitpid(pid, NULL, 0);
+        unlink(path);
+
+        if (rc != 0) {
+          printf("demo: client failed\n");
+          return 1;
+        }
+        return 0;
+      }
+  - path: test_runner.c
+    content: |
+      #define _POSIX_C_SOURCE 200809L
+      #include <signal.h>
+      #include <stdio.h>
+      #include <stdlib.h>
+      #include <string.h>
+      #include <sys/socket.h>
+      #include <sys/un.h>
+      #include <sys/wait.h>
+      #include <time.h>
+      #include <unistd.h>
+      #include "calc_proto.h"
+      #include "calc_service.h"
+      #include "clicore.h"
+      #include "server_main.h"
+      #include "srvcore.h"
+
+      static int failures = 0;
+
+      static void check(int cond, const char *name) {
+        if (!cond) {
+          printf("FAIL: %s\n", name);
+          failures++;
+        }
+      }
+
+      static int wait_for_path(const char *path) {
+        for (int i = 0; i < 200; i++) {
+          if (access(path, F_OK) == 0) return 0;
+          struct timespec ts = {0, 10000000};
+          nanosleep(&ts, NULL);
+        }
+        return -1;
+      }
+
+      static int connect_path(const char *path) {
+        int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (fd < 0) return -1;
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, path, sizeof(addr.sun_path) - 1);
+        for (int i = 0; i < 200; i++) {
+          if (connect(fd, (struct sockaddr *)&addr, sizeof(addr)) == 0) return fd;
+          struct timespec ts = {0, 10000000};
+          nanosleep(&ts, NULL);
+        }
+        close(fd);
+        return -1;
+      }
+
+      static void test_service(void) {
+        struct calc_service_t *svc = calc_service_new();
+        check(svc != NULL, "service new");
+        if (!svc) return;
+        check(calc_service_get_mem(svc) == 0.0, "service initial memory");
+        check(calc_service_add(svc, 1.5, 5.6, false) == 7.1, "plain add");
+        check(calc_service_get_mem(svc) == 0.0, "plain add keeps memory");
+        check(calc_service_add(svc, 1.0, 2.0, true) == 3.0, "memory add");
+        check(calc_service_get_mem(svc) == 3.0, "memory add updates memory");
+        check(calc_service_sub(svc, 10.0, 2.0, true) == 5.0, "memory sub");
+        check(calc_service_get_mem(svc) == 5.0, "memory sub updates memory");
+        check(calc_service_mul(svc, 2.0, 3.0, true) == 30.0, "memory mul");
+        check(calc_service_get_mem(svc) == 30.0, "memory mul updates memory");
+        double result = 99.0;
+        check(calc_service_div(svc, 9.0, 3.0, &result) == CALC_SVC_OK && result == 3.0, "div");
+        result = 99.0;
+        check(calc_service_div(svc, 9.0, 0.0, &result) == CALC_SVC_ERROR_DIV_BY_ZERO, "div by zero");
+        check(result == 99.0, "div by zero keeps result");
+        calc_service_reset_mem(svc);
+        check(calc_service_get_mem(svc) == 0.0, "reset memory");
+        calc_service_delete(svc);
+      }
+
+      static void test_server_process(void) {
+        struct calc_service_t *svc = calc_service_new();
+        check(svc != NULL, "process service new");
+        if (!svc) return;
+
+        char out[64];
+        int n = calc_server_process(svc, "42#MUL#2.0#3.0$", strlen("42#MUL#2.0#3.0$"), out, sizeof(out));
+        check(n == 9, "process length");
+        check(strcmp(out, "42#0#6.0$") == 0, "process wire");
+
+        n = calc_server_process(svc, "7#ADDM#2.0#3.0$", strlen("7#ADDM#2.0#3.0$"), out, sizeof(out));
+        check(n > 0 && strcmp(out, "7#0#5.0$") == 0, "process memory method");
+
+        n = calc_server_process(svc, "8#DIV#1.0#0.0$", strlen("8#DIV#1.0#0.0$"), out, sizeof(out));
+        check(n > 0 && strcmp(out, "8#-1#0.0$") == 0, "process div by zero status");
+
+        n = calc_server_process(svc, "9#NONE#0.0#0.0$", strlen("9#NONE#0.0#0.0$"), out, sizeof(out));
+        check(n > 0 && strcmp(out, "9#-2#0.0$") == 0, "process unknown method");
+
+        check(calc_server_process(svc, "bad", 4, out, sizeof(out)) == -1, "process rejects malformed");
+
+        calc_service_delete(svc);
+      }
+
+      static void test_socket_project(void) {
+        const char *path = "/tmp/calc_lab4_test.sock";
+        unlink(path);
+        pid_t pid = fork();
+        check(pid >= 0, "server fork");
+        if (pid == 0) {
+          int rc = calc_server_run_forever(path);
+          _exit(rc == 0 ? 0 : 1);
+        }
+
+        check(wait_for_path(path) == 0, "server socket appears");
+        int fd = connect_path(path);
+        check(fd >= 0, "client connects");
+        if (fd >= 0) {
+          struct calc_req req = {100, ADD, 1.5, 5.6};
+          struct calc_resp resp;
+          memset(&resp, 0, sizeof(resp));
+          check(calc_client_exchange(fd, &req, &resp) == 0, "socket exchange");
+          check(resp.req_id == 100 && resp.status == 0 && resp.result == 7.1, "socket response");
+          close(fd);
+        }
+
+        kill(pid, SIGTERM);
+        waitpid(pid, NULL, 0);
+        unlink(path);
+      }
+
+      int main(void) {
+        test_service();
+        test_server_process();
+        test_socket_project();
+
+        if (failures == 0) {
+          printf("LAB4 TESTS PASSED\n");
+          return 0;
+        }
+        printf("LAB4 TESTS FAILED: %d\n", failures);
+        return 1;
+      }
+  commands:
+    run: gcc -Wall -Wextra -std=c99 calc_proto.c framing.c calc_service.c srvcore.c clicore.c server_main.c client_main.c demo.c -o demo_app && ./demo_app
+    test: gcc -Wall -Wextra -std=c99 calc_proto.c framing.c calc_service.c srvcore.c clicore.c server_main.c test_runner.c -o test_runner && ./test_runner
+  test_cases:
+  - expect: |
+      1 status=0 result=7.1
+      2 status=0 result=3.0
+      3 status=0 result=3.0
+      4 status=0 result=5.0
+      5 status=0 result=30.0
+      6 status=0 result=0.0
+      7 status=0 result=0.0
+      8 status=-1 result=0.0
+      9 status=0 result=3.0
+      10 status=-2 result=0.0
+  hints:
+  - Implement and test the service first; most server failures come from memory variants or division by zero.
+  - The frame accumulator removes the $ separator. Restore it before calling a request or response parser.
+  - Drain every complete frame after each read and use a write loop; one read or one write may cover less than you expect.

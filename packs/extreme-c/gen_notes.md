@@ -286,7 +286,7 @@ ch23 study note above.
 - 14 blocks (model/design/algorithm/syntax), 92 scaffolded block checks
 - 42-question quiz (intro 12 / core 16 / advanced 14), mixed kinds including
   order and trace; zero stems duplicate a block check
-- 24 atomic cards with unique concept tags; 3 multi-file labs; 5 final checks
+- 24 atomic cards with unique concept tags; 4 multi-file labs (the fourth builds the main calculator project over UDS streams); 5 final checks
 - Test gate references b1..b14 at min_quiz 80
 - Interleaved review: b1 uses ch22/b1; b7 uses ch22/b20
 - Answer positions: study 23/22/22, quiz 11/12/11, final 2/2/1
@@ -300,5 +300,6 @@ ch23 study note above.
   `run_expected` matches actual stdout byte-for-byte (b4, b11, b12)
 - Labs verified in a temp workspace: untouched starters fail commands.test;
   reference implementations pass commands.test and byte-match
-  `test_cases[].expect` for commands.run (lab1, lab2, lab3)
+  `test_cases[].expect` for commands.run (lab1, lab2, lab3, and lab4;
+  lab4 also runs a forked UDS server/client integration test)
 - No external book references in any stem, `why:`, card, or lab instruction

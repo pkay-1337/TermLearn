@@ -1,22 +1,34 @@
 cards:
   - front: "What separates push-based IPC from pull-based IPC?"
-    back: "Push delivers into the receiver's kernel buffer through a channel; pull requires fetching from a shared medium. Why: only pull needs user-level synchronization."
+    back: >-
+      Push delivers into the receiver's kernel buffer through a channel; pull requires fetching from a shared
+      medium. Why: only pull needs user-level synchronization.
     concept: "push-vs-pull"
   - front: "Why does lseek() fail on a socket descriptor?"
-    back: "A socket always names a channel, and a channel has no seekable byte offset; only a storage medium does. Why: seek assumes persistent stored bytes."
+    back: >-
+      A socket always names a channel, and a channel has no seekable byte offset; only a storage medium does. Why:
+      seek assumes persistent stored bytes.
     concept: "socket-not-seekable"
   - front: "When is a stream channel the right choice over a datagram channel?"
-    back: "When you need ordered, reliable bytes for one pair of processes, such as bulk transfer or request-response. Why: datagrams drop ordering and connection identity."
+    back: >-
+      When you need ordered, reliable bytes for one pair of processes, such as bulk transfer or request-response.
+      Why: datagrams drop ordering and connection identity.
     concept: "stream-channel-choice"
   - front: "When is a datagram channel the right choice?"
-    back: "When each message is independent and self-contained, so per-client sessions are unnecessary. Why: one datagram equals one message."
+    back: >-
+      When each message is independent and self-contained, so per-client sessions are unnecessary. Why: one datagram
+      equals one message.
     concept: "datagram-channel-choice"
   - front: "Why are UDS preferred over TCP sockets on a single host?"
-    back: "UDS stay inside the kernel of one host and skip IP routing, checksums, and device handling. Why: less overhead means lower latency."
+    back: >-
+      UDS stay inside the kernel of one host and skip IP routing, checksums, and device handling. Why: less overhead
+      means lower latency.
     concept: "uds-single-host"
-  - front: "Which four socket varieties does the calculator project support?"
-    back: "UDS stream, UDS datagram, TCP network stream, and UDP network datagram. Why: each family supports both channel shapes."
-    concept: "four-varieties"
+  - front: "How are the calculator's four socket varieties formed?"
+    back: >-
+      By combining an address family (UDS or IP) with a channel shape (stream or datagram). Why: the two choices are
+      independent.
+    concept: "transport-axes"
   - front: "What is the wire format of a calculator request?"
     back: "id#method#operand1#operand2$ with four fields. Why: the $ terminator marks a complete message on a stream."
     concept: "request-wire-format"
@@ -24,50 +36,82 @@ cards:
     back: "req_id#status#result$ with three fields. Why: the request id correlates the answer with its request."
     concept: "response-wire-format"
   - front: "Why must the calculator protocol use a delimiter?"
-    back: "A stream read may return part of a message or several messages, so $ marks the real boundary. Why: streams do not preserve message boundaries."
+    back: >-
+      A stream read may return part of a message or several messages, so $ marks the real boundary. Why: streams do
+      not preserve message boundaries.
     concept: "delimiter-purpose"
   - front: "What is the purpose of a request id?"
-    back: "It lets a client match an arriving response to the request that caused it. Why: several requests may be outstanding at once."
+    back: >-
+      It lets a client match an arriving response to the request that caused it. Why: several requests may be
+      outstanding at once.
     concept: "request-id-correlation"
-  - front: "Which methods have memory variants in the calculator protocol?"
-    back: "ADD, SUB, and MUL have ADDM, SUBM, and MULM; DIV has no variant. Why: division cannot use the stored memory value."
-    concept: "memory-method-variants"
+  - front: "How does a memory-taking operation use the stored value?"
+    back: >-
+      It computes with the current memory value and stores the new result in memory. Why: ADDM, SUBM, and MULM all
+      update the shared per-client state.
+    concept: "memory-variant-behavior"
   - front: "What does the deserializer's ring buffer hold?"
-    back: "Incoming bytes accumulated until a complete delimited message can be parsed. Why: stream chunks do not align with messages."
+    back: >-
+      Incoming bytes accumulated until a complete delimited message can be parsed. Why: stream chunks do not align
+      with messages.
     concept: "ring-buffer"
   - front: "Which side serializes requests and which side deserializes them?"
-    back: "The client serializes requests and the server deserializes them; for responses the roles reverse. Why: each side parses what it receives."
+    back: >-
+      The client serializes requests and the server deserializes them; for responses the roles reverse. Why: each
+      side parses what it receives.
     concept: "serializer-orientation"
   - front: "Why is the calculation service kept transport-blind?"
-    back: "It uses pure C types, so it can run in a server, a test, or a plain main. Why: socket and serializer dependencies would destroy reuse."
+    back: >-
+      It uses pure C types, so it can run in a server, a test, or a plain main. Why: socket and serializer
+      dependencies would destroy reuse.
     concept: "service-transport-blind"
   - front: "Why does every calculator client need its own service object?"
-    back: "The calculator memory is stateful per client. Why: a shared object would mix one client's stored value into another's."
+    back: >-
+      The calculator memory is stateful per client. Why: a shared object would mix one client's stored value into
+      another's.
     concept: "stateful-service"
-  - front: "Which calls form the UDS stream listener sequence?"
-    back: "socket, unlink stale path, bind, listen, then accept in a loop. Why: the endpoint must be free and bound before connections queue."
-    concept: "stream-listener-sequence"
+  - front: "What must be true before accept() can return a connection?"
+    back: >-
+      The endpoint must be bound and listen() must have put the socket into listening state. Why: accept only
+      removes connections that are already queued.
+    concept: "listener-readiness"
   - front: "Why unlink a UDS socket file before bind?"
-    back: "A leftover node from a previous run makes bind fail with EADDRINUSE. Why: a socket path can have only one bound socket."
+    back: >-
+      A leftover node from a previous run makes bind fail with EADDRINUSE. Why: a socket path can have only one
+      bound socket.
     concept: "unlink-before-bind"
   - front: "Why spawn a thread per accepted stream client?"
-    back: "Blocking reads on one client must not stall the accept loop. Why: each client has its own stream channel and handler context."
+    back: >-
+      Blocking reads on one client must not stall the accept loop. Why: each client has its own stream channel and
+      handler context.
     concept: "thread-per-client"
   - front: "Why must a UDS datagram client bind its own path?"
-    back: "The server needs a return address from recvfrom, and AF_UNIX has no automatic ephemeral endpoint. Why: without a path, replies have nowhere to go."
+    back: >-
+      The server needs a return address from recvfrom, and AF_UNIX has no automatic ephemeral endpoint. Why: without
+      a path, replies have nowhere to go.
     concept: "uds-datagram-client-bind"
-  - front: "Which steps does a datagram server omit compared with a stream server?"
-    back: "It omits the listen backlog and the accept phase. Why: datagram channels have no dedicated one-to-one connections."
-    concept: "datagram-server-omissions"
-  - front: "Which two things change when moving a stream server from UDS to TCP?"
-    back: "The socket family becomes AF_INET and the address becomes sockaddr_in. Why: the stream core logic is transport-independent."
+  - front: "Why does a datagram server skip listen() and accept()?"
+    back: >-
+      Datagrams have no per-connection sessions, so there is no accept queue. Why: every message carries its own
+      peer address instead.
+    concept: "datagram-no-accept"
+  - front: "Which part of a stream server changes when moving from UDS to TCP?"
+    back: >-
+      Only the address family and address structure change; the stream core loop stays the same. Why: the
+      operations above bind and connect are transport-independent.
     concept: "uds-to-tcp-delta"
   - front: "Why convert ports with htons before storing them in sockaddr_in?"
-    back: "The IP stack interprets sin_port in network byte order (big endian). Why: a raw host-order value binds a different port on little-endian hosts."
+    back: >-
+      The IP stack interprets sin_port in network byte order (big endian). Why: a raw host-order value binds a
+      different port on little-endian hosts.
     concept: "network-byte-order"
   - front: "Why can a UDP client skip bind while a UDS datagram client cannot?"
-    back: "AF_INET assigns a source address and ephemeral port on first send; AF_UNIX has no such automatic namespace. Why: the server needs a return endpoint."
+    back: >-
+      AF_INET assigns a source address and ephemeral port on first send; AF_UNIX has no such automatic namespace.
+      Why: the server needs a return endpoint.
     concept: "udp-implicit-bind"
   - front: "Why is the UDP calculator server single-threaded?"
-    back: "Each datagram is a self-contained request-response exchange with no session. Why: there is no blocking per-client stream to isolate."
+    back: >-
+      Each datagram is a self-contained request-response exchange with no session. Why: there is no blocking
+      per-client stream to isolate.
     concept: "udp-single-threaded"

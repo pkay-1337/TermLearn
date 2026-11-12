@@ -1,152 +1,17 @@
 quiz:
-- kind: order
-  level: intro
-  q: Order the 5 correct steps of a UDS stream listener from socket creation to accepting a client; all displayed lines are used.
-  lines:
-  - listen(server_sd, 10)
-  - accept(server_sd, NULL, NULL)
-  - bind(server_sd, (struct sockaddr*)&addr, sizeof(addr))
-  - socket(AF_UNIX, SOCK_STREAM, 0)
-  - unlink(sock_file)
-  answer_order:
-  - 3
-  - 4
-  - 2
-  - 0
-  - 1
-  why: The socket object comes first, then the stale path is removed, bind attaches the endpoint, listen prepares the backlog, and accept can receive a client.
-  concept: quiz-listener-order
 - kind: mcq
-  level: intro
-  q: Which statement correctly distinguishes a socket descriptor from a file descriptor?
+  level: core
+  q: How does calc_service_div return both a status and a quotient?
   choices:
-  - Both descriptors always name a seekable medium, so both support the same file operations
-  - A socket descriptor always names a channel, while a file descriptor may name a medium or a channel
-  - A socket descriptor always names a medium, while a file descriptor may name a medium or a channel
+  - It returns a struct containing the status and the quotient by value
+  - It returns an int status and writes the quotient through a double pointer
+  - It returns the quotient and stores the status in a global variable
   answer: 1
   why: |
-    Sockets are two-way channels; file descriptors can name a regular file
-    medium or a channel such as a pipe. Option C reverses the socket property.
-    Option A is false: sockets are not seekable.
-  concept: quiz-descriptor-difference
-- kind: mcq
-  level: intro
-  q: Which socket type corresponds to a datagram channel?
-  choices:
-  - SOCK_DGRAM, because datagrams are discrete independent messages
-  - SOCK_RAW, because datagrams bypass all protocol processing
-  - SOCK_STREAM, because datagrams need an ordered byte sequence
-  answer: 2
-  why: |
-    Datagram channels use SOCK_DGRAM and preserve message boundaries.
-    Option C names the stream type. Option B names raw sockets, which expose
-    packet headers rather than the datagram API used here.
-  concept: quiz-datagram-type
-- kind: why-fails
-  level: intro
-  q: Why are UDS preferred over TCP loopback sockets when both client and server run on one machine?
-  choices:
-  - UDS bypass the network stack, so they have less overhead and lower latency
-  - UDS guarantee delivery to a remote host even when the local server is offline
-  - UDS encrypt every message before it enters the kernel channel
-  answer: 0
-  why: |
-    AF_UNIX traffic stays inside one host and skips IP routing, checksums, and
-    device handling, which reduces overhead. Option B contradicts the
-    single-host restriction. Option C invents encryption.
-  concept: quiz-uds-over-tcp
-- kind: mcq
-  level: intro
-  q: Which pair correctly maps the four varieties to their usual transport names?
-  choices:
-  - UDS stream to TCP, and UDS datagram to UDP
-  - Network stream to TCP, and network datagram to UDP
-  - Network stream to UDP, and network datagram to TCP
-  answer: 1
-  why: |
-    Network stream sockets usually run over TCP and network datagram sockets
-    over UDP. Option C swaps them. Option A gives UDS sockets transport names,
-    which they do not have.
-  concept: quiz-variety-names
-- kind: predict
-  level: intro
-  q: 'Trace the serializer: which wire message is produced for id 1000, method ADD, operands 1.5 and 5.6?'
-  code: |
-    struct calc_proto_req_t r = {1000, ADD, 1.5, 5.6};
-    /* fields in order: id # method # operand1 # operand2 $ */
-  choices:
-  - 1000#ADD#1.5#5.6#7.1$
-  - ADD#1000#1.5#5.6$
-  - 1000#ADD#1.5#5.6$
-  answer: 2
-  why: |
-    A request has four fields in the order id, method, operand1, operand2,
-    terminated by `$`. Option A adds a result field that responses carry, not
-    requests. Option B puts the method before the id.
-  concept: quiz-request-wire
-- kind: predict
-  level: intro
-  q: 'Trace the response serializer: which wire message is produced for req_id 1000, status OK, result 7.1?'
-  code: |
-    struct calc_proto_resp_t r = {1000, 0, 7.1};
-    /* fields in order: req_id # status # result $ */
-  choices:
-  - 1000#0#7.1$
-  - 1000#OK#7.1$
-  - 1000#7.1#0$
-  answer: 0
-  why: |
-    Responses carry the numeric status, so status OK serializes as 0. Option B
-    writes the symbolic name instead of the numeric value. Option C swaps the
-    status and result fields.
-  concept: quiz-response-wire
-- kind: fillblank
-  level: intro
-  q: 'In the calculator protocol, the character that separates one whole message from the next is ___. (Answer format: one character)'
-  answer_text: $
-  why: |
-    The `$` character terminates a message, while `#` separates fields inside
-    it. A deserializer scans for `$` to know when a complete message exists.
-  concept: quiz-message-separator
-- kind: eipe
-  level: intro
-  q: In one sentence, what is the purpose of the unique request id in the calculator protocol?
-  choices:
-  - It lets the transport retransmit lost messages without a timer
-  - It lets the client match each arriving response to the request that caused it
-  - It lets the server order requests by the size of their operands
-  answer: 1
-  why: |
-    The request id is correlation data. Option C invents a sorting rule.
-    Option A assigns retransmission to an application identifier, which the
-    protocol does not provide.
-  concept: quiz-request-id
-- kind: mcq
-  level: intro
-  q: Which calculator method has no memory-taking variant, and why?
-  choices:
-  - ADD, because addition never updates the stored memory value
-  - GETMEM, because reading memory cannot also modify it
-  - DIV, because division cannot use the stored memory value
-  answer: 2
-  why: |
-    Only ADD, SUB, and MUL have memory variants (ADDM, SUBM, MULM); DIV has
-    none because division cannot use the stored memory. Option A is false:
-    ADDM exists. Option B describes a read-only operation, which is not the
-    reason for the missing division variant.
-  concept: quiz-div-no-mem
-- kind: mcq
-  level: intro
-  q: Which numeric status value represents a division by zero in the calculator protocol?
-  choices:
-  - STATUS_DIV_BY_ZERO, value 4
-  - STATUS_INVALID_OPERAND, value 3
-  - STATUS_INTERNAL_ERROR, value 20
-  answer: 0
-  why: |
-    Division by zero has its own protocol status, value 4. Option B names a
-    different failure. Option C is the general internal-error status.
-  concept: quiz-div-status
+    The service returns an int error code and uses an output parameter for the
+    quotient. Option C hides state in a global. Option A describes a different
+    interface than the service declares.
+  concept: quiz-div-out-param
 - kind: eipe
   level: advanced
   q: In one sentence, what is the purpose of the deserializer's ring buffer?
@@ -160,9 +25,23 @@ quiz:
     Option C mistakes it for a send queue. Option A mistakes it for service
     state.
   concept: quiz-ring-purpose
+- kind: why-fails
+  level: core
+  q: Why does a UDS stream server unlink its socket file before calling bind?
+  choices:
+  - The unlink call allocates the kernel buffer that stores incoming bytes
+  - The unlink call changes the socket family from AF_INET to AF_UNIX
+  - A leftover socket node from a previous run would make bind fail with EADDRINUSE
+  answer: 2
+  why: |
+    The path is a filesystem node; an existing node blocks a new bind. Option A
+    invents buffer allocation. Option B invents a family conversion.
+  concept: quiz-unlink-bind
 - kind: predict
   level: advanced
-  q: 'Trace the parser: the first chunk is "1000#ADD#1.5" and the second is "#5.6$". When can a complete request be parsed?'
+  q: >-
+    Trace the parser: the first chunk is "1000#ADD#1.5" and the second is
+    "#5.6$". When can a complete request be parsed?
   code: |
     chunk1 = "1000#ADD#1.5";
     chunk2 = "#5.6$";
@@ -177,89 +56,6 @@ quiz:
     recognizable field for a completed message.
   concept: quiz-split-message
 - kind: mcq
-  level: advanced
-  q: What do the serializer callbacks deliver to the client or server code?
-  choices:
-  - Deserialized request objects, deserialized response objects, and parsing errors
-  - Raw socket descriptors, thread identifiers, and memory addresses
-  - Compressed byte buffers, encryption keys, and authentication tokens
-  answer: 0
-  why: |
-    The serializer registers request, response, and error callbacks so the
-    owner receives objects or a protocol error. Option B lists transport and
-    runtime internals. Option C lists features the serializer does not handle.
-  concept: quiz-serializer-callbacks
-- kind: why-fails
-  level: advanced
-  q: Why does the client serialize requests while the server deserializes them?
-  choices:
-  - The client must deserialize requests before the server can parse them
-  - Each side parses the message type it receives, and their directions are opposite
-  - The server cannot serialize any bytes because it has no request identifier
-  answer: 1
-  why: |
-    A client sends requests and receives responses; a server receives requests
-    and sends responses. Option C is false: the server serializes responses.
-    Option A reverses the client's role.
-  concept: quiz-serializer-role
-- kind: eipe
-  level: advanced
-  q: In one sentence, what is the purpose of the calcser library?
-  choices:
-  - It stores each client calculator memory in a persistent file
-  - It accepts client connections and spawns one handler thread per client
-  - It defines the wire protocol and converts objects to and from messages
-  answer: 2
-  why: |
-    calcser owns the application protocol and its serialization. Option A
-    describes persistence. Option B describes server concurrency in srvcore.
-  concept: quiz-calcser-purpose
-- kind: why-fails
-  level: advanced
-  q: Why does the calculator server create one service object per client instead of sharing one object?
-  choices:
-  - The calculator memory belongs to one client, so sharing would mix stored values
-  - A shared service object would make the serializer reuse the wrong ring buffer
-  - The kernel permits only one service object for each listening socket
-  answer: 0
-  why: |
-    Stateful memory must be private per client. Option B confuses service state
-    with serializer buffering. Option C invents a kernel limit.
-  concept: quiz-service-per-client
-- kind: mcq
-  level: core
-  q: How does calc_service_div return both a status and a quotient?
-  choices:
-  - It returns a struct containing the status and the quotient by value
-  - It returns an int status and writes the quotient through a double pointer
-  - It returns the quotient and stores the status in a global variable
-  answer: 1
-  why: |
-    The service returns an int error code and uses an output parameter for the
-    quotient. Option C hides state in a global. Option A describes a different
-    interface than the service declares.
-  concept: quiz-div-out-param
-- kind: fillblank
-  level: intro
-  q: 'A Unix Domain stream socket is created with the address family ___. (Answer format: one token)'
-  answer_text: AF_UNIX
-  why: |
-    AF_UNIX selects Unix Domain Sockets. AF_INET selects IPv4 network sockets,
-    which the TCP and UDP mains use instead.
-  concept: quiz-af-unix
-- kind: why-fails
-  level: core
-  q: Why does a UDS stream server unlink its socket file before calling bind?
-  choices:
-  - The unlink call allocates the kernel buffer that stores incoming bytes
-  - The unlink call changes the socket family from AF_INET to AF_UNIX
-  - A leftover socket node from a previous run would make bind fail with EADDRINUSE
-  answer: 2
-  why: |
-    The path is a filesystem node; an existing node blocks a new bind. Option A
-    invents buffer allocation. Option B invents a family conversion.
-  concept: quiz-unlink-bind
-- kind: mcq
   level: core
   q: What does the backlog argument of listen(server_sd, 10) configure?
   choices:
@@ -271,9 +67,32 @@ quiz:
     Backlog bounds the pending-connection queue. Option B confuses it with read
     buffer size. Option C confuses kernel queuing with application threading.
   concept: quiz-backlog
+- kind: order
+  level: intro
+  q: >-
+    Order the 5 correct steps of a UDS stream listener from socket creation to
+    accepting a client; all displayed lines are used.
+  lines:
+  - listen(server_sd, 10)
+  - accept(server_sd, NULL, NULL)
+  - bind(server_sd, (struct sockaddr*)&addr, sizeof(addr))
+  - socket(AF_UNIX, SOCK_STREAM, 0)
+  - unlink(sock_file)
+  answer_order:
+  - 3
+  - 4
+  - 2
+  - 0
+  - 1
+  why: >-
+    The socket object comes first, then the stale path is removed, bind attaches
+    the endpoint, listen prepares the backlog, and accept can receive a client.
+  concept: quiz-listener-order
 - kind: predict
   level: core
-  q: 'Trace the accept loop: accept returns a descriptor for client A, then the loop calls accept again. What does the second descriptor represent?'
+  q: >-
+    Trace the accept loop: accept returns a descriptor for client A, then the
+    loop calls accept again. What does the second descriptor represent?
   code: |
     while (1) {
       int client_sd = accept(server_sd, NULL, NULL);
@@ -289,6 +108,19 @@ quiz:
     would merge unrelated clients. Option A confuses a client descriptor with
     the listening descriptor.
   concept: quiz-accept-new-descriptor
+- kind: mcq
+  level: advanced
+  q: What do the serializer callbacks deliver to the client or server code?
+  choices:
+  - Deserialized request objects, deserialized response objects, and parsing errors
+  - Raw socket descriptors, thread identifiers, and memory addresses
+  - Compressed byte buffers, encryption keys, and authentication tokens
+  answer: 0
+  why: |
+    The serializer registers request, response, and error callbacks so the
+    owner receives objects or a protocol error. Option B lists transport and
+    runtime internals. Option C lists features the serializer does not handle.
+  concept: quiz-serializer-callbacks
 - kind: eipe
   level: core
   q: In one sentence, what is the purpose of spawning a thread per accepted stream client?
@@ -301,6 +133,19 @@ quiz:
     A blocking read in one handler must not stall the accept loop. Option A is
     not guaranteed. Option B contradicts per-client serializers.
   concept: quiz-thread-per-client
+- kind: mcq
+  level: intro
+  q: Which statement correctly distinguishes a socket descriptor from a file descriptor?
+  choices:
+  - Both descriptors always name a seekable medium, so both support the same file operations
+  - A socket descriptor always names a channel, while a file descriptor may name a medium or a channel
+  - A socket descriptor always names a medium, while a file descriptor may name a medium or a channel
+  answer: 1
+  why: |
+    Sockets are two-way channels; file descriptors can name a regular file
+    medium or a channel such as a pipe. Option C reverses the socket property.
+    Option A is false: sockets are not seekable.
+  concept: quiz-descriptor-difference
 - kind: fillblank
   level: core
   q: 'On a stream socket, a read that returns 0 signals ___ for the connection. (Answer format: three letters)'
@@ -309,6 +154,120 @@ quiz:
     A zero-byte read means end-of-file: the peer closed or shut down its write
     side. The handler then leaves its read loop and cleans up.
   concept: quiz-read-zero
+- kind: why-fails
+  level: advanced
+  q: Why does the client serialize requests while the server deserializes them?
+  choices:
+  - The client must deserialize requests before the server can parse them
+  - Each side parses the message type it receives, and their directions are opposite
+  - The server cannot serialize any bytes because it has no request identifier
+  answer: 1
+  why: |
+    A client sends requests and receives responses; a server receives requests
+    and sends responses. Option C is false: the server serializes responses.
+    Option A reverses the client's role.
+  concept: quiz-serializer-role
+- kind: mcq
+  level: intro
+  q: Which socket type corresponds to a datagram channel?
+  choices:
+  - SOCK_DGRAM, because datagrams are discrete independent messages
+  - SOCK_RAW, because datagrams bypass all protocol processing
+  - SOCK_STREAM, because datagrams need an ordered byte sequence
+  answer: 2
+  why: |
+    Datagram channels use SOCK_DGRAM and preserve message boundaries.
+    Option C names the stream type. Option B names raw sockets, which expose
+    packet headers rather than the datagram API used here.
+  concept: quiz-datagram-type
+- kind: fillblank
+  level: core
+  q: >-
+    On the connector side, the call that associates a socket with a server
+    endpoint is ___. (Answer format: one token)
+  answer_text: connect
+  why: |
+    Listeners bind to a local endpoint; connectors connect to a peer endpoint.
+    A UDS client reuses the server's address preparation and replaces bind with
+    connect.
+  concept: quiz-connect
+- kind: eipe
+  level: advanced
+  q: >-
+    A UDS stream server has just read the bytes of one request. Which component
+    converts those bytes into a request object?
+  choices:
+  - calcsvc, the calculation service that stores per-client memory
+  - srvcore, the loop that accepts clients and starts handler threads
+  - calcser, the serializer library that owns the protocol format
+  answer: 2
+  why: |
+    calcser deserializes request bytes into a request object. calcsvc only
+    performs arithmetic, and srvcore only manages connections and threads, so
+    neither converts wire bytes.
+  concept: quiz-calcser-deserialize
+- kind: why-fails
+  level: intro
+  q: Why are UDS preferred over TCP loopback sockets when both client and server run on one machine?
+  choices:
+  - UDS bypass the network stack, so they have less overhead and lower latency
+  - UDS guarantee delivery to a remote host even when the local server is offline
+  - UDS encrypt every message before it enters the kernel channel
+  answer: 0
+  why: |
+    AF_UNIX traffic stays inside one host and skips IP routing, checksums, and
+    device handling, which reduces overhead. Option B contradicts the
+    single-host restriction. Option C invents encryption.
+  concept: quiz-uds-over-tcp
+- kind: eipe
+  level: core
+  q: In one sentence, what is the purpose of the reader thread in a stream client?
+  choices:
+  - It accepts new server connections while the command line keeps running
+  - It reads responses without blocking the main thread that reads user commands
+  - It serializes requests so the main thread can focus on printing results
+  answer: 1
+  why: |
+    Response reads can block, so a dedicated thread keeps the command line
+    responsive. Option C reverses the roles. Option A describes a server duty.
+  concept: quiz-client-reader
+- kind: why-fails
+  level: advanced
+  q: Why does the calculator server create one service object per client instead of sharing one object?
+  choices:
+  - The calculator memory belongs to one client, so sharing would mix stored values
+  - A shared service object would make the serializer reuse the wrong ring buffer
+  - The kernel permits only one service object for each listening socket
+  answer: 0
+  why: |
+    Stateful memory must be private per client. Option B confuses service state
+    with serializer buffering. Option C invents a kernel limit.
+  concept: quiz-service-per-client
+- kind: mcq
+  level: intro
+  q: Which pair correctly maps the four varieties to their usual transport names?
+  choices:
+  - UDS stream to TCP, and UDS datagram to UDP
+  - Network stream to TCP, and network datagram to UDP
+  - Network stream to UDP, and network datagram to TCP
+  answer: 1
+  why: |
+    Network stream sockets usually run over TCP and network datagram sockets
+    over UDP. Option C swaps them. Option A gives UDS sockets transport names,
+    which they do not have.
+  concept: quiz-variety-names
+- kind: mcq
+  level: core
+  q: What does shutdown(conn_sd, SHUT_RD) accomplish during stream-client exit?
+  choices:
+  - It deletes the server socket file from the filesystem before exit
+  - It turns the stream socket into a datagram socket for cleanup
+  - It stops inbound reads so the blocked reader thread can finish and be joined
+  answer: 2
+  why: |
+    SHUT_RD unblocks the reader so the main thread can join it. Option A
+    confuses shutdown with unlink. Option B invents a channel-shape change.
+  concept: quiz-shutdown-rd
 - kind: spot-bug
   level: advanced
   q: The response writer below treats a short write as success. Which line hides the truncation?
@@ -332,39 +291,22 @@ quiz:
     with buf.len. Option B confuses input and output calls. Option C misstates
     buffer lifetime: write has already copied the bytes it sent.
   concept: quiz-short-write
-- kind: fillblank
-  level: core
-  q: 'On the connector side, the call that associates a socket with a server endpoint is ___. (Answer format: one token)'
-  answer_text: connect
-  why: |
-    Listeners bind to a local endpoint; connectors connect to a peer endpoint.
-    A UDS client reuses the server's address preparation and replaces bind with
-    connect.
-  concept: quiz-connect
-- kind: eipe
-  level: core
-  q: In one sentence, what is the purpose of the reader thread in a stream client?
+- kind: predict
+  level: intro
+  q: 'Trace the serializer: which wire message is produced for id 1000, method ADD, operands 1.5 and 5.6?'
+  code: |
+    struct calc_proto_req_t r = {1000, ADD, 1.5, 5.6};
+    /* fields in order: id # method # operand1 # operand2 $ */
   choices:
-  - It accepts new server connections while the command line keeps running
-  - It reads responses without blocking the main thread that reads user commands
-  - It serializes requests so the main thread can focus on printing results
-  answer: 1
-  why: |
-    Response reads can block, so a dedicated thread keeps the command line
-    responsive. Option C reverses the roles. Option A describes a server duty.
-  concept: quiz-client-reader
-- kind: mcq
-  level: core
-  q: What does shutdown(conn_sd, SHUT_RD) accomplish during stream-client exit?
-  choices:
-  - It deletes the server socket file from the filesystem before exit
-  - It turns the stream socket into a datagram socket for cleanup
-  - It stops inbound reads so the blocked reader thread can finish and be joined
+  - 1000#ADD#1.5#5.6#7.1$
+  - ADD#1000#1.5#5.6$
+  - 1000#ADD#1.5#5.6$
   answer: 2
   why: |
-    SHUT_RD unblocks the reader so the main thread can join it. Option A
-    confuses shutdown with unlink. Option B invents a channel-shape change.
-  concept: quiz-shutdown-rd
+    A request has four fields in the order id, method, operand1, operand2,
+    terminated by `$`. Option A adds a result field that responses carry, not
+    requests. Option B puts the method before the id.
+  concept: quiz-request-wire
 - kind: why-fails
   level: core
   q: Why does a UDS datagram server skip listen and accept?
@@ -378,67 +320,6 @@ quiz:
     Option B is false: datagram servers do bind a path. Option C describes
     stream semantics.
   concept: quiz-datagram-no-accept
-- kind: eipe
-  level: core
-  q: In one sentence, what is the purpose of the address returned by recvfrom on a datagram server?
-  choices:
-  - It stores the server socket path so the next client can reuse it
-  - It identifies the sender so sendto can route the reply back to that peer
-  - It proves the datagram was authenticated by the kernel before delivery
-  answer: 1
-  why: |
-    The shared datagram channel needs the sender's address for the reply.
-    Option C confuses addressing with authentication. Option A confuses a peer
-    address with the server's own path.
-  concept: quiz-recvfrom-address
-- kind: why-fails
-  level: core
-  q: Why must a UDS datagram client bind its own socket file while a UDP client may skip bind?
-  choices:
-  - UDS sockets refuse to transmit unless the client binds a numeric port below 1024
-  - The kernel assigns a UDS client descriptor 0 unless a path is bound first
-  - A UDS endpoint has no automatic ephemeral address, so the client path is the return address
-  answer: 2
-  why: |
-    The server needs a UDS return path, and AF_UNIX provides no automatic
-    ephemeral namespace. Option A invents ports and a privilege rule. Option B
-    invents descriptor assignment.
-  concept: quiz-uds-client-bind
-- kind: predict
-  level: core
-  q: 'Trace the datagram server: a datagram arrives, but the deserializer reports req_found = false. What does the server send back?'
-  code: |
-    calc_proto_ser_server_deserialize(ser, buf, &req_found);
-    if (!req_found) {
-      struct calc_proto_resp_t resp = {-1, ERROR_INVALID_RESPONSE, 0.0};
-      write_resp(&context, &resp);
-    }
-  choices:
-  - A failure response with req_id -1, status ERROR_INVALID_RESPONSE, result 0.0
-  - Nothing, because an incomplete datagram is silently discarded
-  - A request for retransmission with the positive req_id from the datagram
-  answer: 0
-  why: |
-    The datagram server replies with the fixed failure response so the client
-    does not wait forever. Option B would hang the client. Option C invents a
-    retransmission protocol.
-  concept: quiz-incomplete-datagram
-- kind: fillblank
-  level: core
-  q: 'A TCP server sets the sin_family field of its sockaddr_in to ___. (Answer format: one token)'
-  answer_text: AF_INET
-  why: |
-    sockaddr_in describes an IPv4 endpoint, so sin_family must be AF_INET and
-    match the family passed to socket.
-  concept: quiz-sin-family
-- kind: fillblank
-  level: core
-  q: 'The calculator TCP server binds the network port ___. (Answer format: one number)'
-  answer_text: '6666'
-  why: |
-    The TCP server stores htons(6666) in sin_port, and clients dial the same
-    port. The UDP calculator uses port 9999 instead.
-  concept: quiz-tcp-port
 - kind: predict
   level: advanced
   q: 'Trace the little-endian store: 6666 is written to sin_port without htons. Which port does the IP stack read?'
@@ -455,19 +336,84 @@ quiz:
     Option C ignores byte-order interpretation. Option A invents another
     shifted value.
   concept: quiz-htons-trap
+- kind: predict
+  level: intro
+  q: 'Trace the response serializer: which wire message is produced for req_id 1000, status OK, result 7.1?'
+  code: |
+    struct calc_proto_resp_t r = {1000, 0, 7.1};
+    /* fields in order: req_id # status # result $ */
+  choices:
+  - 1000#0#7.1$
+  - 1000#OK#7.1$
+  - 1000#7.1#0$
+  answer: 0
+  why: |
+    Responses carry the numeric status, so status OK serializes as 0. Option B
+    writes the symbolic name instead of the numeric value. Option C swaps the
+    status and result fields.
+  concept: quiz-response-wire
+- kind: trace
+  level: core
+  q: Trace the deserializer buffer. After the second chunk arrives, what bytes are buffered?
+  code: |-
+    ring_append(s, "12#", 3);
+    ring_append(s, "ADD#", 4);
+    ring_append(s, "1$", 2);
+  trace:
+    headers:
+    - Step
+    - Chunk
+    - Separator
+    - Buffered bytes
+    rows:
+    - ['1', '12#', 'no', '12#']
+    - ['2', 'ADD#', 'no', '12#ADD#']
+    - ['3', '1$', 'yes', '12#ADD#1$']
+  target:
+    row: 1
+    col: 3
+  answer_text: 12#ADD#
+  why: >-
+    Both chunks are appended before any $ appears, so the buffer accumulates
+    12# then ADD#. The message is only complete after the third chunk supplies
+    the terminator.
+  concept: quiz-deser-buffer-trace
 - kind: eipe
   level: advanced
-  q: In one sentence, what is the purpose of network byte order?
+  q: A little-endian host sends a 16-bit port with htons. Which byte layout appears on the wire?
   choices:
-  - It guarantees that stream messages arrive in the order they were sent
-  - It makes every port value numerically larger than its host-order form
-  - It lets hosts with different native orders agree on multi-byte field layout
+  - Little-endian, because each host keeps its own native order
+  - Platform order, which the receiving kernel discovers from the data
+  - Big-endian, the standard network order shared by both endpoints
   answer: 2
   why: |
-    A shared representation prevents byte swapping between architectures.
-    Option A confuses byte order with stream ordering. Option B confuses
-    representation with magnitude.
-  concept: quiz-network-order
+    htons converts host order to network byte order, which is big-endian.
+    Receiver-side ntohs reverses it. Little-endian and platform order describe
+    a host's native choice, not the value on the wire.
+  concept: quiz-network-order-wire
+- kind: fillblank
+  level: intro
+  q: >-
+    In the calculator protocol, the character that separates one whole message
+    from the next is ___. (Answer format: one character)
+  answer_text: $
+  why: |
+    The `$` character terminates a message, while `#` separates fields inside
+    it. A deserializer scans for `$` to know when a complete message exists.
+  concept: quiz-message-separator
+- kind: eipe
+  level: core
+  q: In one sentence, what is the purpose of the address returned by recvfrom on a datagram server?
+  choices:
+  - It stores the server socket path so the next client can reuse it
+  - It identifies the sender so sendto can route the reply back to that peer
+  - It proves the datagram was authenticated by the kernel before delivery
+  answer: 1
+  why: |
+    The shared datagram channel needs the sender's address for the reply.
+    Option C confuses addressing with authentication. Option A confuses a peer
+    address with the server's own path.
+  concept: quiz-recvfrom-address
 - kind: mcq
   level: advanced
   q: Which socket type does a UDP application pass to socket() with AF_INET?
@@ -480,6 +426,32 @@ quiz:
     UDP is datagram-oriented, so its type is SOCK_DGRAM. Option B describes
     TCP. Option C describes raw sockets, which the calculator does not use.
   concept: quiz-udp-type
+- kind: eipe
+  level: intro
+  q: In one sentence, what is the purpose of the unique request id in the calculator protocol?
+  choices:
+  - It lets the transport retransmit lost messages without a timer
+  - It lets the client match each arriving response to the request that caused it
+  - It lets the server order requests by the size of their operands
+  answer: 1
+  why: |
+    The request id is correlation data. Option C invents a sorting rule.
+    Option A assigns retransmission to an application identifier, which the
+    protocol does not provide.
+  concept: quiz-request-id
+- kind: why-fails
+  level: core
+  q: Why must a UDS datagram client bind its own socket file while a UDP client may skip bind?
+  choices:
+  - UDS sockets refuse to transmit unless the client binds a numeric port below 1024
+  - The kernel assigns a UDS client descriptor 0 unless a path is bound first
+  - A UDS endpoint has no automatic ephemeral address, so the client path is the return address
+  answer: 2
+  why: |
+    The server needs a UDS return path, and AF_UNIX provides no automatic
+    ephemeral namespace. Option A invents ports and a privilege rule. Option B
+    invents descriptor assignment.
+  concept: quiz-uds-client-bind
 - kind: why-fails
   level: advanced
   q: Why can a UDP client send without binding a local endpoint first?
@@ -493,6 +465,41 @@ quiz:
     server captures with recvfrom. Option C is false: replies are unicast to
     the sender. Option A is false: explicit bind is allowed.
   concept: quiz-udp-implicit-bind
+- kind: mcq
+  level: intro
+  q: Which calculator method has no memory-taking variant, and why?
+  choices:
+  - ADD, because addition never updates the stored memory value
+  - GETMEM, because reading memory cannot also modify it
+  - DIV, because division cannot use the stored memory value
+  answer: 2
+  why: |
+    Only ADD, SUB, and MUL have memory variants (ADDM, SUBM, MULM); DIV has
+    none because division cannot use the stored memory. Option A is false:
+    ADDM exists. Option B describes a read-only operation, which is not the
+    reason for the missing division variant.
+  concept: quiz-div-no-mem
+- kind: predict
+  level: core
+  q: >-
+    Trace the datagram server: a datagram arrives, but the deserializer reports
+    req_found = false. What does the server send back?
+  code: |
+    calc_proto_ser_server_deserialize(ser, buf, &req_found);
+    if (!req_found) {
+      struct calc_proto_resp_t resp = {-1, ERROR_INVALID_RESPONSE, 0.0};
+      write_resp(&context, &resp);
+    }
+  choices:
+  - A failure response with req_id -1, status ERROR_INVALID_RESPONSE, result 0.0
+  - Nothing, because an incomplete datagram is silently discarded
+  - A request for retransmission with the positive req_id from the datagram
+  answer: 0
+  why: |
+    The datagram server replies with the fixed failure response so the client
+    does not wait forever. Option B would hang the client. Option C invents a
+    retransmission protocol.
+  concept: quiz-incomplete-datagram
 - kind: eipe
   level: advanced
   q: In one sentence, what is the purpose of the shared stream and datagram cores in the calculator project?
@@ -506,6 +513,22 @@ quiz:
     only transport constants. Option A invents coupling. Option B contradicts
     the transport-blind serializer.
   concept: quiz-shared-cores
+- kind: fillblank
+  level: intro
+  q: 'A Unix Domain stream socket is created with the address family ___. (Answer format: one token)'
+  answer_text: AF_UNIX
+  why: |
+    AF_UNIX selects Unix Domain Sockets. AF_INET selects IPv4 network sockets,
+    which the TCP and UDP mains use instead.
+  concept: quiz-af-unix
+- kind: fillblank
+  level: core
+  q: 'A TCP server sets the sin_family field of its sockaddr_in to ___. (Answer format: one token)'
+  answer_text: AF_INET
+  why: |
+    sockaddr_in describes an IPv4 endpoint, so sin_family must be AF_INET and
+    match the family passed to socket.
+  concept: quiz-sin-family
 - kind: choose-better
   level: advanced
   q: A new socket family must be added to the calculator. Which approach is better and why?
@@ -519,9 +542,35 @@ quiz:
     duplicates logic and bugs. Option C breaks the service's transport
     independence.
   concept: quiz-add-transport
+- kind: mcq
+  level: intro
+  q: Which numeric status value represents a division by zero in the calculator protocol?
+  choices:
+  - STATUS_DIV_BY_ZERO, value 4
+  - STATUS_INVALID_OPERAND, value 3
+  - STATUS_INTERNAL_ERROR, value 20
+  answer: 0
+  why: |
+    Division by zero has its own protocol status, value 4. Option B names a
+    different failure. Option C is the general internal-error status.
+  concept: quiz-div-status
+- kind: fillblank
+  level: core
+  q: >-
+    A TCP server executes the line below. Which host-order port does it bind?
+    (Answer format: one number)
+  code: |
+    addr.sin_port = htons(6666);
+  answer_text: '6666'
+  why: |
+    htons converts 6666 to network order for storage; the port itself remains
+    6666. The UDP calculator uses port 9999 instead.
+  concept: quiz-tcp-port
 - kind: spot-bug
   level: advanced
-  q: A TCP server accidentally prepares a sockaddr_un for an AF_INET socket. Which line causes bind to reject the address?
+  q: >-
+    A TCP server accidentally prepares a sockaddr_un for an AF_INET socket.
+    Which line causes bind to reject the address?
   code: |
     int sd = socket(AF_INET, SOCK_STREAM, 0);
     struct sockaddr_un addr;                 /* line 2 */
@@ -539,44 +588,3 @@ quiz:
     The address structure must match the socket family. Option C reverses the
     conversion. Option A confuses bind with listen.
   concept: quiz-wrong-address-struct
-- kind: trace
-  level: core
-  q: Trace the deserializer buffer. After the second chunk arrives, what bytes are buffered?
-  code: |-
-    ring_append(s, "12#", 3);
-    ring_append(s, "ADD#", 4);
-    ring_append(s, "1$", 2);
-  trace:
-    headers:
-    - Step
-    - Chunk
-    - Separator
-    - Buffered bytes
-    rows:
-    - step: 1
-      line: 1
-      cells:
-      - '1'
-      - 12#
-      - 'no'
-      - 12#
-    - step: 2
-      line: 2
-      cells:
-      - '2'
-      - ADD#
-      - 'no'
-      - 12#ADD#
-    - step: 3
-      line: 3
-      cells:
-      - '3'
-      - 1$
-      - 'yes'
-      - 12#ADD#1$
-  target:
-    row: 1
-    col: 3
-  answer_text: 12#ADD#
-  why: Both chunks are appended before any $ appears, so the buffer accumulates 12# then ADD#. The message is only complete after the third chunk supplies the terminator.
-  concept: quiz-deser-buffer-trace

@@ -7,9 +7,19 @@ meta:
   prereqs:
     - ch22
 objectives:
-  - "Classify any socket channel as push-based, stream or datagram, UDS or network, and explain why a socket descriptor cannot be seeked."
+  - >-
+    Classify any socket channel as push-based, stream or datagram, UDS or network, and explain why a socket
+    descriptor cannot be seeked.
   - "Encode and decode calculator request and response messages with the # field delimiter and $ message separator."
-  - "Explain how a fixed-length ring buffer plus an observer callback deserializes variable-length messages arriving in arbitrary chunks."
-  - "Trace the complete UDS stream server and client lifecycles from socket() through bind()/connect(), listen(), accept(), read(), and write()."
-  - "Build UDS datagram peers that bind their own socket files and exchange whole messages with recvfrom() and sendto()."
-  - "Port the same stream and datagram logic to TCP and UDP by changing only the address family, socket type, address structure, and byte-order conversion."
+  - >-
+    Explain how a fixed-length ring buffer plus an observer callback deserializes variable-length messages
+    arriving in arbitrary chunks.
+  - >-
+    Trace the complete UDS stream server and client lifecycles from socket() through bind()/connect(), listen(),
+    accept(), read(), and write().
+  - >-
+    Build UDS datagram peers that bind their own socket files and exchange whole messages with recvfrom() and
+    sendto().
+  - >-
+    Port the same stream and datagram logic to TCP and UDP by changing only the address family, socket type,
+    address structure, and byte-order conversion.

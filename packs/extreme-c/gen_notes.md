@@ -102,22 +102,66 @@
 3. **Prioritize / skip**: keep all core socket concepts, protocol serialization, UDS stream/datagram, TCP/UDP, and multi-threaded calculator architecture; skip platform-specific tangents (Windows-only notes)
 4. **Lab difficulty + toolchain**: medium multi-file C labs, gcc -Wall -Wextra -std=c99, 2s timeout
 5. **Explanation language**: English
-6. **Interleaved review**: 2 checks (ch10, ch11)
+6. **Interleaved review**: 4 checks from ch22 (b1, b19, b20)
 
 ## Pack Statistics
 
-- 11 blocks (model / syntax / design / algorithm), 66 scaffolded block checks
-- 20 atomic SM-2 spaced repetition flashcards
-- 40-question dedicated chapter quiz (intro/core/advanced, mixed, zero duplicates with block checks)
-- 5 practical multi-file labs with scaffolded starter files, fail-first verification, and unit test assertions:
-  1. lab1: Application Protocol Framing and Deserialization (calc_frame.c)
-  2. lab2: Unix Domain Socket Stream Server and Client Lifecycle (uds_socket.c)
-  3. lab3: Network Byte Order Binary Packet Marshaler (net_calc.c)
-  4. lab4: Stream Accumulator Deserializer with Observer Callbacks (stream_deserializer.c)
-  5. lab5: Reliable Stream Transmission and Delimited Frame Reception (reliable_stream_io.c)
-- 5 final mastery checks; gate needs all 11 blocks at min_quiz 80
-- Strict validation: PASS (`python main.py validate --book extreme-c --chapter ch23 --strict`)
+- 14 blocks (model 4 / design 4 / syntax 4 / algorithm 2), 96 scaffolded block checks
+- Blocks: b1 channel vs medium; b2 transport axes; b3 library architecture; b4 protocol codec; b5 framing/ring buffer; b6 calculator service; b7 UDS stream listener; b8 stream client handlers; b9 UDS stream client; b10 UDS datagrams; b11 TCP port; b12 network byte order; b13 UDP; b14 shared cores
+- Check mix: why-fails 15, mcq 15, fillblank 14, eipe 12, predict 12, spot-bug 11, order 10, choose-better 4, trace 3
+- Study answer slots balanced: 23 / 23 / 23 for positions 0 / 1 / 2
+- 12 C examples, all compile with `gcc -Wall -std=c99 -O0 -c`; 9 runnable examples byte-match `run_expected`
+- 5 stepped `viz` stanzas; 2 flow diagrams with 3 steps each
+- 42-question quiz: 12 intro / 16 core / 14 advanced; interleaved with zero adjacent same-level items; answer slots 11 / 12 / 11; zero duplicate stems with block checks
+- 24 atomic SM-2 cards with unique concept tags and one-line `Why:` retrieval
+- 4 practical multi-file labs with blank starter implementation files, fail-first verification, and unit test assertions:
+  1. lab1: Calculator Protocol Serializer and Parser
+  2. lab2: IPv4 Address and Network Byte Order Marshaler
+  3. lab3: Stream Frame Accumulator for Delimited Messages
+  4. lab4: Main Calculator Project over UDS Streams
+- 5 final mastery checks; gate needs all 14 blocks at `min_quiz: 80`
+- Strict validation: PASS (`python main.py validate --book extreme-c --chapter ch23 --strict`, exit 0)
 
+## Idea-Unit Audit Trail (chapter section → block)
+
+- Socket introduction, channel vs medium, push-based delivery → b1
+- UDS/network × stream/datagram transport axes → b2
+- Calculator project source hierarchy and build/run layout → b3
+- Application protocol request/response objects and `id#method#operand1#operand2$` wire format → b4
+- Serializer/deserializer interface, callbacks, and ring buffer across split chunks → b5
+- Calculator service API, per-client memory, and transport blindness → b6
+- UDS stream listener sequence: socket, unlink, bind, listen, accept → b7
+- Accept loop, per-client handler threads, response writes → b8
+- UDS stream client connector, request/response loop, reader thread → b9
+- UDS datagram server/client, recvfrom/sendto, client path bind → b10
+- TCP server/client and the address-family porting delta → b11
+- Network byte order, `htons`/`ntohs`, and port layout → b12
+- UDP server/client and implicit source binding → b13
+- Shared `srvcore`/`clicore` architecture over transport-blind `calcser`/`calcsvc` → b14
+
+## Code-Box Dispositions (28 numbered boxes + 4 shell boxes)
+
+- Source has 28 numbered code boxes (20-1..20-28; some captions are duplicated or misnumbered) and Shell Boxes 20-1..20-4
+- 20-1..20-7 request/response structs, object creation, status constants, wire examples → b4
+- 20-8..20-11 serializer/deserializer callbacks, buffer API, ring-buffer chunk handling → b5
+- 20-12 calculator service public interface → b6
+- 20-13..20-20 UDS stream socket creation, bind, listen, accept, handler threads, response writes → b7/b8
+- 20-21..20-22 UDS stream client main and shared stream client loop → b9
+- 20-23..20-26 UDS datagram server/client, recvfrom handler, reply path → b10
+- 20-27 TCP server/client mains and AF_INET address conversion → b11
+- 20-28 UDP server/client mains and sendto/recvfrom loop → b13
+- Chapter summary and two-core refactor → b14
+- Shell Boxes 20-1..20-4 (clone/list, build, run stream server, run client) → b3/b7/b9 prose and checks
+- All 12 shipped examples are marked `adapted: true` with notes explaining the simplification; no code box is silently omitted
+
+## Verification Notes
+
+- Every `blocks[].example.code` compiles cleanly; all 9 declared `run_expected` values match actual stdout byte-for-byte
+- Quiz reordered to interleave levels; trace rows converted to list-row schema; long prose wrapped to ≤120 columns
+- Cards rewritten where they had been list-all prompts; every card now carries one fact, contrast, or procedure plus a `Why:` line
+- Labs verified with temporary reference implementations outside the repo: untouched starters fail to link; reference solutions pass `commands.test`; `commands.run` byte-matches every `test_cases[].expect`
+- 5 pack YAML files updated (`meta`, `study`, `quiz`, `cards`, `test`); `labs.yaml` already satisfied the contract and was verified unchanged
+- Strict validation exits 0; the only warning is the pre-existing `EXT-SOURCE` near-empty cover chapter warning, unrelated to ch23
 
 # Chapter Generation Notes: extreme-c / ch22
 

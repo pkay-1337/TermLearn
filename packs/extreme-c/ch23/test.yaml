@@ -19,7 +19,9 @@ test:
   final_checks:
   - kind: choose-better
     level: advanced
-    q: A team must choose one transport for a same-host bulk data pipeline that also needs per-message boundaries. Which design is better and why?
+    q: >-
+      A team must choose one transport for a same-host bulk data pipeline that also needs per-message boundaries.
+      Which design is better and why?
     choices:
     - Use a UDS stream channel and frame records with a length prefix or delimiter
     - Use a UDS datagram channel and send records larger than one datagram
@@ -33,7 +35,9 @@ test:
     concept: final-bulk-transport-choice
   - kind: predict
     level: advanced
-    q: 'Trace the byte sequence: a little-endian host stores 6666 directly in sin_port. Which value does a correct client using htons(6666) appear to dial relative to the server?'
+    q: >-
+      Trace the byte sequence: a little-endian host stores 6666 directly in sin_port. Which value does a correct
+      client using htons(6666) appear to dial relative to the server?
     code: |
       /* server */ addr.sin_port = 6666;          /* no conversion */
       /* client */ addr.sin_port = htons(6666);   /* correct */
@@ -69,7 +73,9 @@ test:
     concept: final-short-write
   - kind: why-fails
     level: advanced
-    q: Why does a UDS datagram client fail to receive replies when it skips bind, while a UDP client over IP still works?
+    q: >-
+      Why does a UDS datagram client fail to receive replies when it skips bind, while a UDP client over IP still
+      works?
     choices:
     - The UDS server captures no return path, while the IP kernel assigns a source endpoint
     - The UDS server rejects datagrams from clients that never set a numeric port
@@ -82,7 +88,9 @@ test:
     concept: final-uds-bind-requirement
   - kind: eipe
     level: advanced
-    q: In one sentence, what is the architectural purpose of keeping calcser and calcsvc above the socket transport code?
+    q: >-
+      In one sentence, what is the architectural purpose of keeping calcser and calcsvc above the socket transport
+      code?
     choices:
     - It makes the serializer responsible for choosing the address family at runtime
     - It lets one protocol and one service run unchanged behind every socket type

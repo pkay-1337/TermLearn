@@ -26,8 +26,9 @@ blocks:
     Stopgap measures delayed the inevitable. IPv6 widens the address from
     32 bits to **128 bits**. That is only 96 more bits, but powers grow
     brutally: `2^128` is about 340 trillion trillion trillion addresses,
-    roughly 79 million billion trillion times the IPv4 space. The point is not the exact decimal — it is that address *width* changes the
-    possible population by an astronomical factor.
+    roughly 79 million billion trillion times the IPv4 space. The point is not
+    the exact decimal — it is that address *width* changes the possible
+    population by an astronomical factor.
 
     Keep these two lenses separate: **representation** (how we write an
     address) and **capacity** (how many distinct addresses exist). Mixing
@@ -583,9 +584,10 @@ blocks:
     - it is far too small to cover even one single host anywhere on the network
     - its 1-bits are split by zeros, so the network bits do not form one prefix
     answer: 2
-    why: A netmask is always a run of 1-bits followed by a run of 0-bits; 255.255.255.1 is 11111111.11111111.11111111.00000001,
-      which interleaves a 1 after the zero run. 'Too small' confuses mask width with address count. 'Must
-      end in 255' invents a rule; masks such as 255.255.255.252 end in 252. (b3)
+    why: A netmask is always a run of 1-bits followed by a run of 0-bits;
+      255.255.255.1 is 11111111.11111111.11111111.00000001, which interleaves
+      a 1 after the zero run. 'Too small' confuses mask width with address count.
+      'Must end in 255' invents a rule; masks such as 255.255.255.252 end in 252. (b3)
     concept: netmask-contiguity
   - kind: order
     q: Order the 6 correct lines so the program computes and prints the network for 192.0.2.12/24; one
@@ -1285,7 +1287,8 @@ blocks:
   explain_md: |
     `struct addrinfo` is the bookkeeping structure for address lookups. You
     fill in *hints*, call `getaddrinfo()`, and receive a **linked list** of
-    filled-in structures — one node per candidate address. It is one of the first things you will call when making a connection.
+    filled-in structures — one node per candidate address. It is one of the
+    first things you will call when making a connection.
 
     The fields and their jobs:
 
@@ -1337,6 +1340,8 @@ blocks:
           char *ai_canonname;        /* full canonical hostname */
           struct addrinfo_fields *ai_next; /* linked list, next node */
       };
+    run_expected: |
+      (compile-only type definition — no runtime output)
     explain_md: |
       Each field answers one question the lookup must communicate: which
       family, which socket type, which protocol, how big the address is,
@@ -1910,6 +1915,18 @@ blocks:
       ss_family tells you which cast to use afterward. sockaddr_in is too small for IPv6, and a bare sockaddr
       is the generic view rather than a large enough storage object. (b9)
     concept: storage-for-unknown-family
+  - kind: why-fails
+    q: Why must you read ss_family before casting sockaddr_storage to a concrete address type?
+    choices:
+    - the family field selects which concrete layout the stored bytes follow
+    - the cast converts the address from IPv4 to IPv6
+    - the storage object changes size after the family is set
+    answer: 0
+    why: |-
+      The bytes are laid out according to the stored family, so the tag tells you which structure's fields
+      are valid. Casting only changes the compiler's view; it does not translate addresses or resize the
+      storage. (b9)
+    concept: family-before-cast
 - id: b10
   type: algorithm
   title: Convert Text to Binary with inet_pton

@@ -1440,6 +1440,11 @@ blocks:
           close(sockfd);
           return 0;
       }
+    run_expected: |
+      (no stdout on success; failure paths print to stderr:)
+      usage: client host port
+      getaddrinfo: <reason>
+      failed to connect
     explain_md: |
       Each candidate record is tried in turn. A socket failure skips to the
       next record; a connect failure closes that descriptor and also advances.
@@ -1931,6 +1936,9 @@ blocks:
           freeaddrinfo(res);
           return 0;
       }
+    run_expected: |
+      (blocks until a client connects, then prints:)
+      accepted a connection on a new descriptor
     explain_md: |
       The first four calls build a listening socket. accept() then blocks until
       a client arrives, fills their_addr with the peer address, updates
@@ -2259,6 +2267,67 @@ blocks:
     adapted: true
     note: 'Adapted from the chapter''s send/recv snippets: a deterministic in-memory channel replaces
       a live socket so partial sends and zero-byte receive are visible.'
+  diagram:
+    kind: flow
+    caption: 'Stream I/O: send until complete, then recv reports bytes or EOF'
+    nodes:
+    - id: SEND
+      label: send() unsent suffix
+      shape: io
+    - id: MORE
+      label: sent == len?
+      shape: decision
+    - id: RECV
+      label: recv() up to len
+      shape: io
+    - id: ZERO
+      label: n == 0?
+      shape: decision
+    - id: DATA
+      label: consume n bytes
+    - id: EOF
+      label: peer closed
+    edges:
+    - from: SEND
+      to: MORE
+    - from: MORE
+      to: SEND
+      label: 'no'
+    - from: MORE
+      to: RECV
+      label: 'yes'
+    - from: RECV
+      to: ZERO
+    - from: ZERO
+      to: DATA
+      label: '> 0'
+    - from: ZERO
+      to: EOF
+      label: '0'
+    steps:
+    - focus:
+      - SEND
+      - MORE
+      note: send() may accept only part of the buffer; advance by the return value
+    - focus:
+      - SEND
+      - MORE
+      - RECV
+      note: once every byte is accepted, recv() waits for incoming data
+    - focus:
+      - SEND
+      - MORE
+      - RECV
+      - ZERO
+      note: recv() reports a byte count; zero is EOF, not an empty retry
+    - focus:
+      - SEND
+      - MORE
+      - RECV
+      - ZERO
+      - DATA
+      - EOF
+      note: consume n bytes for n > 0; stop reading when n is 0
   checks:
   - kind: mcq
     q: What does send() return on success?

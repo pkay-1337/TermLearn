@@ -839,6 +839,62 @@ blocks:
     note: |-
       Adapted from the chapter's SIGCHLD handler: the example calls the reaping loop directly after a
       known child exits, so it runs deterministically without waiting for a signal.
+  diagram:
+    kind: flow
+    caption: Reap every ready child without blocking
+    nodes:
+    - id: SIG
+      label: SIGCHLD arrives
+    - id: SAVE
+      label: save errno
+    - id: WAIT
+      label: waitpid(-1, WNOHANG)
+    - id: POS
+      label: pid > 0?
+      shape: decision
+    - id: COUNT
+      label: count++ and loop
+    - id: DONE
+      label: restore errno, return count
+    edges:
+    - from: SIG
+      to: SAVE
+    - from: SAVE
+      to: WAIT
+    - from: WAIT
+      to: POS
+    - from: POS
+      to: COUNT
+      label: 'yes'
+    - from: COUNT
+      to: WAIT
+    - from: POS
+      to: DONE
+      label: 0 or -1
+    steps:
+    - focus:
+      - SIG
+      - SAVE
+      note: a signal can interrupt code that depends on errno, so save it first
+    - focus:
+      - SIG
+      - SAVE
+      - WAIT
+      note: WNOHANG asks for a ready child without blocking the handler
+    - focus:
+      - SIG
+      - SAVE
+      - WAIT
+      - POS
+      - COUNT
+      note: a positive pid means one child was reaped; loop for the next
+    - focus:
+      - SIG
+      - SAVE
+      - WAIT
+      - POS
+      - DONE
+      note: 0 means no more ready children; -1 means an error or no children left
   checks:
   - kind: mcq
     q: What is a zombie process?

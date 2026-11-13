@@ -148,7 +148,7 @@ blocks:
       traps guessing a narrower storage type. (b1)
     concept: file-descriptor
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What is this descriptor-acquisition code FOR?
     code: |
       int fd = socket(AF_INET, SOCK_STREAM, 0);
       int copy = fd;
@@ -167,7 +167,7 @@ blocks:
       creates no connection and learns no address. (b1)'
     concept: kernel-issued-handle
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What does this pair of write() calls demonstrate?
     code: |
       write(disk_fd, buf, len);      /* one target */
       write(sock_fd, buf, len);      /* a different target, same call */
@@ -197,11 +197,13 @@ blocks:
         line: 1
         cells:
         - '1'
+        - '1'
         - a
         - an int >= 0 (kernel-issued)
       - step: 2
         line: 2
         cells:
+        - '2'
         - '2'
         - b
         - the same int as a
@@ -209,11 +211,12 @@ blocks:
         line: 3
         cells:
         - '3'
+        - '3'
         - ok
         - ???
     target:
       row: 2
-      col: 2
+      col: 3
     choices:
     - the value 0 (false)
     - the descriptor handle
@@ -225,7 +228,7 @@ blocks:
       conflating the comparison result with the copied handle. (b1)
     concept: trace-descriptor-copy
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What is this socket write sequence FOR?
     code: |
       int fd = socket(AF_INET, SOCK_STREAM, 0);
       write(fd, "ping", 4);
@@ -440,11 +443,13 @@ blocks:
         line: 1
         cells:
         - '1'
+        - '1'
         - sd
         - a nonnegative int
       - step: 2
         line: 2
         cells:
+        - '2'
         - '2'
         - dup
         - the same int as sd
@@ -452,11 +457,12 @@ blocks:
         line: 3
         cells:
         - '3'
+        - '3'
         - ok
         - ???
     target:
       row: 2
-      col: 2
+      col: 3
     choices:
     - the value 0 (false)
     - the value -1 (error)
@@ -617,7 +623,7 @@ blocks:
       stand in for the type. (b3)
     concept: sock-dgram
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What is this datagram-socket setup FOR?
     code: |
       int sd = socket(AF_INET, SOCK_DGRAM, 0);
       if (sd < 0)
@@ -635,7 +641,7 @@ blocks:
       statistics. (b3)'
     concept: socket-acquire
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What does this pair of sendto() calls demonstrate?
     code: |
       sendto(sd, "hi", 2, 0, &dest, destlen);
       sendto(sd, "yo", 2, 0, &dest, destlen);
@@ -834,11 +840,13 @@ blocks:
         line: 1
         cells:
         - '1'
+        - '1'
         - stream
         - '"12"'
       - step: 2
         line: 2
         cells:
+        - '2'
         - '2'
         - first
         - '1'
@@ -846,11 +854,12 @@ blocks:
         line: 3
         cells:
         - '3'
+        - '3'
         - in_order
         - ???
     target:
       row: 2
-      col: 2
+      col: 3
     choices:
     - the value 0 (false)
     - the value 2 (second)
@@ -863,7 +872,7 @@ blocks:
       with the boolean. (b4)
     concept: trace-order-check
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What is this ssh forwarding loop FOR?
     code: |
       /* an ssh client, one keystroke at a time */
       for (;;) {
@@ -1063,11 +1072,13 @@ blocks:
         line: 1
         cells:
         - '1'
+        - '1'
         - delivered
         - '0'
       - step: 2
         line: 2
         cells:
+        - '2'
         - '2'
         - fired
         - '3'
@@ -1075,17 +1086,19 @@ blocks:
         line: 3
         cells:
         - '3'
+        - '3'
         - lost
         - '1'
       - step: 4
         line: 4
         cells:
         - '4'
+        - '4'
         - delivered
         - ???
     target:
       row: 3
-      col: 2
+      col: 3
     choices:
     - the value 4 (fired)
     - the value 3 (stale)
@@ -1108,7 +1121,7 @@ blocks:
       protocol switch' is not a mechanism the chapter offers. (b5)
     concept: drop-tolerance
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What is this sendto() call FOR?
     code: |
       sendto(sd, buf, len, 0, &dest, destlen);
     choices:
@@ -1244,7 +1257,7 @@ blocks:
       for you. (b6)'
     concept: ack-retransmit
   - kind: eipe
-    q: In one sentence, what is this code FOR?
+    q: What is this retransmission loop FOR?
     code: |
       while (!got_ack && tries < 4) {
           send_packet();

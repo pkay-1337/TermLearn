@@ -314,6 +314,68 @@ blocks:
       adapted: true
       note: Pipes stand in for client sockets; the array, readiness scan, and disable-by-negative-fd rules
         are unchanged.
+    diagram:
+      kind: flow
+      caption: 'Dynamic poll loop: one listener plus connected clients'
+      nodes:
+      - id: BUILD
+        label: build pollfd array
+      - id: POLL
+        label: poll(timeout)
+      - id: READY
+        label: scan revents
+        shape: decision
+      - id: LISTEN
+        label: accept + append slot
+        shape: io
+      - id: CLIENT
+        label: read + broadcast
+        shape: io
+      - id: DROP
+        label: remove closed slot
+      edges:
+      - from: BUILD
+        to: POLL
+      - from: POLL
+        to: READY
+      - from: READY
+        to: LISTEN
+        label: listener
+      - from: READY
+        to: CLIENT
+        label: client
+      - from: CLIENT
+        to: DROP
+        label: closed
+      - from: LISTEN
+        to: POLL
+      - from: CLIENT
+        to: POLL
+      steps:
+      - focus:
+        - BUILD
+        - POLL
+        note: 'poll watches an array: one entry for the listener and one per client'
+      - focus:
+        - BUILD
+        - POLL
+        - READY
+        note: the return value is a count; scan every entry and test its revents
+      - focus:
+        - BUILD
+        - POLL
+        - READY
+        - LISTEN
+        - CLIENT
+        note: a ready listener accepts and appends; a ready client reads and broadcasts
+      - focus:
+        - BUILD
+        - POLL
+        - READY
+        - LISTEN
+        - CLIENT
+        - DROP
+        note: close and remove a client slot when the peer closes
     checks:
       - kind: choose-better
         q: The poll array is full when a new client is accepted. Which action is better?
@@ -575,6 +637,79 @@ blocks:
         membership test selects `A`.
       adapted: true
       note: Pipes stand in for the listener and client sockets; the master/read_fds copy is the same.
+    diagram:
+      kind: flow
+      caption: select() rebuilds a working set from the master set each pass
+      nodes:
+      - id: MASTER
+        label: master fd_set
+      - id: COPY
+        label: read_fds = master
+      - id: SELECT
+        label: select(numfds, ...)
+      - id: TEST
+        label: FD_ISSET(fd)
+        shape: decision
+      - id: LISTEN
+        label: 'listener: accept'
+        shape: io
+      - id: CLIENT
+        label: 'client: recv'
+        shape: io
+      - id: UPDATE
+        label: add/remove in master
+      edges:
+      - from: MASTER
+        to: COPY
+      - from: COPY
+        to: SELECT
+      - from: SELECT
+        to: TEST
+      - from: TEST
+        to: LISTEN
+        label: listener
+      - from: TEST
+        to: CLIENT
+        label: client
+      - from: LISTEN
+        to: UPDATE
+      - from: CLIENT
+        to: UPDATE
+      - from: UPDATE
+        to: COPY
+      steps:
+      - focus:
+        - MASTER
+        - COPY
+        note: keep a pristine master set and copy it before every select() call
+      - focus:
+        - MASTER
+        - COPY
+        - SELECT
+        note: select() overwrites the working sets, so the copy is not optional
+      - focus:
+        - MASTER
+        - COPY
+        - SELECT
+        - TEST
+        note: test each descriptor with FD_ISSET after select returns
+      - focus:
+        - MASTER
+        - COPY
+        - SELECT
+        - TEST
+        - LISTEN
+        - CLIENT
+        note: a ready listener accepts; a ready client may have data or EOF
+      - focus:
+        - MASTER
+        - COPY
+        - SELECT
+        - TEST
+        - LISTEN
+        - CLIENT
+        - UPDATE
+        note: add new clients and remove closed ones in the master set
     checks:
       - kind: choose-better
         q: Why does a select server keep a master fd_set separate from the set passed to select?

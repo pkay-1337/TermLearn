@@ -1349,6 +1349,73 @@ blocks:
     without an order leads to mixed families. "Change everything at once"
     makes the first error hard to localize. The plan supplies both the
     inventory and the dependency order.
+  diagram:
+    kind: flow
+    caption: Dependency-ordered IPv6 migration plan
+    nodes:
+    - id: LOOKUP
+      label: getaddrinfo first
+    - id: HELP
+      label: family helpers
+    - id: CONST
+      label: AF/PF constants
+    - id: WILD
+      label: wildcard address
+    - id: STRUCT
+      label: sockaddr structs
+    - id: CONV
+      label: inet_pton/ntop
+    - id: LEGACY
+      label: legacy lookups
+    - id: BCAST
+      label: broadcast/multicast
+    edges:
+    - from: LOOKUP
+      to: HELP
+    - from: HELP
+      to: CONST
+    - from: CONST
+      to: WILD
+    - from: WILD
+      to: STRUCT
+    - from: STRUCT
+      to: CONV
+    - from: CONV
+      to: LEGACY
+    - from: LEGACY
+      to: BCAST
+    steps:
+    - focus:
+      - LOOKUP
+      note: start with lookup-driven construction; it can erase many hand-packing steps
+    - focus:
+      - LOOKUP
+      - HELP
+      note: put the remaining family choice behind helpers before touching fields
+    - focus:
+      - LOOKUP
+      - HELP
+      - CONST
+      - WILD
+      note: swap constants and the wildcard once the family decision has one home
+    - focus:
+      - LOOKUP
+      - HELP
+      - CONST
+      - WILD
+      - STRUCT
+      - CONV
+      note: upgrade structures and fields, then the text converters
+    - focus:
+      - LOOKUP
+      - HELP
+      - CONST
+      - WILD
+      - STRUCT
+      - CONV
+      - LEGACY
+      - BCAST
+      note: retire legacy lookups and replace broadcast last
   checks:
   - kind: order
     q: Order the 6 correct migration actions from the earliest design decision to the final cleanup. One

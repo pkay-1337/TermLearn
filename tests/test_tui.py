@@ -606,6 +606,34 @@ async def test_study_linked_visual_keeps_code_and_marks_current_step(tmp_path, m
         assert "RUNTIME STEP 1" in viz
 
 
+async def test_study_viz_advance_keeps_visual_in_view(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import StudyScreen
+    app = LearnApp()
+    async with app.run_test(size=(60, 10)) as pilot:
+        app.push_screen(StudyScreen("extreme-c", "ch10", start_block=0))
+        await _wait_screen(app, pilot, StudyScreen)
+        await _wait_body(app, pilot)
+        s = app.screen
+
+        await pilot.press("n")
+        await pilot.pause()
+        assert s.stage == "viz"
+
+        sc = s.query_one(".study-container")
+        viz = s.query_one(".study-viz-box")
+        viz.scroll_visible(animate=False, top=True)
+        await pilot.pause()
+        assert sc.max_scroll_y > 0
+        assert sc.scroll_y > 0
+
+        await pilot.press("n")
+        await pilot.pause()
+        assert s.stage == "viz"
+        assert s.vi == 1
+        assert sc.scroll_y > 0
+
+
 async def test_study_renders_expected_output_after_code(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from tui.practice import StudyScreen

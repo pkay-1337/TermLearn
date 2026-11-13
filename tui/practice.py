@@ -172,10 +172,14 @@ class StudyScreen(VimScrollMixin, _Base):
         return out
 
     def _show_body(self) -> None:
-        try:
-            self.query_one(".study-container", ScrollableContainer).scroll_to(y=0, animate=False)
-        except Exception:
-            pass
+        # Keep the reader's place while stepping through a linked visual;
+        # reset to the top only when entering a new stage or block.
+        if self.stage not in ("diagram", "viz"):
+            try:
+                self.query_one(".study-container", ScrollableContainer).scroll_to(
+                    y=0, animate=False)
+            except Exception:
+                pass
         body = self.query_one("#body", Vertical)
         body.remove_children()
         b = self._block()
@@ -231,6 +235,16 @@ class StudyScreen(VimScrollMixin, _Base):
             body.mount(QuestionWidget(ck, self._checked))
         elif self.stage == "done":
             body.mount(Static("🎉  Block complete! Press [bold cyan]n[/]: next block · [bold cyan]p[/]: previous · [bold cyan]q[/]: back.", classes="feedback-msg-success"))
+        if self.stage in ("diagram", "viz"):
+            self.call_after_refresh(self._reveal_visual)
+
+    def _reveal_visual(self) -> None:
+        """Bring the linked visual back into view after a step change."""
+        try:
+            self.query_one(".study-viz-box").scroll_visible(
+                animate=False, top=self.stage == "diagram")
+        except Exception:
+            pass
 
     def _checked(self, ok: bool) -> None:
         from lib.srs import log_answer

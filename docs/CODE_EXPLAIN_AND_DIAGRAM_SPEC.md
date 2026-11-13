@@ -67,11 +67,15 @@ example:                     # as today
 
 ### 2.3 Rendering contract
 
-`FR-EXPL-003`: Wherever `example.code` is rendered, `explain_md` **MUST** render immediately **after** the code (before `viz`/`diagram`/checks), in all surfaces that show examples:
+`FR-EXPL-003`: Wherever `example.code` is rendered, `explain_md` **MUST** render **after** the code and any `example.run_expected` output block (before `viz`/`diagram`/checks), in all surfaces that show examples:
 1. CLI `study` (`lib/study.py`) and CLI `revise` (`lib/revise.py`) — through the `--more` pager (`IF-CLI-005`).
 2. TUI `StudyScreen` (`tui/practice.py`) — mounted directly after the `SubgoalCodeView`/`Syntax` widget; TUI `ReviseScreen` (`tui/screens.py`).
 3. `export` (`lib/export_md.py`) — as a subsection under the example.
 `explain_md` **MUST NOT** be treated as a check, card, or gate input.
+
+`FR-EXPL-003a`: When `example.run_expected` is present and non-whitespace, it **MUST** render
+as a distinct "Expected output" block between the code and `explain_md`. It **MAY** be exact
+stdout or a representative transcript; renderers **MUST NOT** execute code to produce it.
 
 `FR-EXPL-004`: A block without `example` **MUST NOT** render any explain section; an empty/whitespace `explain_md` **MUST** be treated as absent.
 
@@ -79,6 +83,7 @@ example:                     # as today
 
 | Code | Level | Condition |
 |------|-------|-----------|
+| `OUTPUT-SHAPE` | ERR | `example.run_expected` present but not a string |
 | `EXPL-SHAPE` | ERR | `example.explain_md` present but not a non-empty string |
 | `EXPL-RENDER` | ERR | `explain_md` crashes the Rich renderer (reuse `_rich_renders`) |
 | `EXPL-MISSING` | WARN | `example.code` present without `explain_md` (SHOULD-level; informational in `--strict` — legacy packs predate the F1 contract; new packs are bound via GENERATE.md) |

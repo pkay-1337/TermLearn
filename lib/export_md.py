@@ -16,7 +16,15 @@ def build_markdown(data: dict) -> str:
             L.append(ex["code"])
             L.append("```")
             L.append("")
-            # SPEC-EXPL-003 F1 (FR-EXPL-003): explanation follows the code
+            out = ex.get("run_expected")
+            if isinstance(out, str) and out.strip():
+                L.append("**Expected output**")
+                L.append("")
+                L.append("```text")
+                L.append(out.rstrip("\n"))
+                L.append("```")
+                L.append("")
+            # SPEC-EXPL-003 F1 (FR-EXPL-003): explanation follows the code/output
             emd = ex.get("explain_md")
             if isinstance(emd, str) and emd.strip():
                 L.append(emd)

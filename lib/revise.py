@@ -3,6 +3,7 @@
 def run(book: str, chapter: str):
     import yaml
     from rich.console import Console
+    from rich.panel import Panel
     from rich.syntax import Syntax
     from lib.pack import load_chapter_mode
     from lib import pager as _pager
@@ -20,7 +21,11 @@ def run(book: str, chapter: str):
         ex = b.get("example") or {}
         if ex.get("code"):
             console.print(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai"))
-            # SPEC-EXPL-003 F1: explanation right after the code (no scoring)
+            out = ex.get("run_expected")
+            if isinstance(out, str) and out.strip():
+                console.print(Panel(out.rstrip("\n"), title="expected output",
+                                    border_style="green"))
+            # SPEC-EXPL-003 F1: explanation right after the code/output (no scoring)
             emd = ex.get("explain_md")
             if isinstance(emd, str) and emd.strip() and not _pager.show(console, emd):
                 return

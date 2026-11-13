@@ -105,8 +105,9 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"#    - 'title': functional, action-oriented concept title\n"
             f"#    - 'explain_md': rich, intuitive Markdown explanation (5–20 lines) breaking down\n"
             f"#      syntax, Notional Machine state transitions, and memory lifecycle.\n"
-            f"#    - 'example': runnable code snippet with 'run_expected' stdout; non-trivial code MUST also\n"
-            f"#      carry 'explain_md' (2–6 lines of Markdown rendered right under the code); optional 'subgoals'\n"
+            f"#    - 'example': runnable code snippet with 'run_expected' stdout or a representative\n"
+            f"#      transcript (rendered as an 'Expected output' block under the code); non-trivial code MUST\n"
+            f"#      also carry 'explain_md' (2–6 lines rendered after the code/output); optional 'subgoals'\n"
             f"#    - 'diagram': OPTIONAL block-level structure picture for model/design blocks with non-memory\n"
             f"#      structure (call graph, data flow, layering) — kind: flow (nodes/edges, ids unique, refs\n"
             f"#      resolvable, ≤14 nodes) or kind: art (verbatim ASCII, no ANSI); optional caption + steps ≤6\n"
@@ -232,7 +233,8 @@ def _get_mode_header(book: str, chapter: str, mode: str) -> str:
             f"#      gates:\n"
             f"#        - needs: [b1, b2, b3]\n"
             f"#          min_quiz: 80\n"
-            f"#      final_checks: []\n"
+            f"#          min_final: 100\n"
+            f"#      final_checks: []  # same check shape as block checks; interactive gate\n"
         )
     elif mode == "master":
         return (

@@ -1060,7 +1060,12 @@ class ReviseScreen(VimScrollMixin, _Base):
                             yield Syntax(ex["code"], ex.get("lang", "c"), theme="monokai")
                         except Exception:
                             yield Static(ex["code"])
-                        # SPEC-EXPL-003 F1 (FR-EXPL-003): explanation after code
+                        out = ex.get("run_expected")
+                        if isinstance(out, str) and out.strip():
+                            yield Label("Expected output", classes="study-output-label")
+                            yield Static(out.rstrip("\n"), classes="study-output-box",
+                                         markup=False)
+                        # SPEC-EXPL-003 F1 (FR-EXPL-003): explanation after code/output
                         emd = ex.get("explain_md")
                         if isinstance(emd, str) and emd.strip():
                             yield Markdown(emd)
@@ -1258,8 +1263,11 @@ class StatsScreen(VimScrollMixin, _Base):
 
 class TestScreen(VimScrollMixin, _Base):
     HELP_TITLE = "chapter test"
-    HELP_LINES = [("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
-    BINDINGS = ([Binding("q", "back", "Back"),
+    HELP_LINES = [("1-N", "answer final check"), ("n", "start / next"),
+                  ("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
+    BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 10)] +
+                [Binding("n", "next", "Next"),
+                 Binding("q", "back", "Back"),
                  Binding("h", "back", "Back", show=False),
                  Binding("question_mark", "help", "Help")] +
                 VimScrollMixin.VIM_BINDINGS)
@@ -1268,6 +1276,16 @@ class TestScreen(VimScrollMixin, _Base):
         super().__init__()
         self.book = book
         self.chapter = chapter
+        self.checks: list[tuple[str, int, dict]] = []
+        self.idx = 0
+        self.score = 0
+        self.done = 0
+        self.results: list[tuple[str, bool]] = []
+        self.state = "intro"
+        self._answered = False
+        self._quiz: dict | None = None
+        self._lab_result: dict | None = None
+        self._ok = False
 
     def _title_text(self) -> str:
         w = self.size.width or 80
@@ -1276,42 +1294,166 @@ class TestScreen(VimScrollMixin, _Base):
         return f"🏆  MASTERY GATE TEST — {self.book} / {self.chapter}"
 
     def compose(self) -> ComposeResult:
-        from lib import lab as _lab
-        from lib import progress as _prog
-        from lib import quiz as _quiz
+        from lib.pack import load_chapter_mode
+        from lib.quiz import collect_final_checks
+        data = load_chapter_mode(self.book, self.chapter, "test")
+        self.checks = collect_final_checks(data)
         with ScrollableContainer(classes="study-container"):
             yield Label(self._title_text(), id="test-screen-title", classes="screen-title")
-            q = _quiz.score_chapter(self.book, self.chapter) or {}
-            lab_result = _lab.check_lab(self.book, self.chapter)
-            ok = _prog.record_test(self.book, self.chapter, q, lab_result)
+            yield Vertical(id="body")
 
-            if isinstance(lab_result, dict):
-                if lab_result.get("passed") is True:
-                    lab_str = f"PASS ({lab_result.get('reason', 'starter compiles')})"
-                elif lab_result.get("passed") is False:
-                    lab_str = f"FAIL ({lab_result.get('reason', 'check failed')})"
-                else:
-                    lab_str = f"N/A ({lab_result.get('reason', 'no lab')})"
+    def on_mount(self) -> None:
+        super().on_mount()
+        self.call_after_refresh(self._start)
+
+    def _start(self) -> None:
+        if not self.checks:
+            self._finish_gate()
+        else:
+            self._show_body()
+
+    def _load_evidence(self) -> None:
+        if self._quiz is not None:
+            return
+        from lib import lab as _lab
+        from lib import quiz as _quiz
+        self._quiz = _quiz.score_chapter(self.book, self.chapter) or {}
+        self._lab_result = _lab.check_lab(self.book, self.chapter)
+
+    def _lab_text(self) -> str:
+        lab_result = self._lab_result
+        if isinstance(lab_result, dict):
+            if lab_result.get("passed") is True:
+                return f"PASS ({lab_result.get('reason', 'starter compiles')})"
+            if lab_result.get("passed") is False:
+                return f"FAIL ({lab_result.get('reason', 'check failed')})"
+            return f"N/A ({lab_result.get('reason', 'no lab')})"
+        return str(lab_result).upper()
+
+    def _detail_text(self) -> str:
+        q = self._quiz or {}
+        score = q.get("score", 0)
+        total = q.get("total", 0)
+        quiz_pct = (100.0 * score / total) if total else 0.0
+        detail = f"Quiz: {score}/{total} ({quiz_pct:.0f}%) · Lab Verification: {self._lab_text()}"
+        if self.checks:
+            pct = (100.0 * self.score / self.done) if self.done else 0.0
+            detail += f" · Final Checks: {self.score}/{self.done} ({pct:.0f}%)"
+        return detail
+
+    def _show_body(self) -> None:
+        try:
+            self.query_one(".study-container", ScrollableContainer).scroll_to(y=0, animate=False)
+        except Exception:
+            pass
+        self._load_evidence()
+        body = self.query_one("#body", Vertical)
+        body.remove_children()
+        if self.state == "result":
+            parts = []
+            if self._ok:
+                parts.append(Label("✔  PASS — CHAPTER MASTERED!",
+                                   classes="feedback-msg-success"))
             else:
-                lab_str = str(lab_result).upper()
+                parts.append(Label("✖  FAIL — GATE NOT PASSED",
+                                   classes="feedback-msg-error"))
+            parts.append(Static(self._detail_text(), classes="details-meta"))
+            if not self._ok:
+                parts.append(Static(
+                    "\nTo pass this gate, review weak spots in [bold cyan]study[/], "
+                    "drill checks in [bold cyan]quiz[/], and verify your code in [bold cyan]lab[/].",
+                    classes="card-hint"))
+            body.mount(Vertical(*parts, classes="details-card"))
+            return
+        if self.state == "intro":
+            body.mount(Label("FINAL CHECKS", classes="study-header-bar"))
+            body.mount(Static(
+                f"{self._detail_text()}\n\n"
+                f"{len(self.checks)} mastery final check(s) await. "
+                "Correct answers are required to pass.",
+                classes="study-block-card"))
+            body.mount(Button("Start final checks (n)", id="start-final-btn"))
+            return
+        ck = self.checks[self.idx][2]
+        body.mount(Label(f"FINAL CHECK {self.idx + 1} OF {len(self.checks)}",
+                         classes="study-header-bar"))
+        from tui.widgets import QuestionWidget
+        body.mount(QuestionWidget(ck, self._checked, shuffle=True))
 
-            score = q.get('score', 0)
-            total = q.get('total', 0)
-            quiz_pct = (100.0 * score / total) if total else 0.0
-            detail = f"Quiz: {score}/{total} ({quiz_pct:.0f}%) · Lab Verification: {lab_str}"
+    def _checked(self, ok: bool) -> None:
+        from lib.srs import init_db, log_answer
+        _block, idx, ck = self.checks[self.idx]
+        con = init_db()
+        try:
+            log_answer(con, self.book, self.chapter, "final", idx, ok,
+                       concept=str(ck.get("concept", "")))
+        finally:
+            con.close()
+        self._answered = True
+        self.score += int(ok)
+        self.done += 1
+        self.results.append((str(ck.get("concept", "")), bool(ok)))
+        body = self.query_one("#body", Vertical)
+        body.mount(Button("Next (n)", id="next-final-btn"))
+        body.query_one("#next-final-btn", Button).focus()
+        self.call_after_refresh(self._scroll_to_next)
 
-            with Vertical(classes="details-card"):
-                if ok:
-                    yield Label("✔  PASS — CHAPTER MASTERED!", classes="feedback-msg-success")
-                else:
-                    yield Label("✖  FAIL — GATE NOT PASSED", classes="feedback-msg-error")
-                yield Static(detail, classes="details-meta")
-                if not ok:
-                    yield Static(
-                        "\nTo pass this gate, review weak spots in [bold cyan]study[/], "
-                        "drill checks in [bold cyan]quiz[/], and verify your code in [bold cyan]lab[/].",
-                        classes="card-hint"
-                    )
+    def _scroll_to_next(self) -> None:
+        try:
+            self.query_one("#next-final-btn").scroll_visible(animate=True, top=False)
+        except Exception:
+            pass
+
+    @on(Button.Pressed, "#start-final-btn")
+    def _start_btn(self) -> None:
+        self.action_next()
+
+    @on(Button.Pressed, "#next-final-btn")
+    def _next_btn(self) -> None:
+        self.action_next()
+
+    def _finish_gate(self) -> None:
+        from lib import progress as _prog
+        self._load_evidence()
+        final_score = ({"score": self.score, "total": self.done}
+                       if self.checks else None)
+        self._ok = _prog.record_test(self.book, self.chapter, self._quiz,
+                                     self._lab_result,
+                                     final_score=final_score,
+                                     require_final=bool(self.checks))
+        self.state = "result"
+        self._show_body()
+
+    def action_next(self) -> None:
+        if self.state == "intro":
+            self.state = "check"
+            self.idx = 0
+            self._show_body()
+            return
+        if self.state != "check" or not self._answered:
+            return
+        self.idx += 1
+        if self.idx >= len(self.checks):
+            self._finish_gate()
+        else:
+            self._show_body()
+
+    def _answer_digit(self, n: int) -> None:
+        if self.state != "check" or self._answered:
+            return
+        from tui.widgets import QuestionWidget
+        for w in self.query(QuestionWidget):
+            w.answer_choice(n - 1)
+
+    def action_ans1(self) -> None: self._answer_digit(1)
+    def action_ans2(self) -> None: self._answer_digit(2)
+    def action_ans3(self) -> None: self._answer_digit(3)
+    def action_ans4(self) -> None: self._answer_digit(4)
+    def action_ans5(self) -> None: self._answer_digit(5)
+    def action_ans6(self) -> None: self._answer_digit(6)
+    def action_ans7(self) -> None: self._answer_digit(7)
+    def action_ans8(self) -> None: self._answer_digit(8)
+    def action_ans9(self) -> None: self._answer_digit(9)
 
     def on_resize(self) -> None:
         try:

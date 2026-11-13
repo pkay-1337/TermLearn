@@ -120,6 +120,57 @@ class StudyScreen(VimScrollMixin, _Base):
         except Exception:
             return []
 
+    def _has_example_code(self) -> bool:
+        return bool((self._block().get("example") or {}).get("code"))
+
+    def _mount_example(self, body: Vertical, *, with_explanation: bool = False) -> None:
+        """Render the block example, keeping code visible beside visuals.
+
+        The linked view is deliberate: diagrams and memory steps are far easier
+        to map back to the source when the code stays on screen. The example is
+        capped by TCSS (`max-height`) so it cannot crowd out the visual.
+        """
+        ex = self._block().get("example") or {}
+        if not ex.get("code"):
+            return
+        if ex.get("subgoals"):
+            from tui.widgets import SubgoalCodeView
+            body.mount(SubgoalCodeView(ex["code"], ex.get("lang", "c"), ex["subgoals"]))
+        else:
+            try:
+                from textual.widgets import Syntax
+                body.mount(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai",
+                                  classes="study-example-box"))
+            except Exception:
+                body.mount(Static(ex["code"], classes="study-example-box"))
+        out = ex.get("run_expected")
+        if isinstance(out, str) and out.strip():
+            body.mount(Label("Expected output", classes="study-output-label"))
+            body.mount(Static(out.rstrip("\n"), classes="study-output-box", markup=False))
+        if with_explanation:
+            emd = ex.get("explain_md")
+            if isinstance(emd, str) and emd.strip():
+                body.mount(Markdown(emd, classes="study-block-card"))
+
+    def _linked_visual_header(self, label: str) -> Static:
+        return Static(f"[dim]🔗 {label} — the code reference stays above[/dim]",
+                      classes="study-link-note")
+
+    def _viz_text(self, steps: list):
+        """Current step is highlighted; earlier steps stay dimmed for context."""
+        from rich.text import Text
+        out = Text()
+        for idx, step in enumerate(steps[:self.vi + 1]):
+            if idx:
+                out.append("\n")
+            if idx == self.vi:
+                out.append("▶ ", style="bold cyan")
+                out.append(str(step), style="bold white")
+            else:
+                out.append("  ", style="dim")
+                out.append(str(step), style="dim")
+        return out
+
     def _show_body(self) -> None:
         try:
             self.query_one(".study-container", ScrollableContainer).scroll_to(y=0, animate=False)
@@ -137,22 +188,9 @@ class StudyScreen(VimScrollMixin, _Base):
         body.mount(Label(hdr, classes="study-header-bar"))
         if self.stage == "explain":
             body.mount(Markdown(str(b.get("explain_md", "")), classes="study-block-card"))
-            ex = b.get("example") or {}
-            if ex.get("code"):
-                if ex.get("subgoals"):
-                    from tui.widgets import SubgoalCodeView
-                    body.mount(SubgoalCodeView(ex["code"], ex.get("lang", "c"), ex["subgoals"]))
-                else:
-                    try:
-                        from textual.widgets import Syntax
-                        body.mount(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai", classes="study-example-box"))
-                    except Exception:
-                        body.mount(Static(ex["code"], classes="study-example-box"))
-                # SPEC-EXPL-003 F1 (FR-EXPL-003): authored explanation right
-                # after the code
-                emd = ex.get("explain_md")
-                if isinstance(emd, str) and emd.strip():
-                    body.mount(Markdown(emd, classes="study-block-card"))
+            # SPEC-EXPL-003 F1 (FR-EXPL-003): authored code explanation right
+            # after the code
+            self._mount_example(body, with_explanation=True)
             if (b.get("diagram") or {}).get("kind"):
                 body.mount(Static("👉 Press [bold cyan]n[/] to step through the flow diagram · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
             elif (b.get("viz") or {}).get("steps"):
@@ -162,15 +200,28 @@ class StudyScreen(VimScrollMixin, _Base):
             else:
                 body.mount(Static("👉 Press [bold cyan]n[/] to proceed to next block · [bold cyan]i[/] inspect toolchain", classes="study-nav-box"))
         elif self.stage == "diagram":
-            # SPEC-EXPL-003 F2 (FR-DIAG-004): one step per screen, n advances
+            # SPEC-EXPL-003 F2 (FR-DIAG-004): one step per screen, n advances.
+            # Keep the code reference visible so the picture maps to source.
+            self._mount_example(body)
+            if self._has_example_code():
+                body.mount(self._linked_visual_header("Diagram"))
             darts = self._diagram_arts() or []
             cur = darts[self.di] if self.di < len(darts) else ""
             body.mount(Static(cur, classes="study-viz-box"))
+            diag = b.get("diagram") or {}
+            caption = str(diag.get("caption", "")).strip()
+            if caption:
+                body.mount(Static(f"[dim]{caption}[/dim]", classes="study-link-note"))
             dots = "● " * (self.di + 1) + "○ " * max(0, len(darts) - self.di - 1)
             body.mount(Static(f"Diagram step {self.di + 1} of {len(darts)}  ({dots.strip()})  —  Press [bold cyan]n[/] to advance · [bold cyan]s[/] skip", classes="study-nav-box"))
         elif self.stage == "viz":
+            # Linked memory/state view: code stays visible, the newest step is
+            # signaled while earlier steps remain as dimmed context.
+            self._mount_example(body)
+            if self._has_example_code():
+                body.mount(self._linked_visual_header("Visualization"))
             steps = (b.get("viz") or {}).get("steps", [])
-            body.mount(Static("\n".join(steps[:self.vi + 1]), classes="study-viz-box"))
+            body.mount(Static(self._viz_text(steps), classes="study-viz-box"))
             dots = "● " * (self.vi + 1) + "○ " * max(0, len(steps) - self.vi - 1)
             body.mount(Static(f"Step {self.vi + 1} of {len(steps)}  ({dots.strip()})  —  Press [bold cyan]n[/] to advance", classes="study-nav-box"))
         elif self.stage.startswith("check"):

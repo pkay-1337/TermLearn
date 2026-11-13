@@ -310,8 +310,8 @@ The following tree **SHALL** exist. Files marked `(gen)` are user/AI-generated, 
 
 ### 4.5 Feature F8: Tests created by AI and verifiable in app
 
-`FR-TEST-001`: Each chapter YAML **MAY** contain a `test:` stanza defining chapter mastery gates (`min_quiz`, required blocks) plus `final_checks[]` in check shape for future interactive execution.
-`FR-TEST-002`: `main.py test --book <slug> --chapter <id>` judges recorded evidence deterministically: last recorded quiz score for the chapter plus the lab probe result, reporting pass/fail. Interactive execution of `final_checks`, hidden-test runs beyond the starter probe, and per-concept breakdown are deferred (see Appendix D, D-06).
+`FR-TEST-001`: Each chapter YAML **MAY** contain a `test:` stanza defining chapter mastery gates (`min_quiz`, optional `min_final`, required blocks) plus `final_checks[]` in check shape.
+`FR-TEST-002`: `main.py test --book <slug> --chapter <id>` judges the last recorded quiz score, the lab probe result, and any interactive `final_checks`, reporting pass/fail. Final checks run by default when present and **MUST** reach `min_final` (default 100, per gate) to pass; `--no-final` intentionally skips them for scripted recorded-evidence gating. Aborted final-check runs **MUST NOT** be recorded. Hidden-test runs beyond the starter probe and per-concept test breakdown remain deferred (see Appendix D, D-06).
 `FR-TEST-003`: Test outcomes **MUST** be recorded in `progress.db` and reflected in chapter status. A `--force` flag **MAY** allow advancing despite failure; its use **MUST** be logged.
 `FR-TEST-004`: Flaky tests (timing/network-dependent) **MUST NOT** be accepted; `validate` **MUST** reject denylisted destructive commands and network-capable constructs (`socket`, `urllib`/`http.client`, `requests`, shell `/dev/tcp` redirections, `nc`, fetch-pipes) in `tests_sh` and runner sources (WARN, ERR in `--strict`). GUI imports (`tkinter`, Qt, `pygame`/SDL) produce WARN-only notes (hosts vary).
 
@@ -401,7 +401,8 @@ blocks:                        # REQUIRED, >=1
       lang: c
       code: "..."              # verbatim or adapted:true
       adapted: false
-      run_expected: "..."
+      run_expected: "..."      # exact stdout or representative transcript,
+                               # rendered after the code in study/revise/TUI/export
       explain_md: "..."        # OPTIONAL (SPEC-EXPL-003 F1): 2-6 lines Markdown,
                                # rendered DIRECTLY under the code (study/revise/
                                # TUI/export). whitespace-only == absent
@@ -476,7 +477,7 @@ labs:                          # SHOULD when chapter has code; 1-4 multi-file la
         expect_exit: 0
     hints: ["..."]             # progressive hints (general -> specific)
 test:                          # SHOULD; REQUIRED for chapters that gate advancement
-  gates: [{needs: [b1,b2], min_quiz: 80}]
+  gates: [{needs: [b1,b2], min_quiz: 80, min_final: 100}]
   final_checks: [...]          # same shape as block checks
 ```
 
@@ -797,7 +798,7 @@ Nothing here may be closed without a spec edit.
 | D-03 | FR-QUIZ-002 breakdown/weakest-3 | Resolved in v0.5.0 | In-memory `tally` per concept + weakest line at end of run. |
 | D-04 | FR-QUIZ-003 sampled item IDs | Resolved in v0.4.1 | `quiz_runs.items` JSON column + legacy migration; tests/test_progress.py. |
 | D-05 | FR-VAL-003 `from_block` check | Resolved in v0.4.1 | `INTERLEAVE-BLOCK` via preload blockmap; unloadable chapters stay chapter-level. |
-| D-06 | FR-TEST-002 interactive execution | Amended | Gate judges recorded evidence (last quiz + lab probe) instead of running `final_checks`/hidden suites live. Rationale: deterministic, pipe-friendly; revisit for proctored use. |
+| D-06 | FR-TEST-002 interactive execution | Partially resolved in v0.6.0 | `test` runs `final_checks` interactively by default and gates on `min_final`; `--no-final` preserves recorded-evidence gating for scripts. Hidden-test runs and per-concept test breakdown remain deferred. |
 | D-07 | FR-SRS-002 `e` card edit | Resolved in v0.5.1 | $EDITOR round-trip or inline prompts; persists immediately. |
 | D-08 | FR-STAT-001 concepts/lab/streak | Partially resolved in v0.5.0 | Per-concept table + weakest concepts via `answers.concept` (migrated); lab state + streaks still deferred. |
 | D-09 | FR-LAB-001 `d` diff view | Resolved in v0.4.1 | Loop retains last result; `d` shows output/diff/diagnostics. |

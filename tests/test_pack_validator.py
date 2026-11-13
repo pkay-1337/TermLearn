@@ -89,6 +89,14 @@ def test_expl_missing_is_warn_not_error():
     assert not any("EXPL-MISSING" in x for x in errs_s)  # informational in strict
 
 
+def test_output_shape():
+    ch = _ch()
+    ch["blocks"][0]["example"] = {"lang": "c", "code": "int x;\n", "run_expected": 5}
+    assert any("OUTPUT-SHAPE" in x for x in pack.validate_chapter_data(ch)[0])
+    ch["blocks"][0]["example"]["run_expected"] = "42\n"
+    assert not any("OUTPUT-SHAPE" in x for x in pack.validate_chapter_data(ch)[0])
+
+
 def test_expl_shape_and_render():
     ch = _ch()
     ch["blocks"][0]["example"] = {"lang": "c", "code": "int x;\n", "explain_md": 5}

@@ -202,3 +202,66 @@ def score_chapter(book: str, chapter: str) -> dict:
     """Non-interactive evidence for the test gate: last recorded quiz run. (FR-TEST-002)"""
     from lib.progress import get_last_quiz
     return get_last_quiz(book, chapter) or {"score": 0, "total": 0}
+
+
+def collect_final_checks(data: dict) -> list[tuple[str, int, dict]]:
+    """Return the chapter's mastery `test.final_checks` in check shape. (D-06)"""
+    test = data.get("test") or {}
+    items = test.get("final_checks") or []
+    if not isinstance(items, list):
+        return []
+    return [("final", i, ck) for i, ck in enumerate(items)
+            if isinstance(ck, dict)]
+
+
+def run_final_checks(book: str, chapter: str, console=None) -> dict:
+    """Interactively execute `test.final_checks` and persist answer telemetry.
+
+    Returns {"score", "total", "aborted", "results"}. An aborted run (q or
+    EOF) must not be recorded as mastery evidence. (FR-TEST-002, D-06)
+    """
+    from rich.console import Console
+    from rich.table import Table
+    from lib.pack import load_chapter_mode
+    from lib.srs import init_db, log_answer
+
+    console = console or Console()
+    try:
+        data = load_chapter_mode(book, chapter, "test")
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        return {"score": 0, "total": 0, "aborted": True, "results": []}
+    checks = collect_final_checks(data)
+    if not checks:
+        return {"score": 0, "total": 0, "aborted": False, "results": []}
+
+    console.print(f"\n[bold]Mastery final checks:[/bold] {len(checks)} question(s)")
+    con = init_db()
+    score = 0
+    done = 0
+    results: list[tuple[str, bool]] = []
+    try:
+        for _block, idx, ck in checks:
+            try:
+                ok, ms = run_check(console, "final", idx, ck, None, book)
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[yellow]Final checks aborted — test not recorded.[/yellow]")
+                return {"score": score, "total": done, "aborted": True,
+                        "results": results}
+            log_answer(con, book, chapter, "final", idx, ok, ms,
+                       concept=str(ck.get("concept", "")))
+            done += 1
+            score += int(ok)
+            results.append((str(ck.get("concept", "")), bool(ok)))
+    finally:
+        con.close()
+
+    console.print(f"\n[bold]final checks: {score}/{done}[/bold]")
+    by = tally(results)
+    if by:
+        t = Table(title="final checks by concept")
+        t.add_column("concept"); t.add_column("hits"); t.add_column("total"); t.add_column("pct")
+        for c, (h, n) in sorted(by.items()):
+            t.add_row(c, str(h), str(n), f"{100.0 * h / n:.0f}%")
+        console.print(t)
+    return {"score": score, "total": done, "aborted": False, "results": results}

@@ -507,7 +507,7 @@ class QuestionWidget(Static):
                 event.stop()
                 self.screen.set_focus(None)
 
-    def _render_trace_table(self) -> str:
+    def _render_trace_table(self, *, reveal: bool = False) -> str:
         ck = self.check
         tr = ck.get("trace", {})
         headers = tr.get("headers", ["Step", "Variable", "Address", "Value"])
@@ -519,7 +519,9 @@ class QuestionWidget(Static):
             if step <= getattr(self, "_trace_step", 1):
                 cells = list(cells)
                 if r_idx == tgt.get("row") and 0 <= tgt.get("col", -1) < len(cells):
-                    cells[tgt["col"]] = "[ ??? ]"
+                    cells[tgt["col"]] = (
+                        f"✓ {cells[tgt['col']]}" if reveal else "[ ??? ]"
+                    )
                 lines.append(" | ".join(str(c) for c in cells))
         return "\n".join(lines)
 
@@ -606,6 +608,13 @@ class QuestionWidget(Static):
 
     def _finish(self, ok: bool, extra: str = "") -> None:
         self._done = True
+        if self.check.get("kind") == "trace":
+            try:
+                self.query_one("#trace-table-view", Static).update(
+                    self._render_trace_table(reveal=True)
+                )
+            except Exception:
+                pass
         why = str(self.check.get("why", ""))
         mark = "correct" if ok else f"not quite{f' — {extra}' if extra else ''}"
         fb = self.query_one("#feedback", Static)

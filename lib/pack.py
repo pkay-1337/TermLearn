@@ -443,6 +443,10 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
             continue
         ex = b.get("example")
         if isinstance(ex, dict):
+            # Expected-output block rendered under the example (exact or
+            # representative transcript); whitespace-only means absent.
+            if "run_expected" in ex and not isinstance(ex.get("run_expected"), str):
+                errors.append(_err("OUTPUT-SHAPE", f"{loc} example run_expected must be a string"))
             # SPEC-EXPL-003 F1: code explain block (FR-EXPL-001..002)
             if "explain_md" in ex:
                 emd = ex.get("explain_md")
@@ -563,6 +567,20 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
             for need in g.get("needs", []):
                 if need not in block_ids:
                     errors.append(_err("TEST-GATE", f"{fname}:test gate needs unknown block {need!r}"))
+            if "min_quiz" in g and (not isinstance(g["min_quiz"], int)
+                                    or not (0 <= g["min_quiz"] <= 100)):
+                errors.append(_err("TEST-GATE", f"{fname}:test gate min_quiz must be 0..100"))
+            if "min_final" in g and (not isinstance(g["min_final"], int)
+                                     or not (0 <= g["min_final"] <= 100)):
+                errors.append(_err("TEST-GATE", f"{fname}:test gate min_final must be 0..100"))
+        final_checks = test.get("final_checks")
+        if final_checks is not None and not isinstance(final_checks, list):
+            errors.append(_err("TEST-FINAL-SHAPE", f"{fname}:test.final_checks must be a list"))
+        elif isinstance(final_checks, list):
+            for fi, fc in enumerate(final_checks):
+                f_errs, _, _ = _validate_check_item(
+                    fc, f"{fname}:test.final_checks[{fi}]", known_chapters, chapter_blocks)
+                errors.extend(f_errs)
 
     # render smoke: Markdown fields must not crash Rich
     for bi, b in enumerate(blocks):

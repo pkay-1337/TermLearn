@@ -123,12 +123,12 @@ rest harden, prove, and maintain.
 
 | Mode | Command | What happens |
 |------|---------|--------------|
-| study | `study --book B --chapter C` | Objectives → idea → runnable example (`r`) → memory stepper → micro-checks with instant `why` + remediation. Progress saved per block. |
+| study | `study --book B --chapter C` | Objectives → idea → runnable example with expected output (`r` to run) → memory stepper (code stays visible; current step marked) → micro-checks with instant `why` + remediation. Progress saved per block. |
 | revise | `revise --book B --chapter C` | Notes + examples + common bugs. No scoring. |
 | quiz | `quiz --book B --chapter C [--sample N] [--seed S] [--concept TAG]` | Checks shuffled (`--seed` reproduces); `--concept` drills one tag. Score + per-concept breakdown saved. |
 | parsons | `parsons --book B --chapter C` | Ordering-only: type `3 1 2`, distractors named when picked. |
 | lab | `lab --book B --chapter C [--no-save-solution]` | Edit starter in `$EDITOR`, compile+run, hidden tests, progressive hints. `t` records a SHA-256 solution snapshot (skipped with the flag). |
-| test | `test --book B --chapter C [--force]` | Chapter gate: recorded quiz% + lab. `--force` advances but is logged. |
+| test | `test --book B --chapter C [--force] [--no-final]` | Chapter gate: recorded quiz%, lab, and interactive `final_checks` (all required by default). `--no-final` skips final checks; `--force` advances but is logged. |
 | srs | `srs [--book B]` | Due flashcards across chapters (SM-2). Empty = all books. |
 | stats | `stats --book B` | Per-block and per-concept accuracy, weakest spots (with representative blocks), recent runs, SRS due. |
 | export | `export --book B [--chapter C] --format md` | Markdown notes (hidden tests excluded). |
@@ -151,6 +151,7 @@ in-flight question).
 | study viz | `n` next step · `s` skip chapter-viz |
 | study remediation | `y` re-show example · `N` move on |
 | lab | `e` edit · `r` run · `t` hidden tests (+snapshot) · `d` last diff · `i` inspect · `h` hint |
+| test | `n` start / next final check · `1-N` answer · `q`/`h` back |
 | srs | `f` / `Space` flip · `e` edit card · `1` forgot `2` hard `3` good `4` easy |
 
 Keys are single letters, mnemonic (`r`un, `e`dit, `h`int, `s`kip/`s`huffle,
@@ -186,5 +187,5 @@ turns it into per-block accuracy and weakest concepts; `srs` schedules cards
 by SM-2 (1 day → 6 days → scaled intervals; a failed card resets). Tune it
 without code edits: `TERMLEARN_EASINESS_INIT` (2.5), `TERMLEARN_EASINESS_MIN`
 (1.3), `TERMLEARN_INTERVAL_1_DAYS` (1), `TERMLEARN_INTERVAL_2_DAYS` (6).
-Quiz runs and test gates are timestamped, so `test` judges recorded evidence, and
-`--force` overrides are on the record.
+Quiz runs and test gates are timestamped, so `test` combines recorded quiz/lab
+evidence with live `final_checks` by default, and `--force` overrides are on the record.

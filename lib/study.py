@@ -32,6 +32,9 @@ def run(book: str, chapter: str):
             if ex.get("code"):
                 console.print(Syntax(ex["code"], ex.get("lang", "c"), theme="monokai",
                                      line_numbers=False))
+                if isinstance(ex.get("run_expected"), str) and ex["run_expected"].strip():
+                    console.print(Panel(ex["run_expected"].rstrip("\n"),
+                                        title="expected output", border_style="green"))
                 if ex.get("run_expected"):
                     cmd = _k.ask(console, "r run example · Enter continue · ? help · q quit: ",
                                  "study").lower()

@@ -72,9 +72,11 @@ def get_last_quiz(book: str, chapter: str) -> dict | None:
 
 
 def record_test(book: str, chapter: str, quiz_score: dict | None,
-                lab_result: dict | None, force: bool = False) -> bool:
-    """Chapter gate: needs recorded quiz >= min_quiz (from pack test.gates) + lab pass.
-    Returns True on pass (or --force override, logged). (FR-TEST-002..003)"""
+                lab_result: dict | None, force: bool = False,
+                final_score: dict | None = None,
+                require_final: bool = False) -> bool:
+    """Chapter gate: recorded quiz >= min_quiz + lab pass + optional final checks.
+    Returns True on pass (or --force override, logged). (FR-TEST-002..003, D-06)"""
     from rich.console import Console
     from lib.pack import load_chapter
     c = Console()
@@ -85,27 +87,42 @@ def record_test(book: str, chapter: str, quiz_score: dict | None,
         return False
     test = data.get("test") or {}
     min_quiz = 80
+    min_final = 100
     for g in test.get("gates", []):
         min_quiz = g.get("min_quiz", min_quiz)
+        min_final = g.get("min_final", min_final)
     quiz_pct = 0.0
     if quiz_score and quiz_score.get("total"):
         quiz_pct = 100.0 * quiz_score["score"] / quiz_score["total"]
     elif (last := get_last_quiz(book, chapter)) and last["total"]:
         quiz_pct = 100.0 * last["score"] / last["total"]
-    lab_na = bool(lab_result and lab_result.get("passed") is None and data.get("lab"))
+    has_lab = bool(data.get("lab") or data.get("labs"))
+    lab_na = bool(lab_result and lab_result.get("passed") is None and has_lab)
     lab_ok = bool(lab_result and lab_result.get("passed") is True)
-    lab_required = bool(data.get("lab") or test.get("gates")) and not lab_na
-    passed = quiz_pct >= min_quiz and (lab_ok or not lab_required)
+    lab_required = has_lab and not lab_na
+    final_checks = test.get("final_checks") or []
+    final_required = bool(require_final and final_checks)
+    final_pct = 0.0
+    if final_score and final_score.get("total"):
+        final_pct = 100.0 * final_score["score"] / final_score["total"]
+    final_ok = not final_required or final_pct >= min_final
+    passed = quiz_pct >= min_quiz and (lab_ok or not lab_required) and final_ok
+    final_detail = (f" final={final_score.get('score', 0)}/{final_score.get('total', 0)}"
+                    f" ({final_pct:.0f}%, need {min_final}%)"
+                    if final_required else
+                    (" final=skipped" if final_checks else ""))
     con = init_db()
     con.execute("INSERT INTO test_runs(ts,book,chapter,passed,detail) VALUES(?,?,?,?,?)",
                 (int(time.time()), book, chapter, 1 if passed or force else 0,
-                 f"quiz={quiz_pct:.0f}% lab_ok={lab_ok} force={force}"))
+                 f"quiz={quiz_pct:.0f}% lab_ok={lab_ok}{final_detail} force={force}"))
     con.commit()
     con.close()
     if passed:
-        c.print(f"[green]PASS {book}/{chapter}: quiz {quiz_pct:.0f}% (>= {min_quiz}%), lab_ok={lab_ok}[/green]")
+        c.print(f"[green]PASS {book}/{chapter}: quiz {quiz_pct:.0f}% (>= {min_quiz}%), "
+                f"lab_ok={lab_ok}{final_detail}[/green]")
         return True
-    c.print(f"[red]FAIL {book}/{chapter}: quiz {quiz_pct:.0f}% (need {min_quiz}%), lab_ok={lab_ok}[/red]")
+    c.print(f"[red]FAIL {book}/{chapter}: quiz {quiz_pct:.0f}% (need {min_quiz}%), "
+            f"lab_ok={lab_ok}{final_detail}[/red]")
     if force:
         c.print("[yellow]--force: advancing anyway (logged).[/yellow]")
         return True

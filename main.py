@@ -121,17 +121,37 @@ def lab(
 
 
 @app.command()
-def test(book: str = typer.Option(..., "--book"), chapter: str = typer.Option(..., "--chapter"), force: bool = typer.Option(False, "--force")):
-    """Chapter mastery gate, deterministic. (FR-TEST-001..004)"""
+def test(
+    book: str = typer.Option(..., "--book"),
+    chapter: str = typer.Option(..., "--chapter"),
+    force: bool = typer.Option(False, "--force"),
+    final: bool = typer.Option(True, "--final/--no-final",
+                               help="Run test.final_checks interactively before gating"),
+):
+    """Chapter mastery gate: quiz + lab + final checks. (FR-TEST-001..004)"""
+    from rich.console import Console
     from lib import lab as _lab  # test reuses quiz+lab runners
     from lib import quiz as _quiz
     from lib import pack as _pack
     from lib import progress as _prog
     # thin orchestration; scoring lives in lib modules (CR-DES-001)
     _pack.require_chapter(book, chapter)
+    data = _pack.load_chapter_mode(book, chapter, "test")
+    final_checks = _quiz.collect_final_checks(data)
+    final_score = None
+    require_final = False
+    if final and final_checks:
+        final_score = _quiz.run_final_checks(book, chapter)
+        if final_score.get("aborted"):
+            raise typer.Exit(1)
+        require_final = True
+    elif final_checks:
+        Console().print("[dim]final checks skipped (--no-final).[/dim]")
     q = _quiz.score_chapter(book, chapter)
     l = _lab.check_lab(book, chapter, non_interactive=True)
-    ok = _prog.record_test(book, chapter, q, l, force=force)
+    ok = _prog.record_test(book, chapter, q, l, force=force,
+                           final_score=final_score,
+                           require_final=require_final)
     raise typer.Exit(0 if ok else 1)
 
 

@@ -580,6 +580,87 @@ async def test_study_screen_p_and_n_navigation_and_trace(tmp_path, monkeypatch):
         assert s.stage == "check-2"
 
 
+async def test_study_linked_visual_keeps_code_and_marks_current_step(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import StudyScreen
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        app.push_screen(StudyScreen("extreme-c", "ch10", start_block=0))
+        await _wait_screen(app, pilot, StudyScreen)
+        await _wait_body(app, pilot)
+        s = app.screen
+        assert s.stage == "explain"
+
+        await pilot.press("n")
+        await pilot.pause()
+        assert s.stage == "viz"
+        assert len(s.query(".study-example-box")) >= 1
+        viz = str(s.query_one(".study-viz-box", Static).content)
+        assert "▶" in viz
+        assert "COMPILE TIME" in viz
+
+        await pilot.press("n")
+        await pilot.pause()
+        viz = str(s.query_one(".study-viz-box", Static).content)
+        assert "COMPILE TIME" in viz
+        assert "RUNTIME STEP 1" in viz
+
+
+async def test_study_renders_expected_output_after_code(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import StudyScreen
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        app.push_screen(StudyScreen("extreme-c", "ch23", start_block=0))
+        await _wait_screen(app, pilot, StudyScreen)
+        await _wait_body(app, pilot)
+        out = str(app.screen.query_one(".study-output-box", Static).content)
+        assert "seek_ok=0" in out
+
+
+async def test_study_diagram_keeps_code_and_shows_caption(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import StudyScreen
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        app.push_screen(StudyScreen("extreme-c", "ch23", start_block=2))
+        await _wait_screen(app, pilot, StudyScreen)
+        await _wait_body(app, pilot)
+        s = app.screen
+
+        await pilot.press("n")
+        await pilot.pause()
+        assert s.stage == "diagram"
+        note = str(s.query_one(".study-link-note", Static).content)
+        assert "Server and client skins" in note
+
+
+async def test_trace_feedback_reveals_target_cell(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from tui.practice import StudyScreen
+    from tui.widgets import QuestionWidget
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        app.push_screen(StudyScreen("extreme-c", "ch10", start_block=0))
+        await _wait_screen(app, pilot, StudyScreen)
+        await _wait_body(app, pilot)
+        s = app.screen
+        s.stage = "check-3"
+        s._show_body()
+        await pilot.pause()
+        qw = s.query_one(QuestionWidget)
+        qw._trace_step = 2
+        qw.query_one("#trace-table-view", Static).update(qw._render_trace_table())
+        await pilot.pause()
+        assert "[ ??? ]" in str(qw.query_one("#trace-table-view", Static).content)
+
+        qw._finish(False)
+        await pilot.pause()
+        table = str(qw.query_one("#trace-table-view", Static).content)
+        assert "✓ 40" in table
+        assert "[ ??? ]" not in table
+
+
 async def test_quiz_screen_trace_stepping(tmp_path, monkeypatch):
     monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
     from tui.practice import QuizScreen
@@ -784,12 +865,15 @@ async def test_revise_screen_renders_content(tmp_path, monkeypatch):
     from tui.screens import ReviseScreen
     app = LearnApp()
     async with app.run_test() as pilot:
-        screen = ReviseScreen("extreme-c", "ch10")
+        screen = ReviseScreen("extreme-c", "ch23")
         app.push_screen(screen)
         await _wait_screen(app, pilot, ReviseScreen)
         await pilot.pause()
         cards = screen.query(".study-block-card")
         assert len(cards) >= 1
+        outputs = screen.query(".study-output-box")
+        assert len(outputs) >= 1
+        assert "seek_ok=0" in str(outputs[0].content)
 
 
 async def test_chapters_q_returns_home_after_click(tmp_path, monkeypatch):
@@ -857,3 +941,39 @@ async def test_lab_editor_escape_then_q_returns(tmp_path, monkeypatch):
         await pilot.pause()
         await pilot.press("q")
         await _wait_screen(app, pilot, HomeScreen)
+
+
+async def test_test_screen_runs_final_checks_and_records_gate(tmp_path, monkeypatch):
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))
+    from lib import lab, progress
+    from tui.screens import TestScreen
+    from tui.widgets import QuestionWidget
+
+    monkeypatch.setattr(lab, "check_lab", lambda *a, **k: {"passed": True})
+    con = sqlite3.connect(str(progress.db_path()))
+    con.execute("CREATE TABLE IF NOT EXISTS quiz_runs(id INTEGER PRIMARY KEY, ts INT, book TEXT, chapter TEXT, score INT, total INT, seed INT, items TEXT)")
+    con.execute("INSERT INTO quiz_runs(ts,book,chapter,score,total) VALUES(1,'extreme-c','ch10',12,12)")
+    con.commit()
+    con.close()
+
+    app = LearnApp()
+    async with app.run_test() as pilot:
+        screen = TestScreen("extreme-c", "ch10")
+        app.push_screen(screen)
+        await _wait_screen(app, pilot, TestScreen)
+        await pilot.pause()
+        assert screen.state == "intro"
+        await pilot.press("n")
+        await pilot.pause()
+        for _ in range(len(screen.checks)):
+            qw = screen.query_one(QuestionWidget)
+            qw.answer_choice(qw._ans_idx)
+            await pilot.pause()
+            await pilot.press("n")
+            await pilot.pause()
+        assert screen.state == "result"
+        assert screen._ok is True
+        con = sqlite3.connect(str(progress.db_path()))
+        row = con.execute("SELECT passed FROM test_runs ORDER BY id DESC LIMIT 1").fetchone()
+        con.close()
+        assert row == (1,)

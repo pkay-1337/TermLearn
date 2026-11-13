@@ -243,6 +243,27 @@ OptionList:focus > .option-list--option-highlighted {
     color: $accent-cyan;
 }
 
+.study-link-note {
+    margin: 0 1;
+    color: $text-muted;
+}
+
+.study-output-label {
+    margin: 0 1;
+    color: $status-success;
+    text-style: bold;
+}
+
+.study-output-box {
+    background: $crust;
+    border: round $surface-1;
+    padding: 0 1;
+    margin: 0 0 1 0;
+    max-height: 10;
+    overflow-y: auto;
+    color: $text-primary;
+}
+
 /* --------------------------------------------------------------------------
    Quiz & Question Widgets
    -------------------------------------------------------------------------- */

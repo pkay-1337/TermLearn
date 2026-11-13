@@ -234,9 +234,13 @@ learning science, cognitive psychology, and computing education research (CER):
   - `example`: Verified code snippet; no line-count or column caps — include exactly as much code as the concept needs, runnable where applicable.
     Every code example MUST have an accompanying breakdown of its lines, memory mutations,
     and design rationale in `example.explain_md` (SPEC-EXPL-003 FR-EXPL-001..002) or check `why`.
+    - `run_expected` (OPTIONAL but STRONGLY RECOMMENDED for runnable code): exact stdout,
+      or a clearly representative transcript when the book's code cannot run locally.
+      Renderers show it as an "Expected output" block under the code; never invent output
+      for non-executable books.
     - `explain_md` (example-level, OPTIONAL but REQUIRED whenever the code is non-trivial
       or `example.run_expected` is set — SPEC-EXPL-003 F1): 2–6 lines of Markdown rendered
-      DIRECTLY under the code in study/revise/export. Keep it self-contained (the app does
+      after the code/output in study/revise/export. Keep it self-contained (the app does
       not re-print the block prose around it) and explain the code's mechanics, memory
       effect, or design rationale — not a restatement of the block prose.
     - `subgoals` (OPTIONAL but HIGHLY RECOMMENDED for complex multi-step examples):

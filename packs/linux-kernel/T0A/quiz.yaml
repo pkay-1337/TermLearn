@@ -1,0 +1,327 @@
+quiz:
+  - kind: mcq
+    level: intro
+    q: "In a Unix shell, what is the role of the PATH environment variable?"
+    choices:
+      - "it stores compiler warning settings"
+      - "it names the current working directory"
+      - "it lists files that Git has staged"
+      - "it lists directories searched for bare command names"
+    answer: 3
+    why: "Commands without slashes are resolved through the directories in PATH."
+    concept: path-variable
+
+  - kind: predict
+    level: intro
+    q: "A C program ends main with return 0. What exit status does the shell record?"
+    choices: ["1", "0", "-1"]
+    answer: 1
+    why: "The return value from main becomes the process exit status; 0 conventionally means success."
+    concept: exit-code-zero
+
+  - kind: why-fails
+    level: core
+    q: "A command runs as myapp > log.txt. A diagnostic still appears on the terminal. Why?"
+    choices:
+      - "the OS blocks diagnostic redirection"
+      - "file names ending in .txt cannot receive output"
+      - "> redirects stdout, while diagnostics use stderr"
+    answer: 2
+    why: "Redirection is per channel. Stderr remains connected unless redirected explicitly."
+    concept: stream-isolation
+
+  - kind: mcq
+    level: intro
+    q: "What does the GCC flag -Wall enable?"
+    choices:
+      - "a baseline set of common compiler warnings"
+      - "every experimental warning GCC supports"
+      - "a network firewall for compiler runs"
+    answer: 0
+    why: "-Wall enables a practical warning baseline; -Wextra adds more checks."
+    concept: wall-flag
+
+  - kind: predict
+    level: intro
+    q: "A developer compiles with gcc -std=c99 -Wall -Wextra main.c. Which file is produced?"
+    choices: ["main.o", "a.out", "app"]
+    answer: 1
+    why: "Without -o, GCC uses the default executable name a.out."
+    concept: default-a-out
+
+  - kind: why-fails
+    level: advanced
+    q: "A binary was built without -g. A debugger cannot list source lines. What was missing?"
+    choices: ["-O3", "-Wall", "-g"]
+    answer: 2
+    why: "-g emits debug metadata that maps machine addresses back to source lines and names."
+    concept: debug-symbol-dwarf
+
+  - kind: spot-bug
+    level: advanced
+    q: "Which edit explains the first compiler diagnostic in this source?"
+    code: |
+      #include <stdio.h>
+
+      int main(void)
+      {
+          int x = 1
+          printf("%d\n", x)
+          return 0
+      }
+    diagnostic_log: |
+      bad.c:6:5: error: expected ',' or ';' before 'printf'
+    choices:
+      - "remove the declaration of x"
+      - "replace printf with puts"
+      - "add a semicolon after int x = 1"
+    answer: 2
+    why: "The parser reaches printf before discovering that the declaration on line 5 never ended."
+    concept: diagnostic-root-cause
+
+  - kind: predict
+    level: core
+    q: "What do the coordinates 6:5 mean in bad.c:6:5: error: ...?"
+    choices:
+      - "error class 6, severity 5"
+      - "line 6, column 5"
+      - "6 bytes into the file, 5 bytes remaining"
+    answer: 1
+    why: "GCC diagnostics use filename:line:column."
+    concept: diagnostic-coordinates
+
+  - kind: mcq
+    level: core
+    q: "What comparison decides whether Make rebuilds a target?"
+    choices:
+      - "file size of prerequisite versus target"
+      - "SHA-256 hash of the Makefile"
+      - "prerequisite mtime versus target mtime"
+    answer: 2
+    why: "A newer prerequisite means the existing target may be stale."
+    concept: make-mtime-rule
+
+  - kind: why-fails
+    level: core
+    q: "A Makefile rule fails with Makefile:2: *** missing separator. Stop. What is wrong?"
+    choices:
+      - "the recipe uses spaces instead of a TAB"
+      - "the target name contains a colon"
+      - "the Makefile lacks a .mk extension"
+    answer: 0
+    why: "Make requires recipe lines to begin with a literal TAB."
+    concept: makefile-tab-indent
+
+  - kind: predict
+    level: core
+    q: "After make clean removes app, what does the next plain make do?"
+    choices:
+      - "runs rm -f app again"
+      - "rebuilds app with the compile recipe"
+      - "reports that app is up to date"
+    answer: 1
+    why: "A missing target cannot be up to date, so its recipe runs."
+    concept: make-rebuild-trigger
+
+  - kind: mcq
+    level: advanced
+    q: "What does .PHONY: clean accomplish?"
+    choices:
+      - "encrypts the clean recipe"
+      - "runs clean in parallel mode"
+      - "makes clean an action target even if a file named clean exists"
+    answer: 2
+    why: "Phony targets are symbolic actions, not file outputs."
+    concept: phony-target
+
+  - kind: predict
+    level: intro
+    q: "Which section reported by size holds executable machine instructions?"
+    choices: ["text", "data", "bss"]
+    answer: 0
+    why: "The text section is the code payload."
+    concept: elf-text-section
+
+  - kind: why-fails
+    level: advanced
+    q: "Why can bss reserve megabytes while adding little to the executable file size?"
+    choices:
+      - "bss is compressed into the ELF header"
+      - "the file records a size; the loader creates zeroed memory"
+      - "bss is stored in swap instead of the file"
+    answer: 1
+    why: "Zero-filled memory does not need to be stored byte for byte."
+    concept: elf-bss-optimization
+
+  - kind: predict
+    level: core
+    q: "A new hello.c exists in a fresh repository. What does git status --short show?"
+    choices: ["A  hello.c", "M  hello.c", "?? hello.c"]
+    answer: 2
+    why: "The file exists but is not registered in the index."
+    concept: git-untracked-symbol
+
+  - kind: predict
+    level: intro
+    q: "After git add hello.c, what does git status --short show?"
+    choices: ["A  hello.c", "?? hello.c", " M hello.c"]
+    answer: 0
+    why: "The file is now a staged addition in the index."
+    concept: git-staged-addition
+
+  - kind: trace
+    level: advanced
+    q: "What status appears after staging a new file and then editing it again?"
+    code: |
+      git init -q
+      echo "int x;" > a.c
+      git add a.c
+      echo "int y;" >> a.c
+      git status --short
+    trace:
+      headers: ["Step", "Index", "Working tree"]
+      rows:
+        - step: 1
+          line: 3
+          cells: ["A", "clean"]
+        - step: 2
+          line: 4
+          cells: ["A", "M"]
+        - step: 3
+          line: 5
+          cells: ["???", "???"]
+    target:
+      row: 2
+      col: 2
+    choices: ["AM a.c", "A  a.c", " M a.c", "?? a.c"]
+    answer: 0
+    why: "The index holds the staged addition and the working tree holds the later edit."
+    concept: git-short-status-am
+
+  - kind: mcq
+    level: intro
+    q: "In a unified diff, what does a leading - mark?"
+    choices:
+      - "a syntax error"
+      - "a negative integer"
+      - "old content that was removed or replaced"
+    answer: 2
+    why: "Minus lines describe the old version; plus lines describe the new version."
+    concept: diff-minus-sign
+
+  - kind: predict
+    level: advanced
+    q: "A hunk header is @@ -1,4 +1,4 @@. What is the net line-count change?"
+    choices: ["0 lines", "+1 line", "-1 line"]
+    answer: 0
+    why: "Both old and new hunk spans contain four lines."
+    concept: diff-hunk-line-count
+
+  - kind: choose-better
+    level: advanced
+    q: "gcc reports that main.c does not exist. What is the best first action?"
+    choices:
+      - "add -Wall -Wextra and rebuild"
+      - "run git clean -fdx"
+      - "delete the output binary"
+      - "check the current directory and whether main.c exists there"
+    answer: 3
+    why: "This is a filesystem resolution failure, so verify location and filename first."
+    concept: missing-file-triage
+
+  - kind: eipe
+    level: advanced
+    q: "Why repair the first compiler diagnostic before later ones?"
+    choices:
+      - "the first fault can create the grammar state for later messages"
+      - "later diagnostics are always false"
+      - "compilers store only one diagnostic"
+    answer: 0
+    why: "Cascading errors often disappear when the earliest state-changing fault is fixed."
+    concept: first-error-priority
+
+  - kind: why-fails
+    level: advanced
+    q: "A local executable exists as app. Running bare app fails, but ./app works. Why?"
+    choices:
+      - "the execute bit is set only for ./app"
+      - "the shell requires root for bare names"
+      - "bare names use PATH; ./app is an explicit path"
+    answer: 2
+    why: "A slash tells the shell to resolve the path directly instead of searching PATH."
+    concept: explicit-path-resolution
+
+  - kind: mcq
+    level: intro
+    q: "What does pwd report?"
+    choices:
+      - "the user's password"
+      - "the absolute current working directory"
+      - "the process descriptor table"
+    answer: 1
+    why: "pwd prints the shell's current working directory."
+    concept: pwd-command
+
+  - kind: predict
+    level: intro
+    q: "Which command records staged index changes in repository history?"
+    choices: ["git push", "git checkout", "git commit -m \"message\""]
+    answer: 2
+    why: "git commit snapshots the index into a commit object."
+    concept: git-commit-command
+
+  - kind: fillblank
+    level: core
+    q: "To view changes staged in the index, use git diff --____."
+    answer_text: "staged"
+    why: "--staged compares the index with HEAD."
+    concept: git-diff-staged-flag
+
+  - kind: why-fails
+    level: core
+    q: "A developer clones a clean repository and runs git diff. It prints nothing. Why?"
+    choices:
+      - "the working tree and index have no unstaged differences"
+      - "git diff requires network access"
+      - "git diff only works on binary files"
+    answer: 0
+    why: "No unstaged differences means empty diff output and exit 0."
+    concept: clean-diff-behavior
+
+  - kind: predict
+    level: core
+    q: "In a Makefile with CC = gcc, what does $(CC) expand to?"
+    choices: ["CC", "gcc", "clang"]
+    answer: 1
+    why: "Make variable expansion replaces $(CC) with its assigned value."
+    concept: make-variable-expansion
+
+  - kind: mcq
+    level: core
+    q: "What does size report about an ELF binary?"
+    choices:
+      - "disk partition allocation"
+      - "source line count"
+      - "byte sizes of text, data, and bss sections"
+    answer: 2
+    why: "size reports section sizes from the binary."
+    concept: size-command-purpose
+
+  - kind: choose-better
+    level: advanced
+    q: "Before reviewing a patch, which Git action best limits accidental staged changes?"
+    choices:
+      - "commit everything without reading status"
+      - "inspect git status --short and git diff before deciding what to stage"
+      - "delete all untracked files"
+    answer: 1
+    why: "Status and diff show what is actually changed before the index is updated."
+    concept: staging-discipline
+
+  - kind: predict
+    level: intro
+    q: "The captured make clean recipe succeeds. What exit status should make record?"
+    choices: ["1", "0", "255"]
+    answer: 1
+    why: "A successful requested target exits 0."
+    concept: make-success-status

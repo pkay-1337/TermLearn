@@ -1,0 +1,476 @@
+quiz:
+- id: q1
+  level: intro
+  concept: ptrace-vs-rsp-boundary
+  kind: mcq
+  q: What mechanism enables GDB to inspect an operating system kernel running inside
+    QEMU where no host OS ptrace syscall exists?
+  choices:
+  - QEMU embeds a Remote Serial Protocol (RSP) stub communicating over a TCP socket
+  - The guest kernel invokes host ptrace system calls using simulated software BIOS
+    interrupts
+  - GDB compiles the kernel source code into an emulated Java bytecode archive
+  answer: 0
+  why: 'Option A is correct: QEMU embeds a GDB RSP stub (typically listening on port
+    1234) that allows GDB to inspect guest memory and registers over a network socket.
+    Option B is incorrect because guest kernels cannot make host syscalls. Option
+    C is incorrect because GDB does not compile kernel code into bytecode.'
+- id: q2
+  level: core
+  concept: gdb-step-vs-next
+  kind: mcq
+  q: While debugging, execution halts on a line containing `status = init_driver(port)`.
+    You want to run `init_driver` to completion at full speed and stop on the next
+    line of the current function. Which command do you execute?
+  choices:
+  - step
+  - next
+  - return
+  answer: 1
+  why: 'Option B is correct: `next` executes function calls atomically without entering
+    them, stopping on the next line of the current function. Option A is incorrect
+    because `step` descends into `init_driver`. Option C is incorrect because `return`
+    forces an immediate return without finishing the function.'
+- id: q3
+  level: advanced
+  concept: cr0-register-decoding
+  kind: mcq
+  q: At kernel entry into `main()`, GDB inspects register `eax` and finds value `0x80000013`.
+    What two major CPU operating modes are confirmed enabled by this bitmask?
+  choices:
+  - System Management Mode (bit 31) and Long Mode (bit 8)
+  - Real Mode (bit 0) and Virtual 8086 Mode (bit 17)
+  - Paging (bit 31) and Protected Mode (bit 0)
+  answer: 2
+  why: 'Option C is correct: `0x80000013` has bit 31 (`PG`, Paging Enable = 0x80000000)
+    and bit 0 (`PE`, Protection Enable = 0x1) set, verifying that both protected mode
+    and paging are active. Option B is incorrect because real mode is 0x0. Option
+    A is incorrect because these bits do not represent SMM or Long Mode.'
+- id: q4
+  level: intro
+  concept: qemu-freeze-flag
+  kind: mcq
+  q: Why is the uppercase `-S` flag essential when launching QEMU for early bootloader
+    debugging?
+  choices:
+  - It freezes the virtual CPU at reset so execution waits for GDB to connect and
+    set breakpoints
+  - It configures QEMU to use symmetric multiprocessing across all available host
+    cores
+  - It instructs QEMU to compress the guest disk image before starting execution
+  answer: 0
+  why: 'Option A is correct: `-S` holds the virtual CPU halted at the reset vector
+    (`0xffff0`) so that GDB can attach and set breakpoints before any guest instructions
+    execute. Option B is incorrect because SMP uses `-smp`. Option C is incorrect
+    because disk compression is not controlled by `-S`.'
+- id: q5
+  level: core
+  concept: x86_64-calling-convention
+  kind: mcq
+  q: In the standard 64-bit Linux System V AMD64 ABI, which register passes the second
+    integer or pointer argument to a function?
+  choices:
+  - RDI
+  - RSI
+  - RDX
+  answer: 1
+  why: 'Option B is correct: RSI carries the second argument. Option A is incorrect
+    because RDI carries the first argument. Option C is incorrect because RDX carries
+    the third argument.'
+- id: q6
+  level: advanced
+  concept: software-breakpoint-triple-fault
+  kind: mcq
+  q: A developer sets a software breakpoint (`break *0x7c00`) in early boot code before
+    the Interrupt Descriptor Table is loaded. Why does the CPU immediately triple
+    fault and reset?
+  choices:
+  - GDB requires a valid TCP handshake before permitting breakpoint insertion
+  - Early boot memory is write-protected by the motherboard hardware bus controller
+  - Software breakpoints execute opcode 0xCC (INT 3); without an IDT entry, the unhandled
+    fault causes a triple fault
+  answer: 2
+  why: 'Option C is correct: software breakpoints overwrite instructions with `0xCC`
+    (`INT 3`). Without an initialized IDT, executing `INT 3` triggers a Double Fault
+    and immediate Triple Fault reboot. Option B is incorrect because RAM at 0x7c00
+    is writable. Option A is incorrect because the breakpoint was already inserted.'
+- id: q7
+  level: intro
+  concept: gdb-symbol-loading
+  kind: mcq
+  q: Which GDB command loads debugging symbols and line numbers from an unstripped
+    ELF binary on the host filesystem?
+  choices:
+  - file <path>
+  - load <path>
+  - read <path>
+  answer: 0
+  why: 'Option A is correct: `file <path>` loads the symbol table and executable file
+    into GDB. Option B is incorrect because `load` is used to download code to embedded
+    target boards. Option C is not a valid GDB command.'
+- id: q8
+  level: core
+  concept: hardware-watchpoint-dr-registers
+  kind: mcq
+  q: What CPU hardware facility allows GDB hardware watchpoints to monitor memory
+    addresses without instruction-by-instruction software single-stepping?
+  choices:
+  - The Memory Management Unit's translation lookaside buffer (TLB)
+  - Debug address registers DR0 through DR3 and control register DR7
+  - The programmable interval timer counter register PIT_CH0
+  answer: 1
+  why: 'Option B is correct: x86 processors provide debug registers DR0-DR3 and control
+    register DR7 to monitor address writes and reads in hardware silicon. Options
+    B and C are incorrect.'
+- id: q9
+  level: advanced
+  concept: observation-strategy-selection
+  kind: mcq
+  q: You are debugging an intermittent packet drop occurring at 500,000 packets per
+    second on a network card. Why is using GDB breakpoints inappropriate for this
+    diagnosis?
+  choices:
+  - Hardware debug registers DR0-DR3 cannot monitor network device memory addresses
+  - GDB breakpoints are disabled by the compiler on all networking device driver code
+  - Pausing execution overflows the network card's hardware ring buffers and times
+    out TCP connections
+  answer: 2
+  why: 'Option C is correct: halting the CPU under high traffic pauses packet consumption,
+    instantly overflowing hardware queues and dropping 100% of packets. Non-halting
+    tracing (ftrace) must be used instead. Options B and C are incorrect.'
+- id: q10
+  level: intro
+  concept: gdb-hex-print-format
+  kind: mcq
+  q: Which command instructs GDB to print the current value of variable `mask` formatted
+    in hexadecimal?
+  choices:
+  - print /x mask
+  - print /h mask
+  - display /hex mask
+  answer: 0
+  why: 'Option A is correct: `print /x` formats the expression in hexadecimal. Option
+    B is incorrect because `/x` is the standard hex specifier (`/h` is halfword in
+    examine). Option C is invalid syntax.'
+- id: q11
+  level: core
+  concept: stack-frame-inspection
+  kind: mcq
+  q: 'You are paused inside helper function `calc()` (frame #0), called by `process_data()`
+    (frame #1). How do you inspect the local variables of `process_data()` without
+    resuming execution?'
+  choices:
+  - Execute step back, then run info locals
+  - Execute frame 1, then run info locals
+  - Execute finish, then run print calc
+  answer: 1
+  why: 'Option B is correct: `frame 1` switches GDB''s inspection focus to frame `#1`
+    without moving the program counter, allowing `info locals` to display the caller''s
+    variables. Option A is invalid syntax. Option C executes code and exits `calc()`.'
+- id: q12
+  level: advanced
+  concept: hbreak-vs-break-mechanism
+  kind: mcq
+  q: How does a hardware breakpoint (`hbreak`) differ mechanically from a software
+    breakpoint (`break`)?
+  choices:
+  - hbreak requires an active network internet connection; break runs completely offline
+  - hbreak modifies the kernel ELF file on disk; break operates only in CPU registers
+  - hbreak uses CPU debug registers without modifying RAM; break patches memory with
+    opcode 0xCC
+  answer: 2
+  why: 'Option C is correct: `hbreak` programs address registers DR0-DR3 and alters
+    zero memory bytes, making it safe for ROM and early boot. Software breakpoints
+    overwrite RAM with `0xCC`. Options B and C are incorrect.'
+- id: q13
+  level: intro
+  concept: remote-target-connection-syntax
+  kind: mcq
+  q: What command connects GDB to a QEMU RSP stub running on TCP port 1234 on the
+    local host machine?
+  choices:
+  - target remote :1234
+  - connect tcp :1234
+  - attach qemu :1234
+  answer: 0
+  why: 'Option A is correct: `target remote :1234` is the standard GDB command to
+    establish a remote debugging session over TCP port 1234. Options B and C are invalid
+    GDB commands.'
+- id: q14
+  level: core
+  concept: uninitialized-stack-inspection-trap
+  kind: mcq
+  q: 'A breakpoint stops on line 5: `int count = calculate_total();`. You immediately
+    run `print count` before issuing `next`. What value does GDB print?'
+  choices:
+  - The final computed result returned by calculate_total()
+  - An uninitialized stack slot value or garbage, because line 5 has not executed
+    yet
+  - A compile-time error message stating that count does not exist
+  answer: 1
+  why: 'Option B is correct: breakpoints halt on the doorstep of the line before its
+    expression executes, so `count` contains whatever stale bytes were in that stack
+    location. Options B and C are incorrect.'
+- id: q15
+  level: advanced
+  concept: buffer-overflow-watchpoint-attribution
+  kind: mcq
+  q: A struct field `dev.status` is getting corrupted with `0x61616161`. You set `watch
+    dev.status` and `continue`. When GDB halts, what diagnostic command immediately
+    identifies the function that wrote `0x61616161`?
+  choices:
+  - disassemble main
+  - info registers cr0
+  - backtrace (or bt)
+  answer: 2
+  why: 'Option C is correct: `backtrace` captures the call stack at the moment the
+    store instruction executed, directly identifying the guilty function and line.
+    Option B only inspects control registers. Option A only shows main''s disassembly.'
+- id: q16
+  level: intro
+  concept: qemu-headless-flag
+  kind: mcq
+  q: Which QEMU command-line flag disables graphical window creation, keeping output
+    strictly within the terminal or background process?
+  choices:
+  - -display none (or -nographic)
+  - -video off
+  - -silent
+  answer: 0
+  why: 'Option A is correct: `-display none` disables graphical display windows, and
+    `-nographic` redirects emulated serial ports to terminal stdio. Options B and
+    C are not valid QEMU flags.'
+- id: q17
+  level: core
+  concept: rwatch-command-behavior
+  kind: mcq
+  q: How does `rwatch` behave differently from a standard `watch` command in GDB?
+  choices:
+  - rwatch sets a recursive breakpoint across all child processes; watch only affects
+    parent
+  - rwatch triggers when the memory address is read; watch triggers when it is written
+  - rwatch resets the CPU to power-on state; watch pauses instruction execution
+  answer: 1
+  why: 'Option B is correct: `rwatch` breaks on read access, whereas `watch` breaks
+    on write/modification. Options B and C are incorrect.'
+- id: q18
+  level: advanced
+  concept: compiler-optimization-optimized-out
+  kind: mcq
+  q: Why does GDB display `<optimized out>` when inspecting a variable in a kernel
+    compiled with `-O2`?
+  choices:
+  - The variable name conflicted with an existing macro defined in include/linux/kernel.h
+  - The variable was flagged as containing private kernel data hidden from unprivileged
+    debuggers
+  - The compiler allocated the variable to a register that was subsequently reused
+    for other computations
+  answer: 2
+  why: 'Option C is correct: compiler optimization reuses registers and eliminates
+    redundant stack slots, leaving no physical location for GDB to read the variable
+    value. Options B and C are incorrect.'
+- id: q19
+  level: intro
+  concept: gdb-backtrace-leaf-frame
+  kind: mcq
+  q: In a GDB stack backtrace, which frame number always represents the actively executing
+    leaf function?
+  choices:
+  - '#0'
+  - '#1'
+  - The highest frame number
+  answer: 0
+  why: 'Option A is correct: frame `#0` is always the innermost, actively executing
+    leaf function. Frame `#1` is its caller.'
+- id: q20
+  level: core
+  concept: gdb-finish-command-behavior
+  kind: mcq
+  q: What happens when you issue the `finish` command while paused inside a helper
+    function?
+  choices:
+  - The program immediately terminates with exit code zero
+  - Execution continues until the current function returns, and GDB prints the returned
+    value
+  - GDB restarts execution from the beginning of main()
+  answer: 1
+  why: 'Option B is correct: `finish` runs until the current frame returns to its
+    caller, displaying the return value. Options B and C are incorrect.'
+- id: q21
+  level: advanced
+  concept: hardware-watchpoint-capacity-limit
+  kind: mcq
+  q: What happens if a developer attempts to set 6 concurrent hardware watchpoints
+    on an x86 processor in GDB?
+  choices:
+  - GDB deletes the first 2 watchpoints silently without informing the user
+  - The processor raises an unmaskable interrupt and powers down the machine
+  - GDB falls back to software watchpoints, single-stepping every instruction and
+    slowing execution significantly
+  answer: 2
+  why: 'Option C is correct: x86 silicon only has 4 debug registers (DR0-DR3). Exceeding
+    this limit forces GDB into software watchpoints, single-stepping instructions
+    and degrading execution speed by 1000x. Options B and C are incorrect.'
+- id: q22
+  level: intro
+  concept: qemu-shorthand-gdb-flag
+  kind: mcq
+  q: In QEMU CLI syntax, what is the lowercase `-s` flag shorthand for?
+  choices:
+  - -gdb tcp::1234
+  - -snapshot
+  - -serial mon:stdio
+  answer: 0
+  why: 'Option A is correct: `-s` is QEMU''s documented shorthand for `-gdb tcp::1234`.
+    Options B and C are distinct flags.'
+- id: q23
+  level: core
+  concept: disassemble-pc-examine-syntax
+  kind: mcq
+  q: What examine command syntax disassembles the next 5 instructions starting at
+    instruction pointer register `$rip`?
+  choices:
+  - p/5i $rip
+  - x/5i $rip
+  - info/5 asm $rip
+  answer: 1
+  why: 'Option B is correct: `x/5i $rip` examines 5 memory units using instruction
+    format `i` starting at `$rip`. Options B and C are invalid syntax.'
+- id: q24
+  level: advanced
+  concept: guest-physical-vs-host-virtual-ram
+  kind: mcq
+  q: Where does guest physical memory address `0x00000000` physically reside on the
+    host machine running QEMU?
+  choices:
+  - Inside the CPU Level 1 instruction cache of the host processor
+  - At physical address 0x0 on the host motherboard, overwriting the host interrupt
+    table
+  - Inside an allocated memory buffer (mmap/malloc) inside the QEMU host process address
+    space
+  answer: 2
+  why: 'Option C is correct: QEMU maps guest physical memory into an allocated buffer
+    in its own private host virtual address space. Option B is incorrect because virtualization
+    isolates guest physical RAM from host hardware RAM. Option A is incorrect.'
+- id: q25
+  level: intro
+  concept: gdb-batch-flag-purpose
+  kind: mcq
+  q: Why is the `-batch` flag useful when running GDB in automated test scripts?
+  choices:
+  - It runs the specified -ex commands and exits automatically with a return code
+    instead of prompting interactively
+  - It compiles all C source files in the current directory into debug binaries
+  - It disables all CPU memory caches to force deterministic instruction timing
+  answer: 0
+  why: 'Option A is correct: `-batch` executes commands passed via `-ex` and exits
+    upon completion, preventing scripts from hanging at interactive prompts. Options
+    B and C are incorrect.'
+- id: q26
+  level: core
+  concept: stack-alignment-abi-requirement
+  kind: mcq
+  q: What is the stack alignment invariant mandated by the System V AMD64 ABI immediately
+    prior to executing a `call` instruction?
+  choices:
+  - RSP must point to an odd memory address to prevent cache collisions
+  - RSP must be aligned to a 16-byte boundary (RSP % 16 == 0)
+  - RSP must be equal to RBP at all times during function execution
+  answer: 1
+  why: 'Option B is correct: the AMD64 ABI requires `RSP` to be 16-byte aligned before
+    calling a function to ensure vector instructions in standard libraries do not
+    fault. Options B and C are incorrect.'
+- id: q27
+  level: advanced
+  concept: spinlock-debugging-hazard
+  kind: mcq
+  q: Why does setting a GDB breakpoint inside a spinlock critical section cause kernel
+    watchdog panics on SMP systems?
+  choices:
+  - Spinlock instructions generate random memory addresses that invalidate GDB breakpoints
+  - Hardware debug registers are automatically deleted when spinlocks are acquired
+  - The paused core holds the lock indefinitely, causing other cores to spin and trip
+    the soft-lockup timer
+  answer: 2
+  why: 'Option C is correct: pausing a core while it holds a spinlock blocks all other
+    cores attempting to acquire the lock, leading to CPU lockups and watchdog timeouts.
+    Options B and C are incorrect.'
+- id: q28
+  level: intro
+  concept: instruction-pointer-register-name
+  kind: mcq
+  q: Which register holds the current instruction pointer address in x86_64 architecture?
+  choices:
+  - RIP
+  - RSP
+  - RAX
+  answer: 0
+  why: 'Option A is correct: RIP (Register Instruction Pointer) holds the program
+    counter in x86_64. RSP is the stack pointer; RAX is the return value register.'
+- id: q29
+  level: core
+  concept: watchpoint-address-syntax
+  kind: mcq
+  q: How do you set a hardware watchpoint on a specific memory address `0x555555558020`
+    directly in GDB?
+  choices:
+  - watch addr(0x555555558020)
+  - watch *0x555555558020
+  - set watchpoint 0x555555558020
+  answer: 1
+  why: 'Option B is correct: `watch *0x...` tells GDB to treat the hex value as a
+    pointer address and watch its memory contents. Options B and C are invalid syntax.'
+- id: q30
+  level: advanced
+  concept: software-breakpoint-instruction-patch
+  kind: mcq
+  q: When GDB places a software breakpoint at virtual address `0x1144`, what exact
+    machine opcode byte does it write into memory?
+  choices:
+  - 0x00 (ADD)
+  - 0x90 (NOP)
+  - 0xCC (INT 3)
+  answer: 2
+  why: 'Option C is correct: opcode `0xCC` encodes the single-byte `INT 3` instruction,
+    which raises a breakpoint exception when executed by the CPU. `0x90` is NOP; `0x00`
+    is ADD.'
+- id: q31
+  level: intro
+  concept: gdb-info-registers-command
+  kind: mcq
+  q: Which GDB command displays the values of all general-purpose CPU registers?
+  choices:
+  - info registers
+  - show silicon
+  - dump cpu
+  answer: 0
+  why: 'Option A is correct: `info registers` prints the contents of CPU registers.
+    Options B and C are invalid GDB commands.'
+- id: q32
+  level: core
+  concept: remote-target-run-vs-continue
+  kind: mcq
+  q: After attaching GDB to QEMU via `target remote :1234`, which command resumes
+    virtual machine execution toward your breakpoints?
+  choices:
+  - run
+  - continue
+  - start
+  answer: 1
+  why: 'Option B is correct: remote targets do not support `run` or `start`; execution
+    must be resumed using `continue`. Options B and C fail on remote targets.'
+- id: q33
+  level: advanced
+  concept: watchpoint-scope-automatic-cleanup
+  kind: mcq
+  q: When a watched local variable in GDB exits its enclosing C function scope, what
+    action does GDB take?
+  choices:
+  - GDB marks the entire stack frame memory as read-only
+  - GDB pauses execution and prompts the user to enter a new variable name
+  - GDB automatically deletes the watchpoint because its expression is no longer in
+    scope
+  answer: 2
+  why: 'Option C is correct: GDB deletes watchpoints when the stack frame containing
+    the local variable is popped, emitting a notification that the program has left
+    the block. Options B and C are incorrect.'

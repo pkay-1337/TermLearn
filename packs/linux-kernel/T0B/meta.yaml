@@ -1,0 +1,27 @@
+meta:
+  book: linux-kernel
+  chapter_id: T0B
+  title: "Source navigation: definitions, callers, and commits"
+  source_ref: "curriculum/linux-kernel/evidence/T0B/transcript.md; E-T0B-01..E-T0B-16"
+  level: intro
+  prereqs: [T0A]
+
+objectives:
+  - >-
+    Given a C codebase with headers, implementation files, and macros, trace a symbol
+    as a directed graph node distinguishing declarations, definitions, and call sites.
+  - >-
+    Given a target symbol name, construct ripgrep invocations using word boundary (-w),
+    path globs (-g), and context lines (-C) to eliminate substring collisions.
+  - >-
+    Given macro-generated identifiers (token pasting with ##), identify search traps and
+    craft regular expressions that locate both macro definitions and expansion sites.
+  - >-
+    Given shared structure member names, isolate true callers of a function while
+    filtering out variable dereferences and struct member accesses.
+  - >-
+    Given a git repository, trace symbol history using pickaxe (-S), regex diffs (-G),
+    function-range history (-L), and line-by-line attribution (git blame -w -M).
+  - >-
+    Evaluate trade-offs between raw text search (rg), semantic indexing (cscope/clangd),
+    and historical inspection, identifying the boundaries where static tools fail.

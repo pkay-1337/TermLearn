@@ -1,0 +1,76 @@
+cards:
+- front: What does a header prototype declaration ending in a semicolon allocate?
+  back: Zero bytes of executable memory; it is a compile-time type contract, not an
+    implementation.
+  concept: c-symbol-declaration
+- front: What does the ripgrep flag -w do?
+  back: Restricts search matches to whole word boundaries, eliminating partial substring
+    collisions.
+  concept: rg-word-boundary
+- front: How do you restrict a ripgrep query to only C source implementation files?
+  back: 'Use the glob flag: -g ''*.c'' (enclosed in quotes to avoid shell expansion).'
+  concept: rg-path-glob
+- front: What flag controls surrounding context lines in ripgrep?
+  back: -C <N> prints N lines before and after each matching line.
+  concept: rg-context-lines
+- front: What is the macro search trap caused by preprocessor token pasting (##)?
+  back: The generated symbol name never appears in the source file, making literal
+    text searches fail.
+  concept: macro-token-pasting-trap
+- front: How do you anchor a ripgrep search to the beginning of a line?
+  back: 'Use the caret (^) regex anchor: e.g. rg ''^int func_name\(''.'
+  concept: definition-hunting-anchor
+- front: Why must patterns starting with '-' like '->id' be passed with -e or -- in
+    ripgrep?
+  back: Leading hyphens are parsed as command-line option flags unless preceded by
+    -e or --.
+  concept: rg-leading-dash
+- front: How do you isolate function call sites from variable references using ripgrep?
+  back: 'Append an escaped opening parenthesis to the symbol name: rg ''func_name\(''.'
+  concept: caller-enumeration
+- front: What are the four primitive object types stored in Git's object database?
+  back: Blob (file content), Tree (directory mapping), Commit (snapshot metadata),
+    and Tag.
+  concept: git-object-types
+- front: What command pretty-prints the raw decompressed contents of any Git object?
+  back: git cat-file -p <hash>
+  concept: git-cat-file
+- front: What is the Git pickaxe flag, and what does it search?
+  back: git log -S <symbol> searches commit diffs for revisions that added or removed
+    occurrences of that symbol.
+  concept: git-pickaxe
+- front: What does `git log -L :<funcname>:<filepath>` do?
+  back: Traces the chronological line-by-line diff history of a single C function
+    across time.
+  concept: git-function-evolution
+- front: What do the flags -w and -M do in `git blame`?
+  back: -w ignores whitespace changes; -M detects lines moved or copied within a file.
+  concept: git-blame-flags
+- front: How do you inspect the contents of a historical file at a specific tag without
+    switching branches?
+  back: git show <tag>:<filepath> (e.g. git show 0.11:init/main.c).
+  concept: git-show-historical-file
+- front: What is the primary advantage of raw text search (rg) over semantic indexers
+    (cscope)?
+  back: Instant execution with zero upfront database generation, searching all file
+    types.
+  concept: rg-vs-cscope-advantage
+- front: What causes a cscope.out database to become stale?
+  back: Modifying source files without rebuilding the database via `cscope -b`.
+  concept: cscope-index-staleness
+- front: Why does static navigation fail to trace kernel operations like `filp->f_op->read()`?
+  back: Calls are dispatched dynamically through function pointers whose targets are
+    resolved at runtime.
+  concept: epistemic-limits-function-pointers
+- front: What tools must take over when static search hits dynamic function pointer
+    tables?
+  back: 'Dynamic observability and tracing tools: ftrace, strace, gdb, and bpftrace.'
+  concept: dynamic-observability-handover
+- front: Why does Git detect file renames dynamically rather than recording them as
+    metadata?
+  back: Git is content-addressed; it compares blob content hashes between trees across
+    commits.
+  concept: git-rename-detection
+- front: What is the difference between `git log --grep` and `git log -S`?
+  back: --grep searches commit log messages; -S searches the actual code diffs.
+  concept: git-grep-vs-pickaxe

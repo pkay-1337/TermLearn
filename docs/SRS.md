@@ -292,7 +292,7 @@ The following tree **SHALL** exist. Files marked `(gen)` are user/AI-generated, 
 `FR-AI-003`: Blocking: each chapter **MUST** be split into concept-dependency-ordered blocks with exactly one new falsifiable skill per block. A block **MUST NOT** bundle two independent new APIs without justification.
 `FR-AI-004`: Interaction selection **MUST** be content-dependent per block `type` (`model`, `syntax`, `design`, `algorithm`) as mapped in §4.7. The AI **SHOULD** author 5–10 scaffolded checks per block according to the topic's depth and complexity, choosing interaction kinds that best fit the type.
 `FR-AI-005`: Question quality: at least half of `predict`/`mcq` checks per chapter **SHOULD** be conceptual `why`/`why-fails` rather than mere `whether/output-only`, with distractors drawn from authentic bugs (e.g. off-by-one; pilot instances: missing `&`, dangling pointer, format-string mismatch). Every check **MUST** carry a `why` explanation linking back to its block. All questions and checks **MUST** be 100% self-contained with complete scenario and code context; the AI **MUST NOT** refer to external questions, exercises, example numbers ("Example X.Y"), code box numbers ("Code Box X-Y"), listing numbers ("Listing Z"), or page numbers in the book in either question stems (`q:`) or explanations (`why:`). If code or function behavior is tested, an embedded `code:` block **MUST** be provided directly in the check or question item.
-`FR-AI-006`: Multi-Lab Workspaces: each chapter with executable code **SHOULD** include a `labs: [...]` array (1 to 4 practical, multi-file labs per ISO/IEC/IEEE 29148:2018). Each lab **MUST** provide `id`, `title`, `instruction_md`, `files: [{path, content}, ...]`, language-agnostic `commands: {run, test}`, automated `test_cases: [{name, stdin, expect, expect_exit}, ...]`, and progressive `hints: [...]`. Each lab provisions an isolated workspace directory at `labs/<book>/<chapter>/<lab_id>/`. Commands execute in `cwd = workspace_dir`. Automated verification verifies `commands.test` and input vs. expected output diffing. Starter implementation files **SHALL NOT** provide 100% pre-solved solutions (tests must fail or report missing symbols initially) and **MAY** be blank (`content: ""`) or minimally scaffolded with TODO stubs. Supporting framework files (headers, test runners, drivers) **MUST** be complete. Chapters without executable code **MUST** omit `labs` rather than invent them.
+`FR-AI-006`: Multi-Lab Workspaces: each chapter with executable code **SHOULD** include a `labs: [...]` array (one or more practical, multi-file labs per ISO/IEC/IEEE 29148:2018; no fixed upper bound). Each lab **MUST** provide `id`, `title`, `instruction_md`, `files: [{path, content}, ...]`, language-agnostic `commands: {run, test, tinker}`, automated `test_cases: [{name, stdin, expect, expect_exit}, ...]`, and progressive `hints: [...]`. `commands.tinker` is optional and declares an interactive experiment (shell, debugger, QEMU, tracing tool) that runs with inherited stdio, either in a separate terminal or by suspending the TUI. Each lab provisions an isolated workspace directory at `labs/<book>/<chapter>/<lab_id>/`. Commands execute in `cwd = workspace_dir`. Automated verification verifies `commands.test` and input vs. expected output diffing. Starter implementation files **SHALL NOT** provide 100% pre-solved solutions (tests must fail or report missing symbols initially) and **MAY** be blank (`content: ""`) or minimally scaffolded with TODO stubs. Supporting framework files (headers, test runners, drivers) **MUST** be complete. Tool-centric chapters **MUST** include labs that teach the tool itself (mental model, output, filters, failure modes, composition, diagnose, teach-back), not labs that merely run the tool; there is no fixed upper bound on the number of labs. Chapters without executable code **MUST** omit `labs` rather than invent them.
 `FR-AI-007`: The AI **MUST** output exactly one YAML document per chapter conforming to §4.8, inside a single fenced `yaml` block when responding in chat. Surrounding explanation **SHOULD** be outside the fence and **MUST NOT** be required for parsing.
 
 ### 4.3 Feature F6: User interrogation (`prompts/ASK_USER.md`)
@@ -391,6 +391,8 @@ meta:                          # REQUIRED
   source_ref: "Ch.1 pp.1-20"   # REQUIRED, trace to book
   level: intro                 # REQUIRED: intro|core|advanced
   prereqs: [ ]                 # REQUIRED (possibly empty)
+  track: tooling               # OPTIONAL: roadmap track
+  phase: P0                    # OPTIONAL: roadmap phase
 objectives: [...]              # REQUIRED, 1-6 falsifiable skills
 blocks:                        # REQUIRED, >=1
   - id: b1                     # REQUIRED, unique in file
@@ -454,7 +456,7 @@ quiz:                          # SHOULD, 30-50 questions across levels (intro/co
     answer: 0
     why: "..."
     concept: "..."
-labs:                          # SHOULD when chapter has code; 1-4 multi-file labs per ISO/IEC/IEEE 29148:2018
+labs:                          # SHOULD when chapter has code; as many multi-file labs as needed (no fixed cap)
   - id: lab1                   # unique lab id (e.g. lab1, lab2)
     title: "..."               # descriptive pedagogical title
     instruction_md: "..."      # complete, self-contained markdown requirements
@@ -470,12 +472,24 @@ labs:                          # SHOULD when chapter has code; 1-4 multi-file la
     commands:                  # language-agnostic commands executed in cwd = workspace_dir
       run: "gcc -Wall -Wextra -std=c99 component.c main.c -o app && ./app"
       test: "gcc -Wall -Wextra -std=c99 component.c test_runner.c -o test_runner && ./test_runner"
+      tinker: "gdb -q ./app"   # OPTIONAL: interactive experiment with inherited stdio
     test_cases:                # automated input vs expected output assertions with unified diffing
       - name: "Interactive execution trace"
         stdin: ""
         expect: "...\n"
         expect_exit: 0
     hints: ["..."]             # progressive hints (general -> specific)
+    family: "..."              # OPTIONAL: grouping label
+    tier: core                 # OPTIONAL: core|stretch
+    difficulty: intro          # OPTIONAL: free-form
+    expected_observation: "..."# OPTIONAL: expected runtime outcome
+    artifacts: [...]           # OPTIONAL: list of relative artifact paths
+    environment:               # OPTIONAL: safety and execution context
+      name: host-user
+      boundary: host           # host|vm|container|namespace
+      privilege: user          # user|root|vm-root
+      network: none            # none|isolated|host
+      timeout_s: 30
 test:                          # SHOULD; REQUIRED for chapters that gate advancement
   gates: [{needs: [b1,b2], min_quiz: 80, min_final: 100}]
   final_checks: [...]          # same shape as block checks

@@ -1,0 +1,108 @@
+{
+  "chapter": "T0A",
+  "captured_at": "2026-11-19",
+  "status": "captured",
+  "source_of_truth": "actual tool runs on known local workloads",
+  "environment": "environment.json",
+  "transcript": "transcript.md",
+  "artifacts": [
+    "artifacts/workload/main.c",
+    "artifacts/workload/Makefile",
+    "artifacts/workload/bad.c"
+  ],
+  "source": [],
+  "evidence": [
+    {
+      "id": "E-T0A-01",
+      "claim": "gcc toolchain version observed in this environment",
+      "command": "gcc --version",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0A-02",
+      "claim": "make tool version observed in this environment",
+      "command": "make --version",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0A-03",
+      "claim": "clean compile succeeds and produced app with exit 0",
+      "command": "gcc -std=c99 -Wall -Wextra -g main.c -o app",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/main.c"]
+    },
+    {
+      "id": "E-T0A-04",
+      "claim": "running app prints 5 and exits 0",
+      "command": "./app",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/main.c"]
+    },
+    {
+      "id": "E-T0A-05",
+      "claim": "compiler diagnostics identify file, line, column, severity and expected-token text",
+      "command": "gcc -std=c99 -Wall -Wextra -g bad.c -o bad",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 1,
+      "artifacts": ["transcript.md", "artifacts/workload/bad.c"]
+    },
+    {
+      "id": "E-T0A-06",
+      "claim": "make clean executes rm -f app",
+      "command": "make clean",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/Makefile"]
+    },
+    {
+      "id": "E-T0A-07",
+      "claim": "make rebuilds app by echoing the compile recipe",
+      "command": "make",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/Makefile"]
+    },
+    {
+      "id": "E-T0A-08",
+      "claim": "size reports text, data, bss, dec, hex and filename columns",
+      "command": "size app",
+      "cwd": "evidence/T0A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0A-09",
+      "claim": "git status distinguishes untracked, staged and clean states",
+      "command": "git init -q; git status --short; git add hello.c; git status --short; git commit -m \"add hello\"; git status --short",
+      "cwd": "/tmp/opencode/t0a-git",
+      "exit_code": 0,
+      "commit": "f71d88d",
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0A-10",
+      "claim": "git diff shows file, index hashes, hunk header, removed and added lines",
+      "command": "git status --short; git diff; git diff --stat",
+      "cwd": "/tmp/opencode/t0a-git",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0A-11",
+      "claim": "workload file hashes pin the exact T0A inputs",
+      "command": "sha256sum evidence/T0A/artifacts/workload/main.c evidence/T0A/artifacts/workload/Makefile evidence/T0A/artifacts/workload/bad.c",
+      "cwd": "/home/pk/Apps/termlearn/curriculum/linux-kernel",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/main.c", "artifacts/workload/Makefile", "artifacts/workload/bad.c"]
+    }
+  ],
+  "open_questions": [
+    "None for the captured claims."
+  ]
+}

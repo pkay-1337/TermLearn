@@ -1,0 +1,103 @@
+test:
+  gates:
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    min_quiz: 60
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    min_quiz: 75
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    - b10
+    - b11
+    - b12
+    - b13
+    min_quiz: 80
+    min_final: 100
+  final_checks:
+  - kind: choose-better
+    concept: final-debugger-channel-selection
+    q: You are developing early assembly boot code and need to halt at the reset vector
+      before memory paging or interrupt tables exist. Which debugging tool combination
+      succeeds?
+    choices:
+    - Launch QEMU with -s -S and connect GDB using hbreak on the target address
+    - Run GDB locally with ptrace and set software breakpoints on the C library entry
+    - Add printk statements to the kernel image and inspect stdout via dmesg
+    answer: 0
+    why: 'Option A is correct: QEMU''s hypervisor stub with `-s -S` freezes the vCPU
+      at reset, and `hbreak` uses hardware registers (DR0-DR3) avoiding software memory
+      patches before the IDT is ready. Option B fails because ptrace cannot inspect
+      bare-metal guests. Option C fails because printk requires kernel memory and
+      console drivers that do not exist at reset.'
+  - kind: spot-bug
+    concept: final-gdb-stepping-inspection-bug
+    q: 'A developer pauses GDB on line 5: `int doubled = fd * 2;`. Without stepping,
+      they immediately run `print doubled` and report a bug that the function returns
+      0. What is their mistake?'
+    code: '5    int doubled = fd * 2;
+
+      6    printf("result=%d\n", doubled);'
+    diagnostic_log: 'Breakpoint 1, socket_probe (fd=7) at debugme.c:5
+
+      5    int doubled = fd * 2;
+
+      (gdb) print doubled
+
+      $1 = 0'
+    choices:
+    - GDB cannot inspect variables whose names begin with the letter d
+    - Breakpoints stop on the doorstep before the line executes; doubled held uninitialized
+      stack memory
+    - The doubled variable was converted into a static global constant by the preprocessor
+    answer: 1
+    why: 'Option B is correct: execution halts before line 5 executes, so `doubled`
+      had not yet received the result of `fd * 2`. Stepping with `next` is required
+      before inspecting. Options B and C are incorrect.'
+  - kind: choose-better
+    concept: final-memory-corruption-diagnosis
+    q: A driver's status field is corrupted with garbage once every 20 minutes across
+      thousands of device interrupts. Which diagnostic method isolates the culprit
+      with the least disturbance?
+    choices:
+    - Insert 200 printk statements across all device interrupt handlers
+    - Single-step the entire operating system instruction by instruction using stepi
+    - Arm a hardware watchpoint on the victim field using watch dev->status
+    answer: 2
+    why: 'Option C is correct: hardware watchpoints run at full CPU speed until the
+      exact memory store instruction triggers `#DB`, exposing the guilty caller via
+      backtrace. Option B is unworkably slow. Option A pollutes logs and alters interrupt
+      timing.'
+  - kind: eipe
+    concept: final-halting-vs-tracing-contrast
+    q: Contrast using GDB breakpoints versus ftrace dynamic tracing when diagnosing
+      an intermittent lockup in a multi-core kernel spinlock.
+    choices:
+    - GDB pauses the lock holder causing deadlocks on other cores, whereas ftrace
+      logs events non-disruptively
+    - GDB automatically resolves spinlock contention, whereas ftrace crashes on multi-core
+      systems
+    - ftrace requires halting the CPU for 10 seconds per tracepoint, making GDB much
+      faster
+    answer: 0
+    why: 'Option A is correct: halting a lock holder under GDB prevents the lock from
+      being released, deadlocking waiting cores. Ftrace records timestamps into lockless
+      ring buffers without pausing CPUs. Options B and C are incorrect.'

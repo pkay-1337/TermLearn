@@ -1,0 +1,96 @@
+cards:
+  - front: "What does the shell use the $PATH environment variable for?"
+    back: >-
+      It is a colon-separated list of directories searched for bare command names.
+      Why: a bare name is not resolved by looking in the current directory by default.
+    concept: shell-path
+
+  - front: "Where does a process exit status appear to the parent shell?"
+    back: >-
+      The shell records it as $?; 0 means success and non-zero means failure.
+      Why: status is a control result separate from printed text.
+    concept: process-exit-code
+
+  - front: "What is the key difference between stdout and stderr?"
+    back: >-
+      stdout carries normal output; stderr carries diagnostics.
+      Why: redirecting one stream does not automatically redirect the other.
+    concept: stdio-streams
+
+  - front: "What does the GCC flag -g add?"
+    back: >-
+      DWARF debug tables mapping addresses to source lines and names.
+      Why: debuggers need that metadata to present source-level state.
+    concept: gcc-debug-symbols
+
+  - front: "What happens if GCC compiles without -o?"
+    back: >-
+      It writes the executable to a.out.
+      Why: GCC has a default output name when none is supplied.
+    concept: gcc-default-output
+
+  - front: "How do you read a diagnostic coordinate like bad.c:6:5?"
+    back: >-
+      File bad.c, line 6, column 5. Why: the compiler reports where the unexpected
+      token was seen, not necessarily where the root cause began.
+    concept: gcc-diagnostic-coordinates
+
+  - front: "Why do compiler errors often cascade from an earlier line?"
+    back: >-
+      A missing token makes the parser lose synchronization.
+      Why: later tokens are then interpreted in the wrong grammar state.
+    concept: diagnostic-cascading
+
+  - front: "How does GNU Make decide whether to rebuild a target?"
+    back: >-
+      It compares prerequisite and target mtimes, and rebuilds when the target is
+      missing or older. Why: a newer input can make an existing output stale.
+    concept: make-timestamp-comparison
+
+  - front: "What indentation does a Make recipe line require?"
+    back: >-
+      A literal TAB character. Why: Make grammar uses TAB to distinguish recipes
+      from other lines.
+    concept: make-tab-separator
+
+  - front: "What is the purpose of .PHONY: clean?"
+    back: >-
+      It marks clean as a symbolic action rather than a file target.
+      Why: a real file named clean would otherwise make the target look up to date.
+    concept: make-phony-targets
+
+  - front: "What is stored in the ELF text section?"
+    back: >-
+      Executable machine instructions. Why: the text section is the primary code
+      payload the loader maps for execution.
+    concept: elf-text-section
+
+  - front: "What is stored in the ELF data section?"
+    back: >-
+      Global and static values initialized to non-zero constants.
+      Why: those initial values must be stored in the file.
+    concept: elf-data-section
+
+  - front: "Why does bss consume little space in the ELF file?"
+    back: >-
+      It records a size for zero-initialized globals. Why: the loader can produce
+      zeroed pages at load time instead of storing zeros on disk.
+    concept: elf-bss-section
+
+  - front: "What are Git's three state areas?"
+    back: >-
+      Working tree, index, and HEAD commit graph.
+      Why: short status reports differences between these areas.
+    concept: git-three-trees
+
+  - front: "What is the difference between git diff and git diff --staged?"
+    back: >-
+      Plain diff compares working tree to index; --staged compares index to HEAD.
+      Why: staging creates an intermediate snapshot.
+    concept: git-diff-comparison
+
+  - front: "What do the two columns of git status --short mean?"
+    back: >-
+      Index relative to HEAD, then working tree relative to index.
+      Why: two columns can show staged and unstaged changes independently.
+    concept: git-short-status-columns

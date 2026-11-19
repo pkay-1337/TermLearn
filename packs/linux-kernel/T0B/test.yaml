@@ -1,0 +1,82 @@
+test:
+  gates:
+  - needs:
+    - b1
+    - b2
+    - b3
+    min_quiz: 60
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    min_quiz: 75
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    - b10
+    min_quiz: 80
+    min_final: 100
+  final_checks:
+  - kind: choose-better
+    concept: final-definition-hunting
+    q: You are auditing a kernel subsystem and need to locate the definition of `do_fork`.
+      Which command isolates the canonical C implementation with the least noise?
+    choices:
+    - rg '^long do_fork\(' -g '*.c'
+    - rg 'do_fork' .
+    - find . -name '*fork*' | xargs grep do_fork
+    answer: 0
+    why: Option A anchors the return type and function name to column 0 in C files,
+      eliminating prototypes and indented call sites. Option B and C produce excessive
+      noise.
+  - kind: spot-bug
+    concept: final-leading-dash-bug
+    q: Examine the failed search command and diagnostic log. What is the root cause
+      of the error?
+    code: $ rg -n "->count" src/
+    diagnostic_log: 'error: unexpected argument ''->count'' found'
+    choices:
+    - Ripgrep interpreted the leading dash in '->count' as an invalid CLI option flag
+    - The source directory 'src/' does not contain any pointer dereferences
+    - The arrow operator is reserved exclusively for GDB commands
+    answer: 0
+    why: Leading hyphens are parsed as CLI flags. The command must use `rg -n -e "->count"
+      src/` or `rg -n -- "->count" src/` to indicate an operand.
+  - kind: choose-better
+    concept: final-git-pickaxe-archaeology
+    q: A bug was introduced when a helper function `sanitize_sensor_id` was added,
+      but the commit message does not mention its name. How do you find the introducing
+      commit?
+    choices:
+    - git log -S "sanitize_sensor_id" --oneline
+    - git log --grep="sanitize_sensor_id"
+    - git status --short
+    answer: 0
+    why: 'Option A is correct: the -S pickaxe scans commit diffs directly, finding
+      commits that altered the symbol''s occurrences. Option B only checks commit
+      log messages. Option C only shows current working tree state.'
+  - kind: eipe
+    concept: final-static-vs-dynamic-boundary
+    q: Which statement accurately describes why static search tools (rg/cscope) cannot
+      identify which driver handles `filp->f_op->read` at runtime?
+    choices:
+    - The operation table is populated with function pointers dynamically at runtime
+      depending on the underlying device or filesystem
+    - Static search tools are restricted by Linux kernel licensing from reading filesystem
+      drivers
+    - Function pointers are converted into encrypted hashes during compilation to
+      prevent reverse engineering
+    answer: 0
+    why: 'Option A is correct: dynamic dispatch decouples the call site from the implementation;
+      the target function pointer is populated dynamically at runtime based on the
+      open file instance.'

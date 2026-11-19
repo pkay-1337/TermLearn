@@ -41,7 +41,7 @@ ONLY from your YAML — never from the book. Teach, don't summarize.
   - `meta.yaml` — metadata, prerequisites, and 1–6 falsifiable objectives.
   - `study.yaml` — as many concept blocks as the chapter's idea units demand (one single-concept block per unit; no set count), Notional Machine state transitions, and scaffolded checks.
   - `quiz.yaml` — 30–50 dedicated synthesis questions across difficulty levels.
-  - `labs.yaml` — 1–4 practical coding workspaces with blank starters and test runners.
+  - `labs.yaml` — as many practical coding workspaces as the chapter needs (at least one; no fixed cap), with blank starters and test runners.
   - `cards.yaml` — as many atomic SM-2 spaced repetition flashcards as the chapter's facts demand (no set count).
   - `test.yaml` — mastery gates and passing thresholds.
 - `packs/<slug>/<id>.yaml` — LEGACY MONOLITHIC TARGET FILE: Single unified YAML pack.
@@ -623,8 +623,8 @@ learning science, cognitive psychology, and computing education research (CER):
   - Once the student implements the code in the editor, all assertions and test cases pass 100%.
 
 ### 4.2 Multi-Lab Workspace Schema & Rules
-- Chapters with code SHOULD include a `labs: [...]` array (1 to 4 practical, multi-file
-  labs per ISO/IEC/IEEE 29148:2018). Each lab provisions an isolated workspace directory
+- Chapters with code SHOULD include a `labs: [...]` array with as many practical, multi-file
+  labs as the chapter needs (at least one; no fixed upper bound). Each lab provisions an isolated workspace directory
   at `labs/<book>/<chapter>/<lab_id>/` and MUST provide:
   - `id`: unique identifier (`lab1`, `lab2`, etc.)
   - `title`: descriptive pedagogical title
@@ -634,8 +634,14 @@ learning science, cognitive psychology, and computing education research (CER):
   - `commands`: language-agnostic compile/run commands executed in `cwd = workspace_dir`:
     - `run`: interactive build & run command (e.g. `gcc -Wall -Wextra -std=c99 component.c main.c -o app && ./app`)
     - `test`: test runner command executing unit test assertions (e.g. `gcc -Wall -Wextra -std=c99 component.c test_runner.c -o test_runner && ./test_runner`)
+    - `tinker` (OPTIONAL): interactive experiment with inherited stdio (e.g. `gdb -q ./app`, `sh`, `qemu-system-x86_64 ...`); runs in a separate terminal when available, otherwise the TUI suspends. At least one of `run`, `test`, or `tinker` is required.
   - `test_cases`: input vs. expected output correctness verification array (`name`, `stdin`, `expect`, `expect_exit`). The system executes each test case in the workspace and performs automated unified diffing on mismatch.
   - `hints`: 1–3 progressive hints (general -> specific).
+- Tool-centric chapters MUST include labs that teach the tool, not just run it:
+  guided tour, predict, filter, break-it, compose, diagnose, challenge, and
+  teach-back. Use as many labs and lab families as the chapter needs; there is
+  no upper bound. Every tool lab needs a real question and a second confirming
+  signal.
 - Prohibited in commands (validator scans for these, NFR-SEC-002): destructive commands
   (`rm -rf`, `curl`, `wget`, `ssh`, `mkfs`, fork bombs), unbounded waits, or escaping the workspace.
 - Chapters that gate advancement SHOULD include `test: {gates: [{needs:
@@ -694,7 +700,11 @@ learning science, cognitive psychology, and computing education research (CER):
    `-Wall -std=c99`)? Does every `instruction_md` start with a plain-language
    **What You Are Building** intro, then state exact APIs, error precedence,
    boundary/lifecycle cases, and a worked example without relying on hints or
-   tests? Hints general → specific? No destructive commands?
+   tests? Hints general → specific? No destructive commands (including
+   `commands.tinker`)?
+10b. Tool-centric chapter? Do the labs teach the tool (guided tour, filter,
+   compose, diagnose, teach-back) rather than just run it? Is there a second
+   confirming signal? Are there as many labs as the chapter needs (no cap)?
 11. Language ≠ C? Runner `run` authored per docs/SRS.md §4.9 (check/exec JSON,
     exit-0 rule, sandbox prohibitions), `toolchain:` carries `runner`,
     `version_cmd`, `smoke`; C book? No runner file emitted.

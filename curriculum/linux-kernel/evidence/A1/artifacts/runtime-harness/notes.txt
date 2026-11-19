@@ -1,0 +1,8 @@
+Runtime harness commit: c2e45a7f55ba61029be3b74cd7e72f23bbd068d6
+Role: build/boot/gdb only; not the source of truth for 0.11 source claims.
+Default `make -j1` fails under GCC 16.2.1.
+Successful command:
+make -j1 CFLAGS="-g -m32 -fno-builtin -fno-stack-protector -fomit-frame-pointer -std=gnu89 -Iinclude -I../include -I../../include"
+Image sha256: 972474892d39c3be7506ee707f5bd7d396c7960485c9fa3c512f77e0b33b2375
+tools/system sha256: 7ce373fb398357ffa03d938c76698ade4778b8fdddcc81d84f7ed0c32bcb4c68
+System.map sha256: 675d18164eb71052d0c878e21a17de8dda6811fd1970f2f004f75607af21d070

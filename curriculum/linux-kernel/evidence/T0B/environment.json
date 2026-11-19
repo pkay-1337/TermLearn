@@ -1,0 +1,28 @@
+{
+  "chapter": "T0B",
+  "captured_at": "2026-11-19",
+  "host": {
+    "uname": "Linux sandbox 6.18.63-2-lts #1 SMP PREEMPT_DYNAMIC Wed, 11 Nov 2026 19:03:11 +0000 x86_64 GNU/Linux",
+    "arch": "x86_64",
+    "kernel_release": "6.18.63-2-lts",
+    "os": "Arch Linux",
+    "os_pretty_name": "Arch Linux",
+    "os_build_id": "rolling"
+  },
+  "privilege": {
+    "uid": 1000,
+    "user": "pk",
+    "mode": "unprivileged"
+  },
+  "tools": {
+    "rg": "ripgrep 15.2.0",
+    "cscope": "cscope: version 15.9",
+    "git": "git version 2.56.1",
+    "gcc": "gcc (GCC) 16.2.1 20260810",
+    "make": "GNU Make 4.4.1"
+  },
+  "workloads": {
+    "workload": "evidence/T0B/artifacts/workload",
+    "kernel_tree": "sources/early-history.git"
+  }
+}

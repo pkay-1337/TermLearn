@@ -1,0 +1,210 @@
+labs:
+- id: lab1
+  title: Exact Definition Hunting with Anchor Filters
+  family: filter
+  tier: core
+  difficulty: intro
+  expected_observation: The filter isolates the single canonical implementation line
+    in src/sensor.c, ignoring prototypes and callers.
+  artifacts:
+  - find_def.sh
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\n\nYou will author an automated search\
+    \ query script `find_def.sh` that uses `rg` to pinpoint the canonical definition\
+    \ of `sensor_init` without getting trapped by header prototype declarations or\
+    \ indented call sites.\n\n## Problem Statement\n\nWhen exploring code, running\
+    \ unanchored `rg sensor_init .` floods stdout with 3 conflicting results:\n1.\
+    \ `src/main.c`: An indented call site inside `main()`.\n2. `include/sensor_dev.h`:\
+    \ A forward prototype ending in a semicolon.\n3. `src/sensor.c`: The true canonical\
+    \ definition where code statements live.\n\n## Specification & Contract\n\n1.\
+    \ Open `find_def.sh`.\n2. Construct a single `rg` invocation matching the following\
+    \ requirements:\n   - Output 1-based line numbers with `-n`.\n   - Restrict the\
+    \ search to C implementation files using `-g '*.c'`.\n   - Anchor the match to\
+    \ column 0 using the line-start regex `^int sensor_init\\(`.\n   - Target the\
+    \ current directory (`.`).\n3. Make `find_def.sh` executable.\n4. Run tests with\
+    \ `t`. The output must match the exact expected line from `src/sensor.c`."
+  files:
+  - path: include/sensor_dev.h
+    content: "#ifndef SENSOR_DEV_H\n#define SENSOR_DEV_H\n\nstruct sensor_device {\n\
+      \    int id;\n    int status;\n};\n\nint sensor_init(struct sensor_device *dev,\
+      \ int id);\n\n#endif\n"
+  - path: src/sensor.c
+    content: "#include \"../include/sensor_dev.h\"\n\nint sensor_init(struct sensor_device\
+      \ *dev, int id)\n{\n    if (!dev || id < 0) return -1;\n    dev->id = id;\n\
+      \    dev->status = 1;\n    return 0;\n}\n"
+  - path: src/main.c
+    content: "#include <stdio.h>\n#include \"../include/sensor_dev.h\"\n\nint main(void)\n\
+      {\n    struct sensor_device dev;\n    int rc = sensor_init(&dev, 10);\n    return\
+      \ rc;\n}\n"
+  - path: find_def.sh
+    content: '#!/bin/bash
+
+      # TODO: Run ripgrep anchored to column 0 matching only .c files
+
+      # Hint: rg -n -g ''*.c'' ''^int sensor_init\('' .
+
+      '
+  commands:
+    run: bash find_def.sh
+    test: test "$(bash find_def.sh)" = "src/sensor.c:3:int sensor_init(struct sensor_device
+      *dev, int id)"
+    tinker: bash -i
+  test_cases:
+  - name: Isolates canonical definition line
+    stdin: ''
+    expect: 'src/sensor.c:3:int sensor_init(struct sensor_device *dev, int id)
+
+      '
+    expect_exit: 0
+  hints:
+  - Remember to anchor the return type and function name to column 0 using '^'.
+  - Use -g '*.c' to prevent header prototypes in include/ from matching.
+- id: lab2
+  title: Caller Enumeration and Member Disambiguation
+  family: filter
+  tier: core
+  difficulty: intro
+  expected_observation: Isolates the external call site of sensor_poll in bus.c while
+    ignoring the definition in sensor.c and struct members.
+  artifacts:
+  - find_callers.sh
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\n\nYou will construct a search filter\
+    \ in `find_callers.sh` that locates true callers of `sensor_poll` across subsystem\
+    \ modules while filtering out the function's own definition and unrelated struct\
+    \ member accesses.\n\n## Problem Statement\n\nA shared word like `poll` appears\
+    \ in function definitions, pointer dereferences (`dev->poll`), and call sites.\
+    \ You must enumerate only the true external call sites.\n\n## Specification &\
+    \ Contract\n\n1. Open `find_callers.sh`.\n2. Construct a single `rg` command that:\n\
+    \   - Matches the invocation pattern `sensor_poll\\(` with line numbers (`-n`).\n\
+    \   - Searches inside the `src/` directory.\n   - Excludes the definition file\
+    \ using `-g '!src/sensor.c'`.\n3. The command must emit exactly the caller in\
+    \ `src/bus.c` without matching the implementation in `src/sensor.c`."
+  files:
+  - path: src/sensor.c
+    content: "#include <stdio.h>\n\nint sensor_poll(void)\n{\n    return 42;\n}\n"
+  - path: src/bus.c
+    content: "#include <stdio.h>\n\nint sensor_poll(void);\n\nint dispatch_event(void)\n\
+      {\n    return sensor_poll();\n}\n"
+  - path: find_callers.sh
+    content: '#!/bin/bash
+
+      # TODO: Find true call sites of sensor_poll outside of sensor.c
+
+      # Hint: rg -n "sensor_poll\(" src/ -g ''!src/sensor.c''
+
+      '
+  commands:
+    run: bash find_callers.sh
+    test: 'test "$(bash find_callers.sh)" = "src/bus.c:7:    return sensor_poll();"'
+    tinker: bash -i
+  test_cases:
+  - name: Isolates external caller in bus.c
+    stdin: ''
+    expect: 'src/bus.c:7:    return sensor_poll();
+
+      '
+    expect_exit: 0
+  hints:
+  - Append an escaped opening parenthesis '\(' to match only invocation sites.
+  - Use -g '!src/sensor.c' to eliminate the function's own source file.
+- id: lab3
+  title: Git Forensic Archaeology with Pickaxe (-S)
+  family: git-archaeology
+  tier: core
+  difficulty: core
+  expected_observation: Pinpoints the exact commit hash and message that introduced
+    sanitize_id into history.
+  artifacts:
+  - find_origin.sh
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: '## What You Are Building
+
+
+    You will author a script `find_origin.sh` that uses Git''s pickaxe search (`git
+    log -S`) to identify which commit in repository history introduced a specific
+    helper function `sanitize_id`.
+
+
+    ## Problem Statement
+
+
+    When diagnosing regressions, `git log --grep` only checks commit messages. If
+    a commit message says *"Refactor validation logic"* without naming the function,
+    `--grep` fails. The `-S` pickaxe inspects the actual code diffs across history.
+
+
+    ## Specification & Contract
+
+
+    1. A Git repository exists in the lab workspace with multiple commits.
+
+    2. Edit `find_origin.sh`.
+
+    3. Construct a command using `git log -S "sanitize_id" --oneline`.
+
+    4. Run tests with `t`. The output must emit the single commit summary that introduced
+    `sanitize_id`.'
+  files:
+  - path: setup_repo.sh
+    content: '#!/bin/bash
+
+      set -e
+
+      git init -q
+
+      git config user.name "Test User"
+
+      git config user.email "test@example.com"
+
+      echo "int base = 1;" > code.c
+
+      git add code.c && git commit -q -m "Initial commit"
+
+      echo "int sanitize_id(int x) { return x > 0 ? x : 0; }" >> code.c
+
+      git commit -q -a -m "Add parameter sanitization"
+
+      echo "// trailing comment" >> code.c
+
+      git commit -q -a -m "Add comments"
+
+      '
+  - path: find_origin.sh
+    content: '#!/bin/bash
+
+      # TODO: Query git log using pickaxe -S to find the commit introducing sanitize_id
+
+      # Hint: git log -S "sanitize_id" --oneline
+
+      '
+  commands:
+    run: bash setup_repo.sh 2>/dev/null; bash find_origin.sh
+    test: bash setup_repo.sh 2>/dev/null; bash find_origin.sh | grep -q 'Add parameter
+      sanitization'
+    tinker: bash -i
+  test_cases:
+  - name: Locates commit introducing sanitize_id
+    stdin: ''
+    expect: 'Add parameter sanitization
+
+      '
+    expect_exit: 0
+  hints:
+  - Use git log with the -S flag followed by the symbol string 'sanitize_id'.
+  - Add --oneline to format the commit on a single line.

@@ -1,0 +1,66 @@
+cards:
+- front: How does userspace GDB differ fundamentally from QEMU remote kernel debugging?
+  back: Userspace GDB uses host OS ptrace syscalls; QEMU remote debugging uses a hypervisor
+    RSP stub over TCP.
+  concept: ptrace-vs-rsp
+- front: What does GDB command `print /x <expr>` output?
+  back: The evaluated value of the expression formatted as a hexadecimal number.
+  concept: gdb-print-hex
+- front: Contrast `step` and `next` in GDB.
+  back: 'Step enters function calls (descending into frame #0); next executes function
+    calls atomically without descending.'
+  concept: step-vs-next
+- front: What does GDB's `finish` command do, and where does it fail?
+  back: Runs until current stack frame returns to caller; fails with an error if issued
+    in the outermost frame (main).
+  concept: gdb-finish
+- front: Under the System V x86_64 ABI, which register carries the first function
+    argument?
+  back: Register RDI (followed by RSI, RDX, RCX, R8, R9).
+  concept: abi-argument-registers
+- front: Which CPU register holds the return value of a function in x86_64 and i386?
+  back: RAX in 64-bit; EAX in 32-bit.
+  concept: abi-return-register
+- front: What hardware registers power GDB data watchpoints on x86 processors?
+  back: CPU debug address registers DR0 through DR3 and control register DR7.
+  concept: debug-registers-dr0-dr3
+- front: What is the difference between `watch`, `rwatch`, and `awatch`?
+  back: watch breaks on write; rwatch breaks on read; awatch breaks on either read
+    or write.
+  concept: watchpoint-variants
+- front: Why does setting more than 4 concurrent hardware watchpoints cause extreme
+    slowdown?
+  back: x86 has only 4 DR registers; extra watchpoints force slow software single-stepping
+    instruction by instruction.
+  concept: software-watchpoint-cliff
+- front: What do QEMU flags `-s` and `-S` do?
+  back: -s starts the GDB RSP server on port 1234; -S freezes the virtual CPU at reset
+    until GDB resumes it.
+  concept: qemu-s-and-S-flags
+- front: How do you connect GDB to a remote QEMU instance on port 1234?
+  back: target remote :1234
+  concept: target-remote-syntax
+- front: Why must you use `continue` instead of `run` when attached to a remote QEMU
+    instance?
+  back: Remote targets are already created and running; run attempts to spawn a local
+    process, which remote targets reject.
+  concept: remote-target-continue
+- front: How does a software breakpoint (`break`) temporarily pause execution on silicon?
+  back: GDB overwrites the instruction opcode in RAM with byte 0xCC (INT 3).
+  concept: software-breakpoint-0xcc
+- front: Why do software breakpoints cause triple faults in early boot before head.s
+    runs?
+  back: Executing INT 3 (0xCC) requires an initialized Interrupt Descriptor Table
+    (IDT), which does not exist in early boot.
+  concept: early-boot-int32-triple-fault
+- front: Why do hardware breakpoints (`hbreak`) work in read-only memory and early
+    boot?
+  back: They use CPU debug registers (DR0-DR3) and do not modify any bytes in RAM.
+  concept: hardware-breakpoint-dr
+- front: What does value 0x80000013 in CR0 indicate at Linux kernel entry?
+  back: Both Paging (bit 31, PG) and Protected Mode (bit 0, PE) are active.
+  concept: cr0-flags-0x80000013
+- front: When should you prefer non-halting tracing (ftrace) over GDB breakpoints?
+  back: In timing-critical or high-frequency paths (network queues, timer ISRs, spinlocks)
+    where pausing causes timeouts.
+  concept: tracing-vs-breakpoints

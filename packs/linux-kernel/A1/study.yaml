@@ -1,0 +1,2223 @@
+blocks:
+- id: b1
+  type: model
+  title: Source Tree Anatomy & The 100-File Operating System
+  explain_md: "### 1. Frame the Problem\nWhen developers first approach the modern\
+    \ Linux kernel (v6.18+), they are confronted by over 70,000 source files and 35\
+    \ million lines of code. Trying to grasp core operating system principles—how\
+    \ memory is virtualized, how processes are scheduled, and how hardware boots—against\
+    \ this immense codebase causes immediate epistemic paralysis.\n\nIn September\
+    \ 1991, Linus Torvalds released Linux 0.11. It was not a toy simulator; it was\
+    \ a fully functional, POSIX-compliant, multitasking, virtual-memory operating\
+    \ system capable of running GCC, Bash, and GNU Make. Crucially, Linux 0.11 consists\
+    \ of **exactly 100 files and 13,839 lines of code**. A disciplined systems programmer\
+    \ can hold the entire architecture in their head.\n\n### 2. The Notional Machine\n\
+    In your curriculum workspace, you have access to two distinct repositories:\n\
+    1. **The Pristine Historical Tree (`sources/early-history.git`):**\n   Pinned\
+    \ to git tag `0.11` (Commit `b65b60f4acd7...`, Tree `d4303c76a8...`). This is\
+    \ our immutable **Source of Truth** representing the exact bytes released in 1991.\n\
+    2. **The Modern Runnable Harness (`sources/Linux-0.11-fork`):**\n   Modern compilers\
+    \ (GCC 16) reject 1991 C dialect quirks (implicit `int`, missing function prototypes).\
+    \ This harness contains the build flags (`-std=gnu89`, `-m32`) and QEMU disk fixtures\
+    \ required to compile and execute the kernel today.\n\nThe entire Linux 0.11 operating\
+    \ system is partitioned into exactly 8 functional directories:\n* `boot/` (3 files):\
+    \ Raw x86 assembly bootstrap (`bootsect.s`, `setup.s`, `head.s`).\n* `init/` (1\
+    \ file): The C entry point and system initialization bridge (`main.c`).\n* `kernel/`\
+    \ (19 files): Process scheduling, `fork`, `exit`, signals, interrupts, and system\
+    \ call dispatching.\n* `mm/` (2 files): Two-level paging, demand paging, and copy-on-write\
+    \ page fault handlers (`memory.c`, `page.s`).\n* `fs/` (18 files): Minix filesystem\
+    \ driver, inode/file management, and the unified buffer cache (`buffer.c`).\n\
+    * `include/` (32 files): Architecture definitions (`asm/`), standard C interfaces,\
+    \ and kernel data structures.\n* `lib/` (12 files): Freestanding userspace library\
+    \ routines compiled into kernel space (`string.s`, `malloc.c`).\n* `tools/` (1\
+    \ file): The host build tool (`build.c`) that stitches boot sectors and kernel\
+    \ images into a floppy disk.\n\n### 3. Source-Grounded Walkthrough\nLook at Evidence\
+    \ `E-A1-01`:\n```text\n$ git rev-parse 0.11\nb65b60f4acd7efbbccd3d2411e9e5bca520a7574\n\
+    $ git ls-tree -r --name-only 0.11 | wc -l\n100\n$ git ls-tree -d --name-only 0.11\n\
+    boot\nfs\ninclude\ninit\nkernel\nlib\nmm\ntools\n```\nEvery directory directly\
+    \ maps to an essential operating system responsibility. Notice that `boot/` contains\
+    \ only 3 files and `init/` contains only 1 file (`main.c`). Our entire journey\
+    \ in Chapter A1 takes place across these two directories.\n\n### 4. The Failure\
+    \ Mode & Boundary\nThe fatal beginner trap is confusing the modernized build harness\
+    \ with the original historical source. If you modify files in `sources/Linux-0.11-fork`\
+    \ thinking you are reading Linus's original 1991 thoughts, you will see modernized\
+    \ Makefile tweaks. Always verify source claims against `sources/early-history.git`\
+    \ at tag `0.11`.\n\n### 5. The Compressed Mental Axiom\n*An operating system is\
+    \ not magic; it is 100 C and assembly files organized into 8 explicit subsystem\
+    \ directories.*"
+  diagram:
+    kind: flow
+    caption: Linux 0.11 Repository Architecture and Subsystem Topology
+    nodes:
+    - id: root
+      label: Linux 0.11 (100 Files)
+      shape: round
+    - id: boot
+      label: 'boot/ (3 Files: Bootstrap)'
+      shape: box
+    - id: init
+      label: 'init/ (1 File: main.c)'
+      shape: box
+    - id: core
+      label: kernel/ & mm/ & fs/ (Core OS)
+      shape: box
+    - id: supp
+      label: include/ & lib/ & tools/
+      shape: box
+    edges:
+    - from: root
+      to: boot
+      label: Hardware Wakeup
+    - from: boot
+      to: init
+      label: Jump to C
+    - from: init
+      to: core
+      label: Subsystem Init
+    - from: root
+      to: supp
+      label: Types & Build Tools
+    steps:
+    - focus:
+      - root
+      - boot
+      note: 'Step 1: Raw assembly bootstrap initializes hardware'
+    - focus:
+      - boot
+      - init
+      note: 'Step 2: Control transitions into C at init/main.c'
+    - focus:
+      - init
+      - core
+      note: 'Step 3: main() initializes scheduling, memory, and filesystem'
+  viz:
+    kind: ascii-memory
+    caption: Repository Mapping on Host Filesystem
+    steps:
+    - '[Pristine Git Tree] sources/early-history.git @ tag 0.11 · Commit b65b60f4
+      · Status: IMMUTABLE SOURCE OF TRUTH'
+    - '[Runnable Harness] sources/Linux-0.11-fork · GCC 16 CFLAGS: -std=gnu89 -m32
+      · Status: BUILD & QEMU HARNESS'
+    - '[Artifact Generation] tools/build stitches bootsect + setup + system -> Image
+      (bootable floppy disk image)'
+  checks:
+  - kind: mcq
+    concept: source-tree-scope
+    q: How many total files and lines of code comprise the entire pristine Linux 0.11
+      kernel source tree?
+    choices:
+    - Exactly 100 files containing approximately 13,839 lines of code across 8 directories
+    - Over 70,000 files containing 35 million lines of code across 32 directories
+    - 1,400 files containing 250,000 lines of code across 16 directories
+    answer: 0
+    why: 'Option A is correct: Linux 0.11 is remarkably compact, containing exactly
+      100 files and 13,839 lines of code (Evidence E-A1-01). Option B describes modern
+      Linux (v6.18+). Option C reflects middle-era Linux (v2.0/v2.2).'
+  - kind: choose-better
+    concept: source-of-truth-selection
+    q: You need to cite the exact line numbers and assembly instructions Linus Torvalds
+      wrote in 1991 for bootsect.s. Which repository directory must you inspect?
+    choices:
+    - sources/Linux-0.11-fork because it compiles cleanly under modern GCC 16
+    - sources/early-history.git checked out at tag 0.11 (commit b65b60f4)
+    - /usr/src/linux-headers on your host operating system
+    answer: 1
+    why: 'Option B is correct: `early-history.git` at tag 0.11 is the immutable historical
+      source of truth. Option A contains modern build harness adjustments. Option
+      C contains host kernel headers (6.18+), completely irrelevant to 1991 code.'
+  - kind: fillblank
+    concept: directory-mapping
+    q: In Linux 0.11, the C entry point `main()` resides inside the directory named
+      ___.
+    answer_text: init
+    why: '`main.c` is the sole source file residing in `init/`, bridging the low-level
+      assembly bootstrap in `boot/` to the rest of the kernel.'
+  - kind: why-fails
+    concept: toolchain-dialect-requirement
+    q: Why does attempting to compile pristine Linux 0.11 directly with modern GCC
+      16 without `-std=gnu89` fail?
+    choices:
+    - The original kernel required a proprietary closed-source Borland C compiler
+      unavailable on Linux
+    - Linux 0.11 was written in ARM assembly and cannot execute on x86 processors
+    - Modern GCC defaults to modern C standards (C17/C23) which strictly ban implicit
+      int return types and missing prototypes
+    answer: 2
+    why: 'Option C is correct: 1991 C code relied on GCC 1.40 quirks like implicit
+      `int main()` and prototype-less declarations, which modern compilers reject
+      under default standard flags (Evidence E-A1-06). Option B is false; 0.11 targeted
+      386 x86 exclusively. Option A is false; Linus used GNU GCC from the beginning.'
+  - kind: mcq
+    concept: prior-knowledge-tooling
+    from_chapter: T0B
+    from_block: b1
+    q: When exploring a 100-file repository, what is the fundamental difference between
+      a function prototype in `include/linux/*.h` and its implementation in `kernel/*.c`?
+    choices:
+    - Prototypes allocate zero executable memory in .text; implementations generate
+      concrete machine instructions
+    - Prototypes emit executable bytes into .data; implementations emit bytes into
+      .rodata
+    - Prototypes run at compile time; implementations run only inside the BIOS
+    answer: 0
+    why: 'Option A is correct (from T0B): A declaration in a header is a forward type
+      contract allocating zero bytes; the definition in a .c translation unit emits
+      concrete machine instructions into .text.'
+- id: b2
+  type: model
+  title: 'The Chapter A1 Mission: The 4-Stage Bootstrap Pipeline'
+  explain_md: "### 1. Frame the Problem\nWhen you press the power button on an x86\
+    \ computer, the CPU does not immediately execute high-level C code. In fact, it\
+    \ cannot execute C code at all.\n\nThere is no stack pointer (`ESP`), no memory\
+    \ management unit (MMU), no virtual memory, no file system, and no concept of\
+    \ a process. The processor awakens in 16-bit **Real Mode**—a backward-compatible\
+    \ hardware state identical to the 1978 Intel 8086 CPU. It can address at most\
+    \ 1 megabyte of memory.\n\nHow does a computer transform itself from raw silicon\
+    \ with 1MB of segmented memory into a 32-bit protected-mode operating system running\
+    \ C?\n\n### 2. The Notional Machine\nIn Chapter A1, we trace the exact **4-stage\
+    \ chain of custody** that bootstraps Linux 0.11:\n\n1. **Stage 1: `boot/bootsect.s`\
+    \ (Floppy Sector 1, exactly 512 bytes)**:\n   * The BIOS reads the first 512-byte\
+    \ disk sector into RAM at physical address `0x7C00`.\n   * `bootsect` immediately\
+    \ copies itself out of the way to `0x90000`.\n   * It uses BIOS interrupt `INT\
+    \ 13h` to load `setup.s` into `0x90200` and stream the kernel image (`system`)\
+    \ into `0x10000`.\n2. **Stage 2: `boot/setup.s` (Floppy Sectors 2–5, 2048 bytes)**:\n\
+    \   * Queries the BIOS for system parameters (RAM size, display geometry, disk\
+    \ parameters) and stores them in safe memory at `0x90000`–`0x901FF`.\n   * Moves\
+    \ the entire `system` kernel image down from `0x10000` to physical address `0x00000`.\n\
+    \   * Enables the **A20 Gate** (unlocking 32-bit addressing pins on the motherboard).\n\
+    \   * Loads temporary Global and Interrupt Descriptor Tables (`GDT` / `IDT`).\n\
+    \   * Flips the Protection Enable (`PE`) bit in control register `CR0`.\n   *\
+    \ Executes a far jump (`jmpi 0, 8`) to enter 32-bit Protected Mode!\n3. **Stage\
+    \ 3: `boot/head.s` (32-bit Assembly, start of `system` at `0x00000`)**:\n   *\
+    \ Reloads segment registers (`DS`, `ES`, `FS`, `GS` = `0x10`) for 32-bit flat\
+    \ memory.\n   * Sets up a temporary kernel stack (`ESP = user_stack`).\n   * Configures\
+    \ all 256 IDT gates to point to a dummy default interrupt handler.\n   * Builds\
+    \ the initial **Page Directory** at `0x00000` and 4 **Page Tables** at `0x01000`–`0x04000`,\
+    \ identity-mapping the first 16 megabytes of physical RAM.\n   * Turns on the\
+    \ Paging (`PG`) bit in `CR0` and loads `CR3`.\n   * Pushes the address of `main`\
+    \ onto the stack and executes `ret` to jump into C!\n4. **Stage 4: `init/main.c`\
+    \ (First C Statement)**:\n   * Lands in `main()` at address `0x00006771`.\n  \
+    \ * Partitions physical memory, initializes drivers, enables hardware interrupts\
+    \ with `sti()`, transitions to user mode (Ring 3), and forks the first userspace\
+    \ process (`init`).\n\n### 3. Source-Grounded Walkthrough\nLook at the custody\
+    \ handoffs across the files in `sources/early-history.git`:\n* In `bootsect.s`:\
+    \ `jmpi go, INITSEG` passes execution from `0x7C00` to `0x90000`.\n* At the end\
+    \ of `setup.s`: `jmpi 0, 8` passes execution to 32-bit segment 8, offset 0 (`head.s`).\n\
+    * At the end of `head.s`:\n  ```asm\n  pushl $_main\n  jmp setup_paging\n  ...\n\
+    \  setup_paging:\n      ...\n      movl %eax, %cr0   # enable paging\n      ret\
+    \               # pops $_main into EIP!\n  ```\nThe `ret` instruction is Linus's\
+    \ elegant mechanism to transition from 32-bit assembly into C!\n\n### 4. The Failure\
+    \ Mode & Boundary\nThe most common mental trap is assuming the kernel initializes\
+    \ in C. If you attempt to run C code before `head.s` completes:\n1. Pointers will\
+    \ crash the machine because segment selectors are uninitialized.\n2. Function\
+    \ calls will fail because there is no stack frame (`ESP`).\n3. Memory references\
+    \ above 1MB will wrap around to 0 because the A20 gate is disabled.\n\n### 5.\
+    \ The Compressed Mental Axiom\n*Before C can run, assembly must build the world\
+    \ C assumes.*"
+  diagram:
+    kind: flow
+    caption: The 4-Stage Bootstrap Custody Chain
+    nodes:
+    - id: bios
+      label: BIOS Reset (0xFFFF0)
+      shape: round
+    - id: bsect
+      label: 1. bootsect.s (0x7C00 -> 0x90000)
+      shape: box
+    - id: setup
+      label: 2. setup.s (A20, CR0.PE -> PM32)
+      shape: box
+    - id: head
+      label: 3. head.s (Paging CR0.PG -> 16MB)
+      shape: box
+    - id: main
+      label: 4. init/main.c (Ring 0 C Entry)
+      shape: round
+    edges:
+    - from: bios
+      to: bsect
+      label: Loads Sector 1
+    - from: bsect
+      to: setup
+      label: Loads Sectors 2-5
+    - from: setup
+      to: head
+      label: jmpi 0,8 (32-bit)
+    - from: head
+      to: main
+      label: ret into main()
+    steps:
+    - focus:
+      - bios
+      - bsect
+      note: 'Stage 1: BIOS loads 512-byte bootsect; bootsect relocates itself to 0x90000'
+    - focus:
+      - bsect
+      - setup
+      note: 'Stage 2: setup.s probes BIOS, enables A20, switches to 32-bit protected
+        mode'
+    - focus:
+      - setup
+      - head
+      note: 'Stage 3: head.s initializes 16MB identity paging and segment selectors'
+    - focus:
+      - head
+      - main
+      note: 'Stage 4: Execution lands in main() at 0x6771 in Ring 0 with paging live'
+  viz:
+    kind: ascii-memory
+    caption: Bootstrap Execution Pointer and Mode Progression
+    steps:
+    - '[Stage 1: Real Mode] CS:IP = 0x9000:0x0000 · CPU Mode: 16-bit Real Mode · Paging:
+      OFF · A20: DISABLED'
+    - '[Stage 2: Protected Mode] CS:IP = 0x0008:0x00000000 · CPU Mode: 32-bit Protected
+      Mode (CR0.PE=1) · Paging: OFF · A20: ENABLED'
+    - '[Stage 3: Paging Enabled] CR3 = 0x00000000 · CR0.PG = 1 · 16MB Identity Mapped
+      · Stack: ESP = user_stack'
+    - '[Stage 4: C Entry Point] EIP = 0x00006771 (main) · Ring: 0 (Supervisor) · State:
+      C Runtime Active'
+  checks:
+  - kind: order
+    concept: bootstrap-stage-order
+    q: 'Place the 4 core bootstrap components of Linux 0.11 in their exact chronological
+      order of execution:'
+    answer_order:
+    - 1
+    - 0
+    - 3
+    - 2
+    why: 'The custody chain proceeds strictly: 1. bootsect.s (Sector 1) -> 2. setup.s
+      (Sectors 2-5) -> 3. head.s (Sector 6+) -> 4. init/main.c (C entry).'
+    lines:
+    - setup.s switches CPU to 32-bit protected mode and enables A20
+    - bootsect.s relocates from 0x7C00 to 0x90000 and loads remaining sectors
+    - init/main.c enters main() and initializes kernel subsystems
+    - head.s builds 16MB identity page tables and enables CR0.PG
+  - kind: mcq
+    concept: head-to-main-handoff
+    q: How does `boot/head.s` transfer execution to `init/main.c:main()` once paging
+      is initialized?
+    choices:
+    - It uses a direct software interrupt `int 0x80` to jump into the C library
+    - It pushes the address of `_main` onto the stack and executes `ret` at the end
+      of `setup_paging`
+    - It invokes the Linux dynamic ELF linker `/lib/ld-linux.so` to resolve `main`
+    answer: 1
+    why: 'Option B is correct: In `head.s`, Linus pushed `$_main` onto the stack (`pushl
+      $_main`) and jumped to `setup_paging`. When `setup_paging` finishes, its final
+      `ret` instruction pops `_main` into `EIP` (Evidence E-A1-04). Option A traps
+      syscall confusion; int 0x80 is for userspace syscalls. Option C traps modern
+      dynamic linking; 0.11 was statically linked flat binary.'
+  - kind: predict
+    concept: stack-precondition
+    q: What happens if a developer attempts to call a standard C function inside `setup.s`
+      before `head.s` configures the stack pointer `ESP`?
+    choices:
+    - The compiler automatically converts all function calls to inline goto statements
+    - The BIOS automatically redirects stack pushes to floppy disk sectors
+    - The call instruction attempts to push the return address to a garbage stack
+      address, causing an immediate hardware crash or memory corruption
+    answer: 2
+    why: 'Option C is correct: C function calls rely on the `call` instruction, which
+      pushes `EIP` onto the stack pointed to by `ESP`. Without an established valid
+      stack pointer in RAM, any function call corrupts memory or triggers a CPU fault.'
+  - kind: choose-better
+    concept: tooling-integration-t1a
+    from_chapter: T1A
+    from_block: b11
+    q: You need to pause the Linux 0.11 kernel at the very first instruction of `main()`
+      to inspect machine state. Which GDB breakpoint command should you use when attached
+      to QEMU via `:1234`?
+    choices:
+    - Set a hardware breakpoint using `hbreak main` to avoid memory patching before
+      paging is established
+    - Inject a `printf()` statement into `bootsect.s` to display registers on the
+      screen
+    - Run GDB with `ptrace` targeting the local QEMU process ID on your host
+    answer: 0
+    why: 'Option A is correct (from T1A): `hbreak main` uses CPU hardware debug registers
+      (DR0-DR3), avoiding software breakpoint RAM patches (0xCC) during delicate early
+      boot. Option B fails because bootsect runs in 16-bit real mode and cannot run
+      C printf. Option C fails because host ptrace cannot debug guest operating system
+      virtual addresses.'
+  - kind: why-fails
+    concept: real-mode-boundary
+    q: Why can the BIOS not load the Linux kernel directly into high memory (e.g.
+      4MB or 8MB) at power-on?
+    choices:
+    - Floppy disks physically cannot store data destined for addresses above 1MB
+    - The CPU is in 16-bit Real Mode with only 20 address lines active, capping physical
+      addressing strictly to 1MB
+    - The BIOS ROM chip occupies all memory between 1MB and 16MB
+    answer: 1
+    why: 'Option B is correct: At reset, the x86 processor operates in 16-bit real
+      mode with the A20 address line disabled, creating a hard physical addressing
+      limit of $2^{20} = 1,048,576$ bytes (1MB).'
+- id: b3
+  type: model
+  title: 80386 Hardware Reset State & Real Mode Memory Segmentation
+  explain_md: "### 1. Frame the Problem\nWhy does a 32-bit Intel 80386 processor—capable\
+    \ of addressing 4 gigabytes of memory and executing protected instructions—wake\
+    \ up as a crippled 16-bit processor limited to 1 megabyte of RAM?\n\nThe answer\
+    \ is historical backward compatibility. When Intel introduced the 80386 in 1985,\
+    \ millions of personal computers ran MS-DOS on original 16-bit 8086 processors.\
+    \ If the 386 had booted directly into 32-bit protected mode, existing operating\
+    \ systems and BIOS chips would have crashed instantly. Intel engineered the 386\
+    \ to boot in **Real Mode**—behaving identically to a 1978 8086.\n\n### 2. The\
+    \ Notional Machine\nWhen voltage stabilizes on the motherboard, the CPU's internal\
+    \ logic forces specific register states:\n* Code Segment (`CS`): `0xF000`\n* Instruction\
+    \ Pointer (`IP`): `0xFFF0`\n* Address Bus: 20 active address lines ($A_0$ through\
+    \ $A_{19}$), capping addressing at $2^{20} = 1,048,576$ bytes (1MB).\n\nIn 16-bit\
+    \ Real Mode, registers are only 16 bits wide, meaning a single register can only\
+    \ count up to $2^{16} = 65,535$ (64KB). To reach addresses across the 1MB ceiling,\
+    \ the processor uses **Segmented Memory Translation**:\n\n$$\\text{Physical Address}\
+    \ = (\\text{Segment Selector} \\times 16) + \\text{Offset}$$\n\nMultiplying the\
+    \ 16-bit segment by 16 is equivalent to shifting the hexadecimal value one nibble\
+    \ to the left (a 4-bit logical shift).\n\nAt power-on reset:\n$$\\text{Reset Vector}\
+    \ = (0\\text{xF000} \\times 16) + 0\\text{xFFF0} = 0\\text{xF0000} + 0\\text{xFFF0}\
+    \ = 0\\text{xFFFF0}$$\n\nAddress `0xFFFF0` sits exactly 16 bytes below the 1MB\
+    \ boundary. Hardwired motherboard circuitry maps this address to read-only memory\
+    \ (**ROM BIOS**). The BIOS executes a power-on self-test (POST), initializes disk\
+    \ controllers, and prepares to boot.\n\n### 3. Source-Grounded Walkthrough\nConsider\
+    \ the canonical segmented addresses used in `boot/bootsect.s`:\n* `BOOTSEG = 0x07c0`:\
+    \ Loaded by BIOS at physical address:\n  $$(0\\text{x07C0} \\times 16) + 0\\text{x0000}\
+    \ = 0\\text{x07C00}$$\n* `INITSEG = 0x9000`: Target of bootsect relocation:\n\
+    \  $$(0\\text{x9000} \\times 16) + 0\\text{x0000} = 0\\text{x90000}$$\n* `SETUPSEG\
+    \ = 0x9020`: Loaded directly after bootsect:\n  $$(0\\text{x9020} \\times 16)\
+    \ + 0\\text{x0000} = 0\\text{x90200}$$\n  Notice that $0\\text{x90200} - 0\\text{x90000}\
+    \ = 0\\text{x200} = 512$ bytes! The segment value `0x9020` is offset by exactly\
+    \ 512 bytes from `0x9000`.\n\n### 4. The Failure Mode & Boundary\nThe most dangerous\
+    \ real-mode error is forgetting the 4-bit shift. If you treat a segment register\
+    \ like a physical pointer and write to offset `0x9000`, you access physical byte\
+    \ `0x09000`, not `0x90000`! You end up corrupting low BIOS data structures instead\
+    \ of the intended kernel staging buffer.\n\n### 5. The Compressed Mental Axiom\n\
+    *In real mode, segments are multipliers: every segment increment shifts your physical\
+    \ base by 16 bytes.*"
+  diagram:
+    kind: art
+    caption: Real-Mode Segmented Address Translation Math
+    art: "+-------------------+-------------------+\n| Segment (16 bits) |  0x07C0\
+      \           |\n+-------------------+-------------------+\n         | (Shift\
+      \ left 4 bits / multiply by 16)\n         v\n+-----------------------+---------------+\n\
+      | Base Address (20 bits)|  0x07C00      |\n+-----------------------+---------------+\n\
+      \         +\n+-----------------------+---------------+\n| Offset (16 bits) \
+      \     |  0x0000       |\n+-----------------------+---------------+\n       \
+      \  =\n+-----------------------+---------------+\n| Physical Target RAM   | \
+      \ 0x07C00      |\n+-----------------------+---------------+"
+  viz:
+    kind: ascii-memory
+    caption: Real-Mode Physical Memory Map (0 to 1MB)
+    steps:
+    - '[Reset Vector] CS:IP = 0xF000:0xFFF0 -> Physical 0xFFFF0 · Mapped to BIOS ROM'
+    - '[BIOS Handoff] BIOS loads Sector 1 to Physical 0x07C00 (Segment 0x07C0:0x0000)'
+    - '[Relocation Destination] Target Segment 0x9000:0x0000 -> Physical 0x90000 (Top
+      of Low RAM)'
+  checks:
+  - kind: predict
+    concept: segmented-address-calculation
+    q: What is the physical memory address referenced by real-mode segment `0x9020`
+      with offset `0x0150`?
+    choices:
+    - '0x09170'
+    - '0x90200'
+    - '0x90350'
+    answer: 2
+    why: 'Option C is correct: Physical Address = (0x9020 << 4) + 0x0150 = 0x90200
+      + 0x0150 = 0x90350. Option B ignores the offset. Option A adds without the 4-bit
+      left shift.'
+  - kind: why-fails
+    concept: reset-vector-location
+    q: Why does the x86 CPU execute its first power-on instruction at physical address
+      `0xFFFF0` instead of `0x00000`?
+    choices:
+    - Address 0x00000 contains the Real-Mode Interrupt Vector Table (IVT); placing
+      code there would destroy interrupt vectors
+    - Address 0xFFFF0 is the only address supported by 16-bit copper motherboard traces
+    - The 80386 processor starts in 64-bit Long Mode by default
+    answer: 0
+    why: 'Option A is correct: The base of physical memory (0x00000 to 0x003FF) is
+      reserved for the 256 real-mode interrupt vectors. The reset vector is placed
+      at the very top of the 1MB range (0xFFFF0) where BIOS ROM resides.'
+  - kind: fillblank
+    concept: segment-shift-width
+    q: In x86 real-mode segmented addressing, the 16-bit segment selector is shifted
+      left by ___ bits to form the 20-bit base address.
+    answer_text: '4'
+    why: A 4-bit left shift multiplies the segment value by 16 ($2^4 = 16$), creating
+      a 20-bit base address from a 16-bit segment register.
+  - kind: mcq
+    concept: addressing-ceiling
+    q: What is the theoretical maximum physical address addressable in pure 8086 Real
+      Mode using segment `0xFFFF` and offset `0xFFFF` with the A20 gate disabled?
+    choices:
+    - 0x10FFEF (accessible without restriction)
+    - 0x0FFEF (due to 1MB address wraparound)
+    - 4 Gigabytes (0xFFFFFFFF)
+    answer: 1
+    why: 'Option B is correct: (0xFFFF << 4) + 0xFFFF = 0x10FFEF. Because there are
+      only 20 address lines (A0-A19) active in 8086 hardware, the 21st bit (A20) is
+      dropped, wrapping the address around to 0x0FFEF. Option A is what happens when
+      A20 is enabled.'
+  - kind: choose-better
+    concept: segment-representation
+    q: You want to reference physical address `0x10000` (where `system` is initially
+      loaded). Which segment:offset representation is standard in `bootsect.s`?
+    choices:
+    - '`SYSSEG = 0x10000` with offset `0x0000`'
+    - '`SYSSEG = 0x0100` with offset `0x0000`'
+    - '`SYSSEG = 0x1000` with offset `0x0000`'
+    answer: 2
+    why: 'Option C is correct: (0x1000 << 4) + 0x0000 = 0x10000. Option B yields 0x01000
+      (4KB). Option A is invalid because 16-bit real-mode registers cannot hold 0x10000
+      (17 bits).'
+- id: b4
+  type: model
+  title: 'Boot Media Layout: Floppy Disk Sectors & MBR Geometry'
+  explain_md: "### 1. Frame the Problem\nOperating systems do not exist as files when\
+    \ the computer powers on. There is no ext4, no Minix filesystem, and no VFS layer.\
+    \ The disk controller is raw physical hardware addressed by **Cylinders, Heads,\
+    \ and Sectors (CHS)** or **Logical Block Addressing (LBA)**.\n\nThe BIOS contains\
+    \ just enough intelligence to read exactly **one 512-byte sector** from disk into\
+    \ memory. How did Linus Torvalds fit a multitasking Unix operating system onto\
+    \ a medium where the hardware only loads 512 bytes?\n\n### 2. The Notional Machine\n\
+    In Linux 0.11, the boot floppy disk image (`Image`) is not formatted with a filesystem.\
+    \ It is a raw, sector-aligned binary stitched together by the host tool `tools/build.c`.\n\
+    \nThe 1.44MB floppy disk image is structured into three continuous sector zones:\n\
+    \n1. **Sector 1 (Offset 0, exactly 512 bytes) — `boot/bootsect.s`**:\n   * Assembled\
+    \ from 16-bit assembly into pure machine code.\n   * Bytes 0–507: Executable bootstrap\
+    \ machine code.\n   * Bytes 508–509: Root device number (`ROOT_DEV = 0x306`, corresponding\
+    \ to `/dev/hd6`, the second partition on the first IDE hard drive).\n   * Bytes\
+    \ 510–511: The sacred Master Boot Record signature **`0x55, 0xAA`** (in little-endian\
+    \ word format: `0xAA55`).\n2. **Sectors 2 through 5 (Offsets 512–2559, exactly\
+    \ 4 sectors = 2048 bytes) — `boot/setup.s`**:\n   * Contains hardware probing\
+    \ code, protected-mode initialization, and descriptor tables.\n3. **Sector 6 through\
+    \ End (Offset 2560 onwards) — `tools/system`**:\n   * The actual compiled kernel\
+    \ binary. The first component inside `system` is `boot/head.s`, followed immediately\
+    \ by all compiled C objects (`main.o`, `sched.o`, `buffer.o`, etc.).\n\n### 3.\
+    \ Source-Grounded Walkthrough\nLook at Evidence `E-A1-02` and `E-A1-08`:\n```text\n\
+    $ ls -l Image tools/system\n-rw-r--r-- 1 pk pk  134144 Nov 19 13:52 Image\n-rwxr-xr-x\
+    \ 1 pk pk 1184320 Nov 19 13:52 tools/system\n$ file Image\nImage: DOS/MBR boot\
+    \ sector\n```\nNotice that `file Image` identifies the raw image as a `DOS/MBR\
+    \ boot sector`. Why? Because byte offset 510 contains `0x55` and byte 511 contains\
+    \ `0xAA`.\n\nWhen the BIOS finishes POST, it scans bootable drives. It reads sector\
+    \ 1 into RAM at `0x07C00` and inspects the final two bytes:\n* If bytes 510-511\
+    \ are `0x55, 0xAA`, the BIOS validates the sector as bootable and executes a far\
+    \ jump to `0x0000:0x7C00`.\n* If the signature is missing, the BIOS halts with\
+    \ the famous error: *\"No bootable device found.\"*\n\n### 4. The Failure Mode\
+    \ & Boundary\nIf `tools/build.c` compiles `bootsect.s` and the output exceeds\
+    \ 512 bytes by even a single byte, the sector boundaries shift! `setup.s` will\
+    \ be corrupted, the MBR signature will appear at offset 511-512 instead of 510-511,\
+    \ and the BIOS will refuse to execute the disk.\n\n### 5. The Compressed Mental\
+    \ Axiom\n*The BIOS is a 512-byte loader; everything beyond sector 1 is the kernel's\
+    \ responsibility.*"
+  diagram:
+    kind: art
+    caption: Linux 0.11 Raw Floppy Disk Sector Map
+    art: '+---------------------------------------------------------------------+
+
+      | RAW FLOPPY DISK LAYOUT (Image - 1.44MB Floppy Media)                |
+
+      +-------------------+----------------+--------------------------------+
+
+      | Sector Range      | Byte Size      | Contents & Subsystem Role      |
+
+      +-------------------+----------------+--------------------------------+
+
+      | Sector 1          | 512 Bytes      | boot/bootsect.s (MBR + 0xAA55) |
+
+      | Sectors 2 - 5     | 2048 Bytes     | boot/setup.s (Hardware probe)  |
+
+      | Sector 6 onwards  | ~128 KB        | tools/system (head.s + C code) |
+
+      +-------------------+----------------+--------------------------------+'
+  viz:
+    kind: ascii-memory
+    caption: Floppy Sector Offset Progression
+    steps:
+    - '[Sector 1: 0x0000-0x01FF] 512 bytes: bootsect.s · Byte 508: ROOT_DEV=0x306
+      · Bytes 510-511: 0x55 0xAA'
+    - '[Sectors 2-5: 0x0200-0x09FF] 2048 bytes: setup.s · SETUPLEN=4 sectors · Loaded
+      to 0x90200'
+    - '[Sector 6+: 0x0A00-End] ~128KB: tools/system · First code: startup_32 in head.s
+      · Loaded to 0x10000'
+  checks:
+  - kind: mcq
+    concept: mbr-signature-bytes
+    q: What two-byte magic signature must be present at byte offsets 510 and 511 of
+      Sector 1 for the BIOS to recognize it as a valid bootloader?
+    choices:
+    - 0x55, 0xAA (little-endian word 0xAA55)
+    - 0x7F, 0x45 (the ELF magic header bytes)
+    - 0xDE, 0xAD (hexadecimal crash sentinel)
+    answer: 0
+    why: 'Option A is correct: The IBM PC BIOS standard strictly checks for bytes
+      0x55 (offset 510) and 0xAA (offset 511). Option B is the ELF magic header (`\x7FELF`).
+      Option C is a debugging pattern.'
+  - kind: why-fails
+    concept: sector-boundary-shift
+    q: What happens if a developer edits `bootsect.s` and increases its assembled
+      size to 514 bytes before running `tools/build.c`?
+    choices:
+    - The BIOS automatically expands Sector 1 to 1024 bytes and boots normally
+    - The MBR signature shifts out of bytes 510-511, and the BIOS rejects the disk
+      as non-bootable
+    - The CPU switches to 64-bit mode to handle the extra bytes
+    answer: 1
+    why: 'Option B is correct: Disk sectors are hard 512-byte hardware blocks. If
+      bootsect exceeds 512 bytes, the 0xAA55 signature is displaced, causing BIOS
+      validation to fail.'
+  - kind: fillblank
+    concept: setup-sector-count
+    q: In `bootsect.s`, the constant `SETUPLEN` is set to ___ sectors (2048 bytes).
+    answer_text: '4'
+    why: '`SETUPLEN = 4` instructs bootsect to load exactly 4 sectors of `setup.s`
+      (4 * 512 = 2048 bytes) immediately following bootsect.'
+  - kind: choose-better
+    concept: root-dev-offset
+    q: At which byte offset in the bootsector did Linus Torvalds place the root device
+      configuration word (`ROOT_DEV = 0x306`)?
+    choices:
+    - Offset 256 (in the middle of the partition table)
+    - Offset 0 (at the very first instruction of the bootloader)
+    - Offset 508 (immediately preceding the 2-byte 0xAA55 signature at 510-511)
+    answer: 2
+    why: 'Option C is correct: In Linux 0.11, byte offset 508 stores `ROOT_DEV` so
+      external build scripts can patch the root device without recompiling the assembly.'
+  - kind: predict
+    concept: system-image-origin
+    q: Which component is located at the very beginning of the `system` binary (Sector
+      6 of the floppy image)?
+    choices:
+    - The 32-bit assembly entry point `startup_32` in `boot/head.s`
+    - The C `main()` function in `init/main.c`
+    - The Minix filesystem root superblock
+    answer: 0
+    why: 'Option A is correct: When the kernel binary `system` is linked, `head.o`
+      is placed first. Its entry label `startup_32` sits at offset 0 of `system`.'
+- id: b5
+  type: algorithm
+  title: 'bootsect.s Handoff: Relocation from 0x7C00 to 0x90000'
+  explain_md: "### 1. Frame the Problem\nWhen the BIOS finishes loading Sector 1,\
+    \ execution lands at physical address `0x07C00`. \n\nWhy can `bootsect.s` not\
+    \ simply stay at `0x07C00` and load the rest of the kernel?\n\nBecause the incoming\
+    \ kernel image (`system`) is up to 512KB long! In Linux 0.11, `bootsect` loads\
+    \ `system` into memory starting at physical address `0x10000` (64KB). Later, `setup.s`\
+    \ moves `system` down to physical address `0x00000`—overwriting memory from `0x00000`\
+    \ up to `0x80000`. If `bootsect.s` remained at `0x07C00`, the kernel would literally\
+    \ overwrite its own bootloader mid-execution!\n\n### 2. The Notional Machine\n\
+    To survive, `bootsect.s` must perform a **self-relocation algorithm**:\n1. Copy\
+    \ itself (all 512 bytes / 256 words) from its BIOS load address (`0x07C00`) to\
+    \ the top of low RAM (`0x90000`).\n2. Far-jump into the newly relocated copy at\
+    \ `0x9000:go`.\n3. Load `setup.s` (4 sectors) from disk directly after itself\
+    \ into memory at `0x90200`.\n4. Stream `system` (up to 128KB in 0.11) into memory\
+    \ at `0x10000` using BIOS disk interrupt `INT 13h`.\n5. Far-jump into `setup.s`\
+    \ at `0x9020:0x0000`.\n\n### 3. Source-Grounded Walkthrough\nLook at lines 47–56\
+    \ of `boot/bootsect.s` (Evidence `E-A1-02`):\n```asm\nentry start\nstart:\n  \
+    \  mov ax, #BOOTSEG     ! 0x07c0 (Source Segment)\n    mov ds, ax\n    mov ax,\
+    \ #INITSEG     ! 0x9000 (Destination Segment)\n    mov es, ax\n    mov cx, #256\
+    \         ! 256 words = 512 bytes\n    sub si, si           ! Source index = 0\n\
+    \    sub di, di           ! Destination index = 0\n    rep\n    movw         \
+    \        ! Repeatedly move 16-bit word from DS:SI to ES:DI\n    jmpi go, INITSEG\
+    \     ! Far jump to segment 0x9000, label 'go'\ngo:\n    mov ax, cs\n    mov ds,\
+    \ ax\n    mov es, ax\n    mov ss, ax\n    mov sp, #0x400       ! Establish a 1KB\
+    \ stack at 0x9000:0x0400\n```\nTrace this step-by-step:\n1. `DS:SI` points to\
+    \ `0x07c0:0x0000` (`0x07C00`).\n2. `ES:DI` points to `0x9000:0x0000` (`0x90000`).\n\
+    3. `rep movw` executes 256 times, copying 2 bytes per clock iteration.\n4. `jmpi\
+    \ go, INITSEG` flushes the CPU prefetch queue and redirects the Instruction Pointer\
+    \ (`CS:IP`) to `0x9000:go`.\n5. Once running at `0x90000`, it initializes its\
+    \ own stack at `0x9000:0x0400` and issues `int 0x13` to load `setup.s` to `0x90200`.\n\
+    \n### 4. The Failure Mode & Boundary\nIf a programmer forgets the far jump `jmpi\
+    \ go, INITSEG` after the `rep movw` copy, the CPU continues executing sequential\
+    \ instructions at `0x07C00`. The bootloader believes it relocated, but it is still\
+    \ running in low memory destined to be overwritten.\n\n### 5. The Compressed Mental\
+    \ Axiom\n*Move yourself before you load your successor.*"
+  diagram:
+    kind: flow
+    caption: bootsect.s Self-Relocation and Staging Lifecycle
+    nodes:
+    - id: bios_load
+      label: BIOS loads Sector 1 to 0x7C00
+      shape: round
+    - id: copy
+      label: 'rep movw: 256 words to 0x90000'
+      shape: box
+    - id: far_jump
+      label: jmpi go, 0x9000 (Switch to Relocated Copy)
+      shape: box
+    - id: load_setup
+      label: 'INT 13h: Read setup.s to 0x90200'
+      shape: box
+    - id: load_sys
+      label: 'INT 13h: Stream system to 0x10000'
+      shape: box
+    - id: jump_setup
+      label: jmpi 0, 0x9020 (Hand off to setup.s)
+      shape: round
+    edges:
+    - from: bios_load
+      to: copy
+      label: CPU at 0x7C00
+    - from: copy
+      to: far_jump
+      label: Copy complete
+    - from: far_jump
+      to: load_setup
+      label: Running at 0x90000
+    - from: load_setup
+      to: load_sys
+      label: Sectors 2-5 loaded
+    - from: load_sys
+      to: jump_setup
+      label: Kernel in RAM
+    steps:
+    - focus:
+      - bios_load
+      - copy
+      note: 'Step 1: BIOS places bootsect at 0x7C00; rep movw duplicates it at 0x90000'
+    - focus:
+      - copy
+      - far_jump
+      note: 'Step 2: Far jump switches CS to 0x9000, abandoning 0x7C00'
+    - focus:
+      - far_jump
+      - load_setup
+      - load_sys
+      note: 'Step 3: Relocated bootsect streams setup and system using BIOS INT 13h'
+  viz:
+    kind: ascii-memory
+    caption: Memory Relocation State Changes
+    steps:
+    - '[Before Relocation] DS:SI = 0x07C0:0x0000 (0x07C00) · ES:DI = 0x9000:0x0000
+      (0x90000) · CX = 256 words'
+    - '[After rep movw] 512 bytes copied to 0x90000 · jmpi go, 0x9000 updates CS to
+      0x9000 · SP set to 0x0400'
+    - '[After Disk Reads] setup.s loaded at 0x90200 (Sectors 2-5) · system streamed
+      to 0x10000 · jmpi 0, 0x9020 executed'
+  checks:
+  - kind: predict
+    concept: relocation-instruction-trace
+    q: In `bootsect.s`, what is the register `CX` initialized to immediately before
+      the `rep movw` instruction?
+    choices:
+    - 512 (because each sector contains 512 bytes)
+    - 256 (because moving 256 16-bit words copies exactly 512 bytes)
+    - 1024 (to clear the remaining buffer cache)
+    answer: 1
+    why: 'Option B is correct: `movw` transfers words (2 bytes). 256 words * 2 bytes/word
+      = 512 bytes (Evidence E-A1-02). Option A traps byte/word confusion (`movb` vs
+      `movw`).'
+  - kind: why-fails
+    concept: why-relocate-bootsect
+    q: Why does `bootsect.s` relocate itself to `0x90000` instead of remaining at
+      `0x07C00`?
+    choices:
+    - The 80386 processor can only enter protected mode from addresses above 0x80000
+    - The BIOS automatically clears memory at 0x07C00 every 10 milliseconds
+    - The kernel image will later be moved down to physical 0x00000, which would overwrite
+      0x07C00
+    answer: 2
+    why: 'Option C is correct: In `setup.s`, the entire kernel image `system` is moved
+      down to physical address 0x00000. Because `system` is larger than 32KB, it extends
+      well past 0x07C00, destroying an un-relocated bootloader.'
+  - kind: fillblank
+    concept: bios-disk-interrupt
+    q: In `bootsect.s`, reading floppy disk sectors is performed using BIOS software
+      interrupt `INT 0x___`.
+    answer_text: '13'
+    why: BIOS interrupt `INT 13h` is the standard real-mode disk service interface
+      used by PC bootloaders to read and write sectors.
+  - kind: order
+    concept: bootsect-instruction-order
+    q: 'Order the assembly sequence executed by `bootsect.s` to relocate itself:'
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: The sequence must configure segment registers, perform the block move, execute
+      the far jump to the destination segment, and finally set up the local stack.
+    lines:
+    - Set Source DS:SI = 0x07C0:0x0000 and Destination ES:DI = 0x9000:0x0000
+    - Execute rep movw with CX=256 to copy 512 bytes
+    - Execute jmpi go, 0x9000 to jump to the relocated copy
+    - Set stack pointer SP = 0x0400
+  - kind: choose-better
+    concept: jmpi-vs-jmp
+    q: Why must `bootsect.s` use a far jump `jmpi go, INITSEG` rather than a short
+      relative jump `jmp go` after copying itself to `0x90000`?
+    choices:
+    - A relative jump would not change the Code Segment register CS, leaving the CPU
+      executing at 0x07C00
+    - The short jump opcode is unsupported by 80386 processors
+    - Relative jumps cannot cross 16-byte boundaries
+    answer: 0
+    why: 'Option A is correct: A short `jmp` only updates `IP`, leaving `CS` unchanged
+      at `0x07C0`. A far jump (`jmpi offset, segment`) explicitly reloads `CS` with
+      `INITSEG` (`0x9000`).'
+- id: b6
+  type: algorithm
+  title: 'setup.s Transition: A20 Gate, GDT/IDT, and Setting CR0.PE'
+  explain_md: "### 1. Frame the Problem\n`setup.s` is the gateway between 16-bit Real\
+    \ Mode and 32-bit Protected Mode. \n\nAt the start of `setup.s`, the CPU is in\
+    \ real mode, interrupts are handled by the 16-bit BIOS, and memory above 1MB is\
+    \ inaccessible. By the end of `setup.s`, the BIOS is permanently discarded, the\
+    \ processor addresses 4GB of flat memory, and execution branches to 32-bit protected\
+    \ mode.\n\nHow does a single assembly file pull off this transformation without\
+    \ crashing the machine?\n\n### 2. The Notional Machine\n`setup.s` executes six\
+    \ sequential hardware transitions:\n1. **Harvest BIOS Telemetry**:\n   Queries\
+    \ BIOS interrupts while they are still available:\n   * `INT 10h, AH=03h`: Cursor\
+    \ position -> stored at `0x90000`.\n   * `INT 15h, AH=88h`: Extended memory size\
+    \ (RAM above 1MB in KB) -> stored at `0x90002` (`EXT_MEM_K`).\n   * `INT 10h,\
+    \ AH=0Fh`: Video display parameters -> stored at `0x90004`–`0x90006`.\n2. **Move\
+    \ Kernel to Physical Zero**:\n   Disables CPU interrupts with `cli`. Moves the\
+    \ entire `system` kernel from `0x10000` down to `0x00000`.\n3. **Enable the A20\
+    \ Gate**:\n   On the original IBM PC AT, address pin 20 was routed through the\
+    \ 8042 keyboard controller to emulate 8086 1MB wraparound. `setup.s` sends command\
+    \ byte `0xD1` to port `0x64` and data byte `0xDF` to port `0x60`, forcing the\
+    \ A20 address line permanently HIGH.\n4. **Reprogram the 8259 Interrupt Controller\
+    \ (PIC)**:\n   The IBM PC BIOS mapped hardware IRQs to interrupts `0x08`–`0x0F`—colliding\
+    \ with Intel's 386 protected-mode processor exception vectors! `setup.s` reprograms\
+    \ the master and slave 8259 PICs, remapping hardware IRQs to `0x20`–`0x2F`.\n\
+    5. **Load Temporary GDT and IDT**:\n   Executes `lidt idt_48` (loading a zeroed\
+    \ null IDT) and `lgdt gdt_48` (loading a temporary Global Descriptor Table with\
+    \ 8-byte descriptors for code and data).\n6. **Flip `CR0.PE` and Far Jump**:\n\
+    \   Sets bit 0 (Protection Enable, `PE`) in control register `CR0` using `lmsw\
+    \ ax` or `mov cr0, eax`.\n   Immediately executes `jmpi 0, 8` (Far jump to segment\
+    \ selector 8, offset 0).\n\n### 3. Source-Grounded Walkthrough\nLook at lines\
+    \ 179–193 of `boot/setup.s` (Evidence `E-A1-03`):\n```asm\n    mov ax, #0x0001\
+    \    ! protected mode (PE) bit\n    lmsw ax            ! Load Machine Status Word:\
+    \ CR0.PE = 1!\n    jmpi 0, 8          ! Jump to offset 0 of segment 8 (CS)\n```\n\
+    Notice:\n* `lmsw ax` flips the CPU into 32-bit Protected Mode instantly.\n* What\
+    \ is segment `8`? In x86 protected mode, segment registers no longer hold base\
+    \ addresses multiplied by 16! They hold **Segment Selectors**:\n  * Bits 3–15:\
+    \ Index into the GDT. Index $1 = 1 \\times 8 = 8$.\n  * Bit 2: Table Indicator\
+    \ (0 = GDT).\n  * Bits 0–1: Requested Privilege Level (0 = Ring 0 Supervisor).\n\
+    * Selector `8` selects the second descriptor in the GDT: the **Kernel Code Segment**\
+    \ (`Base = 0x00000000, Limit = 8MB, Executable/Read`).\n* Offset `0` jumps to\
+    \ physical address `0x00000`—the exact location where `head.s` was moved!\n\n\
+    ### 4. The Failure Mode & Boundary\nIf interrupts are left enabled (`sti`) when\
+    \ `CR0.PE` is set without a fully populated 32-bit IDT, the next timer tick (IRQ0)\
+    \ triggers an interrupt. The CPU looks for a 32-bit interrupt gate, finds an invalid\
+    \ descriptor, raises a General Protection Fault (`#GP`), fails to handle `#GP`,\
+    \ and triggers a hardware **Triple Fault**—rebooting the computer instantly.\n\
+    \n### 5. The Compressed Mental Axiom\n*Protected mode is not a soft switch; it\
+    \ is a hardware latch enabled by CR0.PE and sealed by a far jump.*"
+  diagram:
+    kind: flow
+    caption: setup.s Protected-Mode Transition Pipeline
+    nodes:
+    - id: telemetry
+      label: 1. Save BIOS Telemetry (0x90000)
+      shape: box
+    - id: move_sys
+      label: 2. Move system to 0x00000 (cli)
+      shape: box
+    - id: a20
+      label: 3. Enable A20 Gate (Port 0x64/0x60)
+      shape: box
+    - id: pic
+      label: 4. Reprogram PIC (Remap to 0x20)
+      shape: box
+    - id: gdt
+      label: 5. Load GDT/IDT (lgdt/lidt)
+      shape: box
+    - id: pe_jump
+      label: 6. Set CR0.PE=1 & jmpi 0,8
+      shape: round
+    edges:
+    - from: telemetry
+      to: move_sys
+      label: Params saved
+    - from: move_sys
+      to: a20
+      label: System at 0x0
+    - from: a20
+      to: pic
+      label: 32-bit bus active
+    - from: pic
+      to: gdt
+      label: IRQs safe
+    - from: gdt
+      to: pe_jump
+      label: Descriptors ready
+    steps:
+    - focus:
+      - telemetry
+      - move_sys
+      note: 'Step 1: Harvest memory size into 0x90002; relocate system down to 0x00000'
+    - focus:
+      - a20
+      - pic
+      - gdt
+      note: 'Step 2: Enable A20 address line, remap PIC interrupts, and load GDT'
+    - focus:
+      - pe_jump
+      note: 'Step 3: Set CR0.PE=1 and execute jmpi 0,8 to branch into head.s'
+  viz:
+    kind: ascii-memory
+    caption: CR0 and Segment Register State Progression
+    steps:
+    - '[Real Mode Setup] CR0 = 0x00000000 · A20: OFF · CS:IP = 0x9020:0x0000 · Interrupts:
+      DISABLED (cli)'
+    - '[A20 Enabled] Port 0x64/0x60 pulse · Address line 20 active · Memory above
+      1MB accessible'
+    - '[Protected Mode Active] lmsw ax sets CR0.PE=1 · CR0 = 0x00000001 · jmpi 0,8
+      loads CS with selector 0x0008'
+    - '[Landing in head.s] CS = 0x0008 (Kernel Code) · EIP = 0x00000000 (startup_32)
+      · Mode: 32-bit Flat Protected'
+  checks:
+  - kind: mcq
+    concept: a20-gate-function
+    q: Why must `setup.s` enable the motherboard A20 Gate before transitioning to
+      32-bit Protected Mode?
+    choices:
+    - The A20 gate supplies +5V power to the x87 math coprocessor
+    - Without A20 enabled, the 21st address wire is grounded, causing all odd megabytes
+      (1MB, 3MB, 5MB...) to wrap around to even megabytes
+    - The A20 gate is an encryption lock required by proprietary Intel firmware
+    answer: 1
+    why: 'Option B is correct: The A20 gate physically forces the 21st address line
+      to 0 when disabled to emulate 8086 memory wraparound. If left disabled, accessing
+      0x100000 accesses 0x000000 instead.'
+  - kind: why-fails
+    concept: pic-reprogramming-necessity
+    q: Why does `setup.s` reprogram the 8259 Programmable Interrupt Controller (PIC)
+      to remap hardware IRQs to 0x20–0x2F?
+    choices:
+    - Protected mode completely disables the interrupt controller hardware
+    - The 8259 chips overheat if left at their default interrupt frequencies
+    - The default PC BIOS mapped IRQ0-IRQ7 to interrupts 0x08-0x0F, which conflict
+      with Intel 386 CPU hardware exception vectors
+    answer: 2
+    why: 'Option C is correct: In x86 protected mode, Intel reserved vectors 0x00–0x1F
+      for CPU exceptions (e.g. 0x08 is Double Fault, 0x0D is General Protection Fault).
+      The BIOS placed hardware timer/keyboard IRQs at 0x08–0x0F, creating an ambiguous
+      collision that setup.s resolves.'
+  - kind: fillblank
+    concept: cr0-pe-bit
+    q: In the x86 control register CR0, the Protection Enable bit that activates protected
+      mode is bit number ___.
+    answer_text: '0'
+    why: Bit 0 of CR0 is the PE (Protection Enable) flag. Setting it to 1 switches
+      the processor execution engine from Real Mode to Protected Mode.
+  - kind: choose-better
+    concept: cs-selector-value
+    q: In the instruction `jmpi 0, 8`, what does the value `8` signify?
+    choices:
+    - Segment selector 8, which references descriptor index 1 (Kernel Code Segment)
+      in the GDT with RPL 0
+    - Physical RAM byte address 0x00000008
+    - The 8th interrupt vector in the real-mode interrupt table
+    answer: 0
+    why: 'Option A is correct: In protected mode, segment selectors use bit 3..15
+      as the GDT index ($1 \times 8 = 8$), bit 2 = 0 (GDT), and bits 0..1 = 00 (Ring
+      0 privilege level).'
+  - kind: predict
+    concept: cli-precondition
+    q: What happens if interrupts are NOT disabled (`cli`) during the `setup.s` memory
+      relocation and protected mode transition?
+    choices:
+    - The BIOS smoothly handles the interrupt in 32-bit mode and returns to setup.s
+    - A hardware timer interrupt arrives, the CPU searches for a real-mode handler
+      in overwritten memory, and the machine crashes or triple-faults
+    - The compiler emits an assembler syntax error on line 112
+    answer: 1
+    why: 'Option B is correct: Interrupts must be disabled because `setup.s` overwrites
+      the real-mode IVT at 0x00000 and destroys BIOS data. Any hardware interrupt
+      before 32-bit IDT initialization causes an unrecoverable crash.'
+- id: b7
+  type: algorithm
+  title: head.s Startup, Identity Paging & Jump to main()
+  explain_md: "### 1. Frame the Problem\nWhen execution jumps into `head.s` at physical\
+    \ address `0x00000`, the CPU is in 32-bit Protected Mode, but it is standing on\
+    \ a precarious precipice:\n1. Only the Code Segment (`CS`) has been reloaded;\
+    \ data segment registers (`DS`, `ES`, `FS`, `GS`) still hold stale 16-bit real-mode\
+    \ values.\n2. There is no stack pointer (`ESP`); pushing anything to memory will\
+    \ crash.\n3. The interrupt descriptor table (`IDT`) is empty.\n4. Paging is turned\
+    \ off; memory translation is purely linear.\n\nMost critically: how does the kernel\
+    \ enable virtual memory paging without crashing on the very next instruction fetch?\n\
+    \n### 2. The Notional Machine\nIn the x86 architecture, two-level paging translates\
+    \ a 32-bit **Linear Address** to a **Physical Address** through two levels of\
+    \ tables:\n1. **Page Directory**: 1 page (4096 bytes) containing 1024 **Page Directory\
+    \ Entries (PDEs)**.\n2. **Page Table**: 1 page (4096 bytes) containing 1024 **Page\
+    \ Table Entries (PTEs)**.\nEach entry covers 4KB ($2^{12}$) of physical memory.\
+    \ A single Page Table of 1024 entries therefore maps:\n$$1024 \\times 4\\text{KB}\
+    \ = 4,194,304\\text{ bytes} = 4\\text{MB}$$\n\nIn `boot/head.s`, Linus constructs\
+    \ **Identity Paging** for the first 16 megabytes of physical RAM:\n* The Page\
+    \ Directory (`_pg_dir`) is placed at absolute address **`0x00000`**.\n* Four Page\
+    \ Tables (`pg0`, `pg1`, `pg2`, `pg3`) are placed at **`0x01000`**, **`0x02000`**,\
+    \ **`0x03000`**, and **`0x04000`**.\n* Four page tables $\\times$ 4MB/table =\
+    \ **16MB** of physical memory mapped $1:1$ (linear address $X$ maps directly to\
+    \ physical address $X$).\n* Each entry is marked with attribute bits `0x07` (`Present\
+    \ | Read/Write | User`).\n\nWhy Identity Map? Because `head.s` is executing at\
+    \ physical address `0x00000`! If linear `0x00000` did not map to physical `0x00000`,\
+    \ the instant paging was enabled, the CPU's next instruction fetch would hit unmapped\
+    \ space and trigger a page fault before a page fault handler even exists!\n\n\
+    ### 3. Source-Grounded Walkthrough\nLook at lines 198–218 of `boot/head.s` (Evidence\
+    \ `E-A1-04`):\n```asm\nsetup_paging:\n    movl $1024*5, %ecx          /* 5 pages:\
+    \ 1 directory + 4 page tables */\n    xorl %eax, %eax\n    xorl %edi, %edi   \
+    \          /* pg_dir is at physical 0x0000 */\n    cld; rep; stosl           \
+    \  /* Zero out all 5 pages */\n    \n    movl $pg0+7, _pg_dir        /* Set PDE\
+    \ 0 -> pg0 (attributes: 7 = r/w user, present) */\n    movl $pg1+7, _pg_dir+4\
+    \      /* Set PDE 1 -> pg1 */\n    movl $pg2+7, _pg_dir+8      /* Set PDE 2 ->\
+    \ pg2 */\n    movl $pg3+7, _pg_dir+12     /* Set PDE 3 -> pg3 */\n    \n    movl\
+    \ $pg3+4092, %edi        /* Point to last entry of 4th table */\n    movl $0xfff007,\
+    \ %eax        /* 16MB - 4096 + 7 */\n    std\n1:  stosl                      \
+    \ /* Fill all 4096 PTEs backwards */\n    subl $0x1000, %eax          /* Subtract\
+    \ 4KB each page */\n    jge 1b\n    \n    xorl %eax, %eax\n    movl %eax, %cr3\
+    \             /* Load Page Directory Base Register (CR3 = 0x0000) */\n    movl\
+    \ %cr0, %eax\n    orl $0x80000000, %eax       /* Set bit 31: Paging Enable (PG)\
+    \ */\n    movl %eax, %cr0             /* PAGING IS NOW LIVE! */\n    ret     \
+    \                    /* Pops $_main into EIP! */\n```\nNotice the elegant transfer:\n\
+    Prior to calling `setup_paging`, `head.s` executed:\n```asm\n    pushl $0    \
+    \    # Parameters to main\n    pushl $0\n    pushl $0\n    pushl $L6       # Fallback\
+    \ return address\n    pushl $_main    # PUSH C ENTRY POINT ONTO STACK!\n    jmp\
+    \ setup_paging\n```\nWhen `setup_paging` finishes enabling the PG bit in `CR0`,\
+    \ its final instruction is `ret`. The CPU pops the top of the stack—which is `$_main`—directly\
+    \ into `EIP`! Control transfers cleanly into `init/main.c`.\n\n### 4. The Failure\
+    \ Mode & Boundary\nThe fatal architectural error is failing to identity-map the\
+    \ currently executing page. If you map linear `0x0000` to physical `0x50000`,\
+    \ the instruction immediately following `movl %eax, %cr0` is fetched from `0x50000`\
+    \ instead of the next byte of `head.s`. The CPU fetches garbage machine code and\
+    \ halts.\n\n### 5. The Compressed Mental Axiom\n*When paging turns on, you must\
+    \ identity-map the ground you stand on.*"
+  diagram:
+    kind: flow
+    caption: head.s Paging Setup and Transition into main()
+    nodes:
+    - id: entry
+      label: startup_32 (0x00000)
+      shape: round
+    - id: segments
+      label: Reload Segments (ds/es=0x10)
+      shape: box
+    - id: stack
+      label: lss _stack_start, %esp
+      shape: box
+    - id: idt_gdt
+      label: Setup 256 IDT Gates & GDT
+      shape: box
+    - id: push_main
+      label: pushl $_main onto stack
+      shape: box
+    - id: paging
+      label: 'setup_paging: CR3=0, CR0.PG=1'
+      shape: box
+    - id: main
+      label: ret pops main into EIP (0x6771)
+      shape: round
+    edges:
+    - from: entry
+      to: segments
+      label: PM32 Active
+    - from: segments
+      to: stack
+      label: Selectors set
+    - from: stack
+      to: idt_gdt
+      label: Stack ready
+    - from: idt_gdt
+      to: push_main
+      label: Interrupts safe
+    - from: push_main
+      to: paging
+      label: Address ready
+    - from: paging
+      to: main
+      label: ret executed
+    steps:
+    - focus:
+      - entry
+      - segments
+      - stack
+      note: 'Step 1: Set 32-bit segment selectors to 0x10 and initialize kernel stack
+        pointer'
+    - focus:
+      - idt_gdt
+      - push_main
+      note: 'Step 2: Configure 256 dummy IDT entries and push $_main onto the stack'
+    - focus:
+      - paging
+      - main
+      note: 'Step 3: Build 16MB identity page tables, set CR0.PG=1, and ret directly
+        into main()'
+  viz:
+    kind: ascii-memory
+    caption: Page Table and Control Register Progression
+    steps:
+    - '[Before Paging] CR0 = 0x00000013 · CR3 = 0x00000000 · Paging: DISABLED · Addressing:
+      32-bit Linear Flat'
+    - '[Page Directory Built] 0x00000: PDE 0-3 point to pg0-pg3 (0x1007, 0x2007, 0x3007,
+      0x4007) · 16MB mapped'
+    - '[CR0.PG Set] orl $0x80000000, %eax · CR0 = 0x80000013 · Paging: ACTIVE · MMU
+      translates addresses'
+    - '[Return to C] ret pops $_main · EIP = 0x00006771 (main) · ESP = 0x00027f70
+      · C execution begins'
+  checks:
+  - kind: mcq
+    concept: identity-mapping-range
+    q: How many total megabytes of physical RAM are identity-mapped by `boot/head.s`
+      in Linux 0.11?
+    choices:
+    - 640 Kilobytes (only the real-mode base memory)
+    - 4 Gigabytes (the entire 32-bit linear address space)
+    - 16 Megabytes (using 1 Page Directory and 4 Page Tables)
+    answer: 2
+    why: 'Option C is correct: `head.s` initializes 4 page tables (`pg0`, `pg1`, `pg2`,
+      `pg3`). Each table maps 1024 pages of 4KB ($1024 \times 4\text{KB} = 4\text{MB}$).
+      4 tables * 4MB = 16MB total (Evidence E-A1-04).'
+  - kind: why-fails
+    concept: identity-paging-requirement
+    q: Why is it mandatory that the early kernel code identity-map its own physical
+      memory address when enabling paging?
+    choices:
+    - If linear addresses did not match physical addresses, the instruction fetch
+      immediately following the `mov %eax, %cr0` instruction would fetch from a different
+      physical location, causing an instant crash
+    - The 80386 processor hardware physically burns out if CR3 contains any value
+      other than 0x0000
+    - The C compiler refuses to generate code unless memory is mapped backwards
+    answer: 0
+    why: 'Option A is correct: The CPU''s prefetch queue and `EIP` hold linear addresses.
+      If linear address $X$ does not map to physical $X$ where the code lives, the
+      CPU fetches code from an unmapped or incorrect location the exact clock cycle
+      paging turns on.'
+  - kind: fillblank
+    concept: cr0-paging-bit
+    q: Paging is activated in the x86 processor by setting bit number ___ (the PG
+      bit) in control register CR0.
+    answer_text: '31'
+    why: Bit 31 of CR0 is the PG (Paging Enable) flag (`0x80000000`). When set to
+      1, the hardware MMU actively translates linear addresses through the page tables
+      pointed to by CR3.
+  - kind: predict
+    concept: ret-to-main-mechanism
+    q: What is the function of the `pushl $_main` followed later by `ret` at the end
+      of `setup_paging` in `head.s`?
+    choices:
+    - It causes `main()` to execute as an interrupt service routine
+    - It uses the CPU's call/return stack protocol to pop the entry address of C `main()`
+      into `EIP`
+    - It pushes command-line arguments to the init process
+    answer: 1
+    why: 'Option B is correct: By pushing the address of `_main` onto the stack, the
+      subsequent `ret` instruction pops that address into `EIP`, seamlessly transferring
+      control to the C language entry point.'
+  - kind: choose-better
+    concept: data-segment-selector
+    q: In `head.s`, which segment selector value is loaded into `DS`, `ES`, `FS`,
+      and `GS` for 32-bit flat memory access?
+    choices:
+    - '`0x00` (The NULL segment selector)'
+    - '`0x08` (Kernel Code Segment)'
+    - '`0x10` (GDT index 2, Kernel Data Segment with 4GB limit and Ring 0 privilege)'
+    answer: 2
+    why: 'Option C is correct: Selector `0x10` (binary `00010 0 00`) specifies GDT
+      index 2, GDT table indicator, RPL 0. In Linux 0.11, descriptor 2 is the kernel
+      data segment. Loading `0x08` (code) into data registers causes a fault when
+      writing.'
+- id: b8
+  type: syntax
+  title: 'Early C Idioms & Inline Assembly: Port I/O and Control Registers'
+  explain_md: "### 1. Frame the Problem\nThe C programming language has no syntax\
+    \ for communicating with physical I/O ports (like reading a real-time clock or\
+    \ keyboard controller), no keywords to read CPU control registers (`CR0`, `CR3`),\
+    \ and no primitives to disable hardware interrupts (`cli`, `sti`).\n\nStandard\
+    \ user-space C programs do not need these capabilities; they request services\
+    \ from the operating system via syscalls. But the kernel *is* the operating system!\
+    \ How can a kernel written in C touch raw CPU registers and motherboard buses\
+    \ without writing every single function in standalone assembly files?\n\n### 2.\
+    \ The Notional Machine\nIn Linux 0.11, Linus Torvalds pioneered the extensive\
+    \ use of **GCC Inline Assembly (`__asm__`)**.\n\nGCC allows developers to embed\
+    \ assembly templates directly inside C expressions using input, output, and clobber\
+    \ constraints:\n\n```c\n__asm__(\n    \"assembly template\"\n    : output operands\
+    \  /* \"=r\" (var), \"=a\" (var) */\n    : input operands   /* \"r\" (val), \"\
+    a\" (val), \"d\" (port) */\n    : clobbered regs   /* registers modified by the\
+    \ assembly */\n);\n```\n\nIn `include/asm/io.h` and `include/asm/system.h`, Linus\
+    \ wrapped low-level hardware interactions into reusable inline macros:\n\n1. **Port\
+    \ I/O Instructions (`inb`, `outb`)**:\n   x86 uses dedicated `IN` and `OUT` assembly\
+    \ instructions communicating across an isolated 16-bit I/O bus ($0$ to $65,535$):\n\
+    \   ```c\n   #define outb(value, port) \\\n   __asm__ (\"outb %%al, %%dx\" ::\
+    \ \"a\" (value), \"d\" (port))\n\n   #define inb(port) ({ \\\n   unsigned char\
+    \ _v; \\\n   __asm__ volatile (\"inb %%dx, %%al\" : \"=a\" (_v) : \"d\" (port));\
+    \ \\\n   _v; \\\n   })\n   ```\n   * `\"a\"` forces the compiler to place `value`\
+    \ into the `AL`/`EAX` register.\n   * `\"d\"` forces the compiler to place `port`\
+    \ into the `DX` register.\n   * `volatile` prevents the compiler from optimizing\
+    \ away the hardware read!\n\n2. **Control Register Access**:\n   Accessing `CR0`\
+    \ and `CR3` requires specialized 386 instructions:\n   ```c\n   __asm__(\"movl\
+    \ %%cr0, %0\" : \"=r\" (cr0_val));\n   __asm__(\"movl %0, %%cr3\" :: \"r\" (pg_dir));\n\
+    \   ```\n\n3. **CPU Interrupt Flags**:\n   Enabling and disabling interrupts on\
+    \ the silicon core:\n   ```c\n   #define cli() __asm__ (\"cli\"::)\n   #define\
+    \ sti() __asm__ (\"sti\"::)\n   ```\n\n### 3. Source-Grounded Walkthrough\nLook\
+    \ at `init/main.c` lines 69–78 (Evidence `E-A1-05`), where Linus reads the Real-Time\
+    \ Clock from the motherboard CMOS chip:\n```c\n#define CMOS_READ(addr) ({ \\\n\
+    outb_p(0x80|addr, 0x70); \\\ninb_p(0x71); \\\n})\n```\nNotice:\n1. `outb_p(0x80|addr,\
+    \ 0x70)` writes the target CMOS register index to I/O port `0x70`. The `_p` suffix\
+    \ introduces a tiny pause (jumping to the next instruction: `jmp $+2`) to allow\
+    \ slow 1991 bus hardware to settle!\n2. `inb_p(0x71)` reads the resulting data\
+    \ byte from I/O port `0x71`.\n3. The statement-expression syntax `({ ... })` is\
+    \ a GCC extension allowing multiple statements to evaluate and return a value\
+    \ like an expression.\n\n### 4. The Failure Mode & Boundary\nThe most catastrophic\
+    \ inline assembly bug is forgetting the `volatile` keyword on input-reading macros\
+    \ (`inb`). GCC assumes that if the inputs do not change, the output of an inline\
+    \ assembly block remains constant. If you read a status port in a spinloop (`while\
+    \ (!(inb(0x64) & 1));`) without `volatile`, GCC optimizes the loop into an infinite\
+    \ loop reading the port once!\n\n### 5. The Compressed Mental Axiom\n*Inline assembly\
+    \ is C's escape hatch to talk directly to CPU wires and device ports.*"
+  example:
+    lang: text
+    code: '/* Pinned from include/asm/io.h in Linux 0.11 */
+
+      #define outb(value,port) \
+
+      __asm__ ("outb %%al,%%dx"::"a" (value),"d" (port))
+
+
+      #define inb(port) ({ \
+
+      unsigned char _v; \
+
+      __asm__ volatile ("inb %%dx,%%al":"=a" (_v):"d" (port)); \
+
+      _v; \
+
+      })'
+    explain_md: GCC inline assembly macros in include/asm/io.h wrap raw x86 port I/O
+      instructions (inb, outb) using register constraints ('a' for AL/EAX, 'd' for
+      DX port register) and the volatile qualifier to prevent compiler optimization.
+  diagram:
+    kind: flow
+    caption: GCC Inline Assembly Constraint Mapping
+    nodes:
+    - id: c_call
+      label: 'C Call: outb(0x11, 0x20)'
+      shape: round
+    - id: constraints
+      label: 'Constraint: ''a''(val), ''d''(port)'
+      shape: box
+    - id: registers
+      label: 'CPU: AL=0x11, DX=0x20'
+      shape: box
+    - id: opcode
+      label: 'Emitted Opcode: outb %al, %dx'
+      shape: round
+    edges:
+    - from: c_call
+      to: constraints
+      label: GCC Macro Expands
+    - from: constraints
+      to: registers
+      label: Register Allocation
+    - from: registers
+      to: opcode
+      label: Silicon Bus Transaction
+    steps:
+    - focus:
+      - c_call
+      - constraints
+      note: 'Step 1: C code invokes macro with parameters'
+    - focus:
+      - constraints
+      - registers
+      note: 'Step 2: GCC allocates AL for ''a'' constraint and DX for ''d'' constraint'
+    - focus:
+      - registers
+      - opcode
+      note: 'Step 3: Machine instruction sends byte over motherboard I/O bus'
+  checks:
+  - kind: mcq
+    concept: gcc-constraint-meaning
+    q: In GCC inline assembly, what does the constraint `"a" (value)` mandate?
+    choices:
+    - GCC must place `value` into register AL, AX, or EAX prior to executing the assembly
+      template
+    - GCC must allocate a dynamic array on the heap for `value`
+    - GCC must assert that `value` is an ASCII string
+    answer: 0
+    why: 'Option A is correct: In x86 GCC assembly constraints, `"a"` refers to the
+      accumulator register (AL/AX/EAX), `"d"` refers to the DX register, and `"c"`
+      refers to the CX register.'
+  - kind: why-fails
+    concept: volatile-in-asm
+    q: Why must hardware I/O macros like `inb(port)` include the `volatile` keyword
+      in their `__asm__` declaration?
+    choices:
+    - '`volatile` instructs the CPU to run the instruction in 16-bit real mode'
+    - Without `volatile`, GCC's dead-code optimizer may assume the hardware read produces
+      no side effects and delete or hoist it out of loops
+    - '`volatile` locks the memory bus with an atomic CMPXCHG'
+    answer: 1
+    why: 'Option B is correct: Hardware register states change asynchronously outside
+      compiler visibility. `volatile` prevents the compiler from caching port reads
+      or optimizing away repeated reads.'
+  - kind: fillblank
+    concept: interrupt-enable-macro
+    q: In `init/main.c`, hardware interrupts are globally enabled on the CPU by invoking
+      the macro named ___().
+    answer_text: sti
+    why: '`sti()` emits the x86 `sti` (Set Interrupt Flag) instruction, enabling hardware
+      interrupts on the processor core.'
+  - kind: spot-bug
+    concept: asm-constraint-bug
+    q: 'Spot the fatal bug in this attempted inline assembly port output implementation:'
+    code: '#define outb_broken(value, port) \
+
+      __asm__ ("outb %0, %1" :: "r" (value), "r" (port))'
+    diagnostic_log: 'Error: invalid operand for instruction ''outb'''
+    choices:
+    - The function name outb_broken exceeds the maximum 8-character symbol length
+      in C99
+    - The macro is missing a semicolon after the closing parenthesis
+    - The x86 `outb` instruction strictly requires the data value to be in register
+      `AL` and the port in register `DX`; generic register constraint `"r"` causes
+      the assembler to emit illegal operands like `outb %ebx, %ecx`
+    answer: 2
+    why: 'Option C is correct: The x86 instruction set strictly hardcodes `outb` to
+      use `AL` for data and `DX` for 16-bit port numbers. Using generic `"r"` allows
+      GCC to select any general register (EBX, ESI, etc.), which the assembler rejects.'
+  - kind: choose-better
+    concept: io-delay-purpose
+    q: In `init/main.c`, why did Linus Torvalds define `outb_p` and `inb_p` with a
+      `_p` pause macro rather than standard `outb`?
+    choices:
+    - Older motherboard hardware and slow I/O peripheral controllers required a brief
+      instruction delay (`jmp $+2`) to allow voltage signals to stabilize
+    - The pause macro enables hyper-threading on the CPU core
+    - The pause macro pauses execution to wait for a user keypress
+    answer: 0
+    why: 'Option A is correct: In 1991, 386 and 486 CPUs executed instructions much
+      faster than ISA bus peripheral chips (like the 8259 PIC or CMOS RTC). Adding
+      a tiny jump pause (`jmp $+2`) prevented bus timing violations.'
+- id: b9
+  type: model
+  title: Linux 0.11 Physical Memory Layout & Architecture
+  explain_md: "### 1. Frame the Problem\nIn 1991, a personal computer might have 2MB,\
+    \ 4MB, 8MB, or a luxurious 16MB of physical RAM. \n\nUnlike modern operating systems\
+    \ with 64-bit address spaces where physical memory is abundant, Linux 0.11 had\
+    \ to fit the operating system, disk buffer caches, interrupt tables, and user\
+    \ processes into tight physical memory without corrupting hardware memory holes.\n\
+    \nHow did Linux 0.11 partition physical memory to balance performance between\
+    \ file caching and application execution?\n\n### 2. The Notional Machine\nLinux\
+    \ 0.11 organizes physical memory into strict sequential zones across the first\
+    \ 16 megabytes:\n\n```text\n0x0000000 ┌──────────────────────────────────────┐\n\
+    \          │ Page Directory & 4 Page Tables (20KB)│ (pg_dir @ 0x0, pg0-pg3 @ 0x1000-0x4000)\n\
+    0x0005000 ├──────────────────────────────────────┤\n          │ Kernel Code &\
+    \ Data (~120KB)          │ (system binary: head.o + main.o + kernel)\n0x0027F70\
+    \ ├──────────────────────────────────────┤\n          │ Kernel Stack (user_stack\
+    \ in sched.c) │ (Grows downward from top of task_union)\n          ├──────────────────────────────────────┤\n\
+    \          │ Buffer Cache Memory (Hash & LRU)     │ (Stores 1KB disk blocks)\n\
+    0x0090000 ├──────────────────────────────────────┤\n          │ Saved BIOS Parameters\
+    \ (0x90000-901FF)│ (Cursor, EXT_MEM_K, root_dev)\n0x00A0000 ├──────────────────────────────────────┤\n\
+    \          │ 640KB - 1MB HARDWARE HOLE:           │ (VGA framebuffers 0xA0000-0xBFFFF,\n\
+    \          │ Video Display RAM & BIOS ROM         │  ROM BIOS 0xF0000-0xFFFFF)\n\
+    0x0100000 ├──────────────────────────────────────┤ (1 Megabyte Boundary)\n   \
+    \       │ Buffer Cache Continuation            │ (Ends at 1MB, 2MB, or 4MB depending\
+    \ on RAM)\nbuffer_end├──────────────────────────────────────┤ (main_memory_start)\n\
+    \          │ Main Memory Pool (User Pages)        │ (Managed by mem_map[] array;\n\
+    \          │ Allocated dynamically for processes  │  Demand paging and Copy-On-Write)\n\
+    memory_end└──────────────────────────────────────┘ (Capped at 16MB maximum in\
+    \ 0.11)\n```\n\n### 3. Source-Grounded Walkthrough\nLook at lines 112–126 of `init/main.c`\
+    \ (Evidence `E-A1-05`):\n```c\n    memory_end = (1<<20) + (EXT_MEM_K<<10);\n \
+    \   memory_end &= 0xfffff000;\n    if (memory_end > 16*1024*1024)\n        memory_end\
+    \ = 16*1024*1024;\n    if (memory_end > 12*1024*1024) \n        buffer_memory_end\
+    \ = 4*1024*1024;\n    else if (memory_end > 6*1024*1024)\n        buffer_memory_end\
+    \ = 2*1024*1024;\n    else\n        buffer_memory_end = 1*1024*1024;\n    main_memory_start\
+    \ = buffer_memory_end;\n    mem_init(main_memory_start, memory_end);\n```\nTrace\
+    \ the dynamic boundary calculations:\n1. `EXT_MEM_K` is read directly from physical\
+    \ address `0x90002` (where `setup.s` saved the BIOS `INT 15h, AH=88h` result).\n\
+    2. Total RAM = 1MB base memory ($1 \\ll 20$) + Extended Memory in KB ($EXT\\_MEM\\\
+    _K \\ll 10$).\n3. In Linux 0.11, `memory_end` is hard-capped at **16 Megabytes**\
+    \ (`16*1024*1024`).\n4. **Buffer Cache Scaling**:\n   * If RAM > 12MB: Buffer\
+    \ cache gets **4MB** (`buffer_memory_end = 4MB`).\n   * If RAM > 6MB: Buffer cache\
+    \ gets **2MB**.\n   * Otherwise: Buffer cache gets **1MB**.\n5. `main_memory_start`\
+    \ is set to `buffer_memory_end`. All remaining physical pages from `main_memory_start`\
+    \ to `memory_end` are handed to `mem_init()`, which manages them with the `mem_map[]`\
+    \ array for user applications!\n\n### 4. The Failure Mode & Boundary\nThe fatal\
+    \ hardware trap is ignoring the **640KB–1MB Hardware Hole** (`0xA0000`–`0xFFFFF`).\
+    \ That range does not contain general RAM! It is mapped to video framebuffers\
+    \ (VGA text mode at `0xB8000`) and the motherboard BIOS ROM. If an operating system\
+    \ attempts to allocate user heap pages or buffer cache blocks in that hole, memory\
+    \ reads return garbage and writes destroy display output.\n\n### 5. The Compressed\
+    \ Mental Axiom\n*Physical RAM is not a blank sheet; it is peppered with legacy\
+    \ hardware holes that the kernel must navigate around.*"
+  diagram:
+    kind: art
+    caption: Linux 0.11 Physical Memory Partitioning Map
+    art: '+-----------------------+---------------------------------------+
+
+      | Address Range         | Subsystem Ownership & Purpose         |
+
+      +-----------------------+---------------------------------------+
+
+      | 0x000000 - 0x004FFF   | Page Directory (0x0) & 4 Page Tables  |
+
+      | 0x005000 - 0x080000   | Kernel Executable (.text, .data, .bss)|
+
+      | 0x080000 - 0x09FFFF   | Buffer Cache (Low RAM portion)        |
+
+      | 0x090000 - 0x0901FF   | Saved BIOS Telemetry Parameters       |
+
+      | 0x0A0000 - 0x0FFFFF   | HARDWARE HOLE: Video RAM & BIOS ROM   |
+
+      | 0x100000 - buffer_end | Buffer Cache Continuation (Up to 4MB) |
+
+      | buffer_end - 16MB     | Main Memory Pool (User Pages)         |
+
+      +-----------------------+---------------------------------------+'
+  viz:
+    kind: ascii-memory
+    caption: Physical RAM Boundary Calculation (16MB Target)
+    steps:
+    - '[RAM Sizing] EXT_MEM_K read from 0x90002: 15360 KB · Total RAM: 1MB + 15MB
+      = 16MB (0x01000000)'
+    - '[Buffer Boundary] RAM > 12MB -> buffer_memory_end = 4MB (0x00400000) · 4MB
+      reserved for disk buffers'
+    - '[User Pool Defined] main_memory_start = 4MB · User Pool: 4MB to 16MB (12MB
+      total = 3072 physical 4KB frames)'
+    - '[mem_init Called] mem_map[0..3071] tracking byte array initialized to 0 (FREE)'
+  checks:
+  - kind: predict
+    concept: buffer-cache-boundary
+    q: On a machine with 16MB of physical RAM, what is the value of `buffer_memory_end`
+      in Linux 0.11?
+    choices:
+    - 16 Megabytes (0x01000000)
+    - 4 Megabytes (0x00400000)
+    - 640 Kilobytes (0x000A0000)
+    answer: 1
+    why: 'Option B is correct: In `init/main.c`, when `memory_end > 12*1024*1024`,
+      `buffer_memory_end` is explicitly set to `4*1024*1024` (4MB). Option A leaves
+      zero memory for user processes. Option C is the real-mode low memory boundary.'
+  - kind: why-fails
+    concept: hardware-hole-conflict
+    q: Why does Linux 0.11 not allocate general-purpose user process page frames between
+      physical addresses `0x000A0000` and `0x000FFFFF`?
+    choices:
+    - That region is reserved exclusively for the Linux network socket buffer
+    - The 80386 processor architecture prohibits paging below 1MB
+    - That physical memory address range is hardwired to motherboard video display
+      adapters (VGA/EGA) and the BIOS ROM chip
+    answer: 2
+    why: 'Option C is correct: The 640KB to 1MB range (0xA0000 to 0xFFFFF) is the
+      classic IBM PC memory hole where video RAM (like VGA text buffer at 0xB8000)
+      and ROM BIOS chips reside; treating it as general RAM corrupts video output
+      or crashes.'
+  - kind: fillblank
+    concept: memory-ceiling-cap
+    q: In `init/main.c`, the variable `memory_end` is hard-capped at a maximum of
+      ___ megabytes.
+    answer_text: '16'
+    why: Linux 0.11 checks `if (memory_end > 16*1024*1024) memory_end = 16*1024*1024;`,
+      capping addressing to 16MB because `head.s` only created 4 page tables (4 *
+      4MB = 16MB).
+  - kind: mcq
+    concept: bios-telemetry-address
+    q: At which physical address does `init/main.c` read the extended memory size
+      in kilobytes (`EXT_MEM_K`) saved earlier by `setup.s`?
+    choices:
+    - '0x90002'
+    - '0x10000'
+    - '0x00000'
+    answer: 0
+    why: 'Option A is correct: `setup.s` saved the BIOS INT 15h memory count at offset
+      2 of segment `0x9000` (`0x90002`). `init/main.c` defines `#define EXT_MEM_K
+      (*(unsigned short *)0x90002)` (Evidence E-A1-05).'
+  - kind: choose-better
+    concept: main-memory-start
+    q: In `init/main.c`, where does the user application memory pool (`main_memory_start`)
+      begin?
+    choices:
+    - At physical address 0x00000000 (overwriting the page tables)
+    - Immediately at `buffer_memory_end` (directly after the buffer cache block pool)
+    - At physical address 0x01000000 (at the 16MB boundary)
+    answer: 1
+    why: 'Option B is correct: In `init/main.c`, `main_memory_start = buffer_memory_end;`.
+      Memory below this address is reserved for kernel code and the buffer cache;
+      memory above is dynamically allocated to user processes.'
+- id: b10
+  type: algorithm
+  title: Compiling the Kernel Image and Booting Under QEMU
+  explain_md: "### 1. Frame the Problem\nYou have edited 16-bit assembly files (`bootsect.s`,\
+    \ `setup.s`), 32-bit assembly files (`head.s`), and C files (`main.c`, `sched.c`).\
+    \ \n\nHow do you transform disparate source files into a single bootable floppy\
+    \ disk image that a hardware processor or virtual machine emulator can execute?\n\
+    \nIn modern Linux, standard linkers and initramfs generators handle this. But\
+    \ in 1991, GNU linkers could not combine 16-bit real-mode assembly with 32-bit\
+    \ protected-mode object files. Linus solved this by writing his own custom C utility:\
+    \ `tools/build.c`.\n\n### 2. The Notional Machine\nThe Linux 0.11 build pipeline\
+    \ consists of three sequential compilation and stitching stages:\n\n```text\n\
+    +-----------------------+     as86 / gas -m32\n| boot/bootsect.s       | ──────────────────────>\
+    \ bootsect (Raw binary, exactly 512B)\n+-----------------------+\n\n+-----------------------+\
+    \     as86 / gas -m32\n| boot/setup.s          | ──────────────────────> setup\
+    \ (Raw binary, exactly 2048B)\n+-----------------------+\n\n+-----------------------+\
+    \     gcc -m32 & ld -m elf_i386\n| boot/head.s           | ──┐\n| init/main.c\
+    \           | ──┼───────────────────> tools/system (ELF binary with symbols)\n\
+    | kernel/*.c, fs/*.c... | ──┘\n+-----------------------+\n\n                 \
+    \               tools/build.c\n[bootsect] + [setup] + [system (stripped)] ───────>\
+    \ Image (Raw Bootable Floppy Disk)\n```\n\nThe Role of `tools/build.c`:\n1. Opens\
+    \ `bootsect`, verifies it is exactly 512 bytes, and writes it to Sector 1 of `Image`.\n\
+    2. Patches the root device number (`ROOT_DEV = 0x306`) into bytes 508–509 of Sector\
+    \ 1.\n3. Writes the boot signature `0x55, 0xAA` into bytes 510–511.\n4. Opens\
+    \ `setup`, verifies it does not exceed 4 sectors (2048 bytes), pads it with zeros\
+    \ to exactly 2048 bytes, and appends it to Sectors 2–5 of `Image`.\n5. Opens `tools/system`,\
+    \ strips its object headers, and streams the raw executable machine instructions\
+    \ starting at Sector 6.\n\n### 3. Source-Grounded Walkthrough\nLook at Evidence\
+    \ `E-A1-07` and `E-A1-08`:\n```text\n$ cd sources/Linux-0.11-fork\n$ make -j1\
+    \ CFLAGS=\"-g -m32 -fno-builtin -fno-stack-protector -fomit-frame-pointer -std=gnu89\
+    \ -Iinclude -I../include -I../../include\"\n...\nRoot device is (3, 6)\nBoot sector\
+    \ 512 bytes.\nSetup is 312 bytes.\nNon-loaded kernel is 130752 bytes.\nLoaded\
+    \ kernel is 130752 bytes.\n```\nNotice the output emitted by `tools/build.c`:\n\
+    * `Boot sector 512 bytes`: Exactly 1 sector.\n* `Setup is 312 bytes`: Assembled\
+    \ code padded to 4 sectors (2048 bytes).\n* `Loaded kernel is 130752 bytes`: The\
+    \ exact byte size of `system` placed from sector 6 onward.\n\nLaunching QEMU (Evidence\
+    \ `E-A1-09`):\n```text\n$ qemu-system-i386 -m 16M -boot a -fda Image -hda hdc-0.11.img\
+    \ -s -S -display none &\n```\nDeconstruct the command-line flags:\n* `-m 16M`:\
+    \ Configures the virtual machine with 16 megabytes of RAM.\n* `-boot a`: Boots\
+    \ from floppy drive A:.\n* `-fda Image`: Mounts the freshly built raw kernel image\
+    \ as floppy disk A:.\n* `-hda hdc-0.11.img`: Mounts the Minix root filesystem\
+    \ hard disk image.\n* `-s`: Starts the GDB RSP remote debugging server on TCP\
+    \ port `1234`.\n* `-S`: **Freezes the vCPU at power-on reset**, waiting for GDB\
+    \ to connect and resume!\n\n### 4. The Failure Mode & Boundary\nIf you boot QEMU\
+    \ with `-fda Image` but forget `-hda hdc-0.11.img`, the kernel boots through `bootsect`,\
+    \ `setup`, `head`, and `main()`, mounts drivers, and then panics with:\n`Kernel\
+    \ panic: Unable to mount root`\nA kernel cannot reach a shell without a root filesystem!\n\
+    \n### 5. The Compressed Mental Axiom\n*A kernel binary is not runnable alone;\
+    \ it must be packed into bootloader geometry.*"
+  diagram:
+    kind: flow
+    caption: Linux 0.11 Build Pipeline and QEMU Invocation
+    nodes:
+    - id: src_asm
+      label: bootsect.s & setup.s
+      shape: box
+    - id: src_c
+      label: head.s + C Objects
+      shape: box
+    - id: link
+      label: 'ld: tools/system (ELF)'
+      shape: box
+    - id: build
+      label: tools/build.c (Stitch Sectors)
+      shape: box
+    - id: image
+      label: Image (Boot Floppy)
+      shape: round
+    - id: qemu
+      label: QEMU Hypervisor (-s -S)
+      shape: round
+    edges:
+    - from: src_asm
+      to: build
+      label: Raw 16-bit Binaries
+    - from: src_c
+      to: link
+      label: 32-bit Objects
+    - from: link
+      to: build
+      label: System Binary
+    - from: build
+      to: image
+      label: Stitches Image
+    - from: image
+      to: qemu
+      label: -fda Image
+    steps:
+    - focus:
+      - src_asm
+      - src_c
+      - link
+      note: 'Step 1: Compile 16-bit boot sectors and link 32-bit kernel system binary'
+    - focus:
+      - build
+      - image
+      note: 'Step 2: tools/build stitches sectors into Image and patches ROOT_DEV
+        and 0xAA55'
+    - focus:
+      - image
+      - qemu
+      note: 'Step 3: QEMU boots Image with -s -S, pausing at power-on reset for GDB'
+  checks:
+  - kind: mcq
+    concept: tools-build-role
+    q: What is the primary architectural function of the custom host utility `tools/build.c`
+      in Linux 0.11?
+    choices:
+    - It formats the hard drive with an ext4 journaling filesystem
+    - It translates 32-bit x86 assembly into 64-bit machine code
+    - It stitches raw bootsect, setup, and stripped system binaries into a contiguous,
+      sector-aligned floppy image (`Image`) and sets MBR bytes
+    answer: 2
+    why: 'Option C is correct: In 1991, standard linkers could not assemble mixed
+      16-bit and 32-bit disk images. `tools/build.c` was written by Linus to stitch
+      the sectors together and patch MBR bytes (Evidence E-A1-08).'
+  - kind: why-fails
+    concept: qemu-s-flag-necessity
+    q: Why is the `-S` flag essential when launching QEMU for early boot debugging?
+    choices:
+    - Without `-S`, the virtual CPU immediately begins running at power-on, blowing
+      past early boot breakpoints before GDB can connect
+    - The `-S` flag allocates 16 megabytes of virtual RAM
+    - Without `-S`, QEMU disables the graphical display
+    answer: 0
+    why: 'Option A is correct: `-S` freezes the vCPU at power-on reset. This guarantees
+      that when GDB attaches via `:1234`, the machine is frozen before a single instruction
+      executes, allowing hardware breakpoints to be armed safely.'
+  - kind: fillblank
+    concept: qemu-gdb-port
+    q: When QEMU is launched with the `-s` flag, it listens for remote GDB RSP connections
+      on TCP port ___.
+    answer_text: '1234'
+    why: The `-s` flag is shorthand in QEMU for `-gdb tcp::1234`.
+  - kind: choose-better
+    concept: target-remote-qemu
+    q: Which GDB command connects your debugger to the running QEMU virtual machine
+      listening on port 1234?
+    choices:
+    - '`run 1234`'
+    - '`target remote :1234`'
+    - '`attach localhost:1234`'
+    answer: 1
+    why: 'Option B is correct: `target remote :1234` instructs GDB to communicate
+      over TCP using the Remote Serial Protocol (RSP) to port 1234.'
+  - kind: predict
+    concept: root-dev-panic
+    q: What happens if `Image` is booted in QEMU with a missing or unmounted hard
+      drive image (`hdc-0.11.img`)?
+    choices:
+    - The CPU loops forever inside head.s
+    - The BIOS emits a loud beep and shuts down QEMU during bootsect.s
+    - 'The kernel successfully boots through assembly, enters main(), and then panics
+      with: ''Kernel panic: Unable to mount root'''
+    answer: 2
+    why: 'Option C is correct: The boot sequence succeeds entirely until `init/main.c`
+      attempts to mount the root filesystem device (`ROOT_DEV = 0x306`). Without a
+      valid root partition, `mount_root()` fails and panics.'
+- id: b11
+  type: algorithm
+  title: 'Remote GDB Kernel Trapping: Breaking at init/main.c:main()'
+  explain_md: "### 1. Frame the Problem\nMany developers attempt to debug early operating\
+    \ system code by sprinkling `printf` or `printk` statements across the codebase.\n\
+    \nIn early boot, this is impossible. When execution is in `bootsect.s`, `setup.s`,\
+    \ or the entry of `main()`, there is no terminal driver, no console output buffer,\
+    \ no video scrolling logic, and no memory allocator. Calling `printk()` before\
+    \ device initialization causes an immediate kernel crash.\n\nHow can a kernel\
+    \ engineer prove beyond a shadow of a doubt that the CPU successfully navigated\
+    \ 16-bit real mode, enabled the A20 gate, initialized protected mode, configured\
+    \ identity paging, and arrived safely at the first statement of C code?\n\n###\
+    \ 2. The Notional Machine\nIn Chapter `T1A`, you mastered GDB's **Remote Serial\
+    \ Protocol (RSP)**. We apply that exact mechanism to trap the live operating system.\n\
+    \nWhen QEMU launches with `-s -S`, the hypervisor initializes the virtual processor\
+    \ and pauses execution at the reset vector (`0xFFFF0`). \n\nBy connecting GDB\
+    \ over TCP port `1234` and loading the DWARF debug symbols from `tools/system`:\n\
+    1. GDB resolves the symbolic label `main` to its exact 32-bit linear address:\
+    \ **`0x00006771`** (in `init/main.c`).\n2. GDB instructs the QEMU hypervisor stub\
+    \ to arm a breakpoint at `0x00006771`.\n3. GDB issues the `continue` command.\n\
+    4. The virtual CPU executes thousands of instructions at hardware speed:\n   *\
+    \ `bootsect.s` moves itself and streams sectors from disk.\n   * `setup.s` enables\
+    \ A20 and flips `CR0.PE`.\n   * `head.s` populates page tables and flips `CR0.PG`.\n\
+    \   * `setup_paging` executes `ret`!\n5. The instant the CPU instruction pointer\
+    \ hits `0x00006771`, the hypervisor freezes the virtual CPU and sends an RSP notification\
+    \ packet (`T05...`) back to GDB!\n\n### 3. Source-Grounded Walkthrough\nLook at\
+    \ Evidence `E-A1-09`:\n```text\n$ gdb -q -batch     -ex \"file tools/system\"\
+    \     -ex \"target remote :1234\"     -ex \"break main\"     -ex \"continue\"\
+    \     -ex \"bt\"     -ex \"info registers eip esp eax\"     -ex \"x/8i $eip\"\n\
+    ```\nCaptured Output from the Live Hypervisor:\n```text\nBreakpoint 1 at 0x6771:\
+    \ file init/main.c, line 107.\nContinuing.\n\nBreakpoint 1, main () at init/main.c:107\n\
+    107\t \tROOT_DEV = ORIG_ROOT_DEV;\n#0  main () at init/main.c:107\neip       \
+    \     0x6771              0x6771 <main>\nesp            0x27f70             0x27f70\
+    \ <user_stack+4080>\neax            0x80000013          -2147483629\n=> 0x6771\
+    \ <main>:\tmov    0x901fc,%ax\n   0x6777 <main+6>:\tmov    %ax,0x27f78\n   0x677d\
+    \ <main+12>:\tmov    $0x90080,%esi\n   0x6782 <main+17>:\tmov    $0x27f80,%edi\n\
+    ```\nAnalyze this output:\n* `Breakpoint 1, main () at init/main.c:107`: GDB successfully\
+    \ trapped execution at the C source level!\n* `eip = 0x6771`: The instruction\
+    \ pointer is positioned at the start of `main()`.\n* `ROOT_DEV = ORIG_ROOT_DEV;`:\
+    \ Line 107 is about to execute.\n* `x/8i $eip`: Disassembling `$eip` reveals `mov\
+    \ 0x901fc, %ax`—the exact compiled machine instructions reading the saved root\
+    \ device from address `0x901FC`!\n\n### 4. The Failure Mode & Boundary\nThe fatal\
+    \ error is issuing `run` instead of `continue` in GDB. When attached to a remote\
+    \ target (`target remote :1234`), issuing `run` tells GDB to spawn a brand new\
+    \ process on the host OS. GDB responds with:\n`The \"remote\" target does not\
+    \ support \"run\". Try \"help target\" or \"continue\".`\nAlways use `continue`\
+    \ when attached to a running hypervisor stub.\n\n### 5. The Compressed Mental\
+    \ Axiom\n*Don't guess what the kernel does at boot; freeze it at main() with GDB\
+    \ and inspect reality.*"
+  diagram:
+    kind: flow
+    caption: QEMU Hypervisor and GDB RSP Handshake Protocol
+    nodes:
+    - id: qemu_start
+      label: 'QEMU (-s -S): Halted at 0xFFFF0'
+      shape: round
+    - id: gdb_attach
+      label: 'GDB: target remote :1234'
+      shape: box
+    - id: sym_load
+      label: file tools/system (DWARF symbols)
+      shape: box
+    - id: set_break
+      label: break main (Resolved to 0x6771)
+      shape: box
+    - id: cont
+      label: continue (vCPU resumes)
+      shape: box
+    - id: hit_main
+      label: 'vCPU halts at 0x6771: line 107'
+      shape: round
+    edges:
+    - from: qemu_start
+      to: gdb_attach
+      label: TCP Port 1234
+    - from: gdb_attach
+      to: sym_load
+      label: RSP Probe
+    - from: sym_load
+      to: set_break
+      label: Address Resolved
+    - from: set_break
+      to: cont
+      label: Breakpoint Armed
+    - from: cont
+      to: hit_main
+      label: Trapped at main()
+    steps:
+    - focus:
+      - qemu_start
+      - gdb_attach
+      note: 'Step 1: Connect GDB client to QEMU RSP server over TCP port 1234'
+    - focus:
+      - sym_load
+      - set_break
+      note: 'Step 2: Load kernel symbol table from tools/system and set breakpoint
+        at main'
+    - focus:
+      - cont
+      - hit_main
+      note: 'Step 3: Continue execution through assembly bootstrap until breakpoint
+        halts at main()'
+  viz:
+    kind: ascii-memory
+    caption: GDB Trapping Sequence and RSP State
+    steps:
+    - '[GDB Attached] Connected to 1234 · vCPU Paused at 0xFFFF0 · Symbols: tools/system
+      loaded'
+    - '[Breakpoint Set] Hardware/Software Breakpoint set at 0x00006771 (main in init/main.c:107)'
+    - '[Execution Resumed] continue issued · bootsect.s -> setup.s -> head.s executed
+      at full speed'
+    - '[Breakpoint Trapped] Halted at 0x00006771 · Line 107: ROOT_DEV = ORIG_ROOT_DEV
+      · eip = 0x6771'
+  checks:
+  - kind: predict
+    concept: gdb-trapped-line
+    q: Based on Evidence `E-A1-09`, what exact C statement is paused on the doorstep
+      of execution when GDB halts at `main()`?
+    choices:
+    - '`ROOT_DEV = ORIG_ROOT_DEV;` (init/main.c, line 107)'
+    - '`printf("Linux version 0.11\n");`'
+    - '`sti();`'
+    answer: 0
+    why: 'Option A is correct: GDB output in Evidence E-A1-09 confirms the breakpoint
+      at `init/main.c:107`, executing `ROOT_DEV = ORIG_ROOT_DEV;`. Option B is a fictional
+      banner. Option C is executed much later on line 136.'
+  - kind: why-fails
+    concept: run-vs-continue-remote
+    q: Why does typing `run` inside GDB fail when attached to QEMU via `target remote
+      :1234`?
+    choices:
+    - The `run` command requires root superuser privileges
+    - Remote hypervisor targets are already running and cannot be spawned locally;
+      you must issue `continue`
+    - QEMU terminates the TCP connection if any command longer than 3 letters is sent
+    answer: 1
+    why: 'Option B is correct (from T1A): Remote targets do not support process creation
+      (`run`). The remote machine is already instantiated; you must issue `continue`
+      to resume execution.'
+  - kind: fillblank
+    concept: main-entry-address
+    q: In Linux 0.11, the 32-bit linear address of `main()` captured in Evidence E-A1-09
+      is 0x0000___.
+    answer_text: '6771'
+    why: Evidence E-A1-09 shows `eip = 0x6771`, which is the entry address of `main()`
+      in `tools/system`.
+  - kind: mcq
+    concept: dwarf-symbols-role
+    q: Why must you execute `file tools/system` in GDB when debugging the raw floppy
+      image `Image` in QEMU?
+    choices:
+    - QEMU refuses to boot unless `tools/system` is opened by a text editor
+    - '`tools/system` contains the complete source code of Bash'
+    - '`Image` is a stripped raw disk binary containing no DWARF symbols; `tools/system`
+      provides the ELF symbol table mapping function names and line numbers to addresses'
+    answer: 2
+    why: 'Option C is correct (from T0A/T1A): `Image` contains only raw bytes for
+      floppy sectors. GDB needs the unstripped ELF binary `tools/system` to map memory
+      address `0x6771` to source file `init/main.c` line 107.'
+  - kind: choose-better
+    concept: early-boot-breakpoint-choice
+    from_chapter: T1A
+    from_block: b11
+    q: If you needed to halt at `startup_32` in `head.s` before page tables are built,
+      why is a hardware breakpoint (`hbreak`) preferred over a standard software breakpoint
+      (`break`)?
+    choices:
+    - '`hbreak` uses CPU hardware debug registers (DR0-DR3), avoiding modifying memory
+      bytes in RAM before tables and caches are stabilized'
+    - '`hbreak` executes 10 times faster than CPU silicon'
+    - '`hbreak` automatically edits the source code on disk'
+    answer: 0
+    why: 'Option A is correct (from T1A): Software breakpoints overwrite instruction
+      bytes with `0xCC`. During early boot, RAM is in transition and instructions
+      are copied across segments; hardware breakpoints monitor address buses directly
+      without altering memory.'
+- id: b12
+  type: algorithm
+  title: 'Machine State Verification: Registers and Selectors at main() Entry'
+  explain_md: "### 1. Frame the Problem\nWhen execution crosses the threshold into\
+    \ `main()`, what does the processor actually look like under the hood?\n\nMany\
+    \ developers assume that entering C means hardware details can be forgotten. But\
+    \ `main()` is the very beginning of the operating system. If control register\
+    \ bits, privilege levels, or stack pointers are misconfigured, the first memory\
+    \ allocation or interrupt will instantly destroy the kernel.\n\nWe must verify\
+    \ every single machine register and segment selector at the exact instant `main()`\
+    \ begins.\n\n### 2. The Notional Machine\nLet us decode the complete register\
+    \ dump captured from the live QEMU hypervisor at the entry of `main()` (Evidence\
+    \ `E-A1-09`):\n\n1. **Instruction Pointer (`EIP`)**:\n   `EIP = 0x00006771`: Points\
+    \ directly to the first instruction of `main()` in the kernel `.text` segment.\n\
+    \n2. **Stack Pointer (`ESP`)**:\n   `ESP = 0x00027f70`: Where is this stack?\n\
+    \   In `kernel/sched.c`, Linus defined:\n   ```c\n   long user_stack[PAGE_SIZE>>2];\n\
+    \   struct {\n       long * a;\n       short b;\n   } stack_start = { &user_stack[PAGE_SIZE>>2],\
+    \ 0x10 };\n   ```\n   `PAGE_SIZE` is 4096 bytes ($4096 \\gg 2 = 1024$ longs).\
+    \ The top of `user_stack` is at offset 4080 (aligned to 16 bytes). In Evidence\
+    \ E-A1-09, GDB reports:\n   `esp = 0x27f70 <user_stack+4080>`!\n   The stack grows\
+    \ downward toward `user_stack[0]`.\n\n3. **Segment Selectors (`CS`, `DS`, `ES`,\
+    \ `FS`, `GS`, `SS`)**:\n   * `CS = 0x0008`: Code Segment (GDT index 1, RPL 0).\
+    \ Grants Ring 0 supervisor code execution across a 4GB flat range.\n   * `DS =\
+    \ ES = FS = GS = SS = 0x0010`: Data Segment (GDT index 2, RPL 0). Grants Ring\
+    \ 0 read/write access across all physical RAM.\n\n4. **Control Register 0 (`CR0`)**:\n\
+    \   In Evidence E-A1-09:\n   `EAX = 0x80000013`: This was the value loaded into\
+    \ `CR0` by `head.s` right before jumping to `main()`!\n   Let us decompose the\
+    \ hexadecimal bitmask `0x80000013`:\n   * **Bit 31 (`PG = 1`)**: Paging is **ENABLED**!\
+    \ The MMU translates all linear addresses through page tables.\n   * **Bit 4 (`ET\
+    \ = 1`)**: Extension Type. Verifies an 80387 math coprocessor is installed.\n\
+    \   * **Bit 1 (`MP = 1`)**: Monitor Coprocessor.\n   * **Bit 0 (`PE = 1`)**: Protection\
+    \ Enable. The CPU is in **32-bit Protected Mode**.\n\n5. **Control Register 3\
+    \ (`CR3`)**:\n   `CR3 = 0x00000000`: Points to the physical base address of the\
+    \ **Page Directory** at address `0x00000`.\n\n6. **Interrupt Flag (`EFLAGS.IF`)**:\n\
+    \   In EFLAGS, bit 9 (`IF`) is **0** (Interrupts Disabled). Notice Linus's comment\
+    \ on line 107 of `main.c`:\n   `/* Interrupts are still disabled. Do necessary\
+    \ setups, then enable them */`\n   Interrupts remain safely disabled until line\
+    \ 136 (`sti()`).\n\n### 3. Source-Grounded Walkthrough\nExamine the disassembly\
+    \ of the first four instructions at `main()` (Evidence `E-A1-09`):\n```text\n\
+    => 0x6771 <main>:    mov    0x901fc, %ax\n   0x6777 <main+6>:  mov    %ax, 0x27f78\n\
+    \   0x677d <main+12>: mov    $0x90080, %esi\n   0x6782 <main+17>: mov    $0x27f80,\
+    \ %edi\n```\nTrace the data flow:\n1. `mov 0x901fc, %ax`: Reads the root device\
+    \ number saved by `tools/build.c` into `0x901FC` and stores it into `ROOT_DEV`\
+    \ (`0x27f78`).\n2. `mov $0x90080, %esi`: Loads source address `0x90080` (where\
+    \ `setup.s` saved the hard disk parameters).\n3. `mov $0x27f80, %edi`: Loads destination\
+    \ address `drive_info` inside the kernel `.bss` segment.\n\nThe kernel is harvesting\
+    \ boot-time parameters before the buffer cache overwrites low RAM!\n\n### 4. The\
+    \ Failure Mode & Boundary\nIf a programmer calls `sti()` on line 108 of `main.c`\
+    \ before `sched_init()` and `trap_init()` complete, the first timer interrupt\
+    \ (IRQ0) fires, jumps through an uninitialized IDT interrupt gate, and triggers\
+    \ an immediate CPU crash.\n\n### 5. The Compressed Mental Axiom\n*At the threshold\
+    \ of main(), the CPU is in 32-bit Ring 0, paging is live, and interrupts are safely\
+    \ masked.*"
+  diagram:
+    kind: art
+    caption: CR0 Control Register Bit Breakdown (0x80000013)
+    art: "+----+---------------------------------------+----+----+----+----+\n| PG\
+      \ | Reserved (Bits 30 down to 5)          | ET | TS | EM | MP | PE |\n| 31 |\
+      \                                       | 4  | 3  | 2  | 1  | 0  |\n+----+---------------------------------------+----+----+----+----+\n\
+      | 1  | 00000000000000000000000000            | 1  | 0  | 0  | 1  | 1  |\n+----+---------------------------------------+----+----+----+----+\n\
+      \  |                                            |              |    |\n  v \
+      \                                           v              v    v\nPaging Active\
+      \ (Virtual Memory)           80387 Present      Wait Protected"
+  viz:
+    kind: ascii-memory
+    caption: Hardware State Checklist at Entry of main()
+    steps:
+    - '[Privilege Check] CS = 0x0008 (Kernel Code) · CPL = 0 (Supervisor Ring 0) ·
+      Mode: 32-bit Protected'
+    - '[Memory Translation] CR0 = 0x80000013 (PG=1, PE=1) · CR3 = 0x00000000 (Page
+      Directory @ physical 0x0)'
+    - '[Stack Frame] ESP = 0x00027f70 (user_stack+4080) · SS = 0x0010 · Valid 4KB
+      kernel stack ready'
+    - '[Interrupt State] EFLAGS = 0x00000002 (IF=0) · Hardware interrupts strictly
+      MASKED until line 136 sti()'
+  checks:
+  - kind: predict
+    concept: cr0-bitmask-meaning
+    q: In Evidence E-A1-09, register EAX holds `0x80000013`. What two critical operating
+      system features are enabled by bit 31 and bit 0 of this value?
+    choices:
+    - Bit 31 enables network encryption; Bit 0 enables floppy disk DMA
+    - Bit 31 enables Virtual Memory Paging (`PG`); Bit 0 enables 32-bit Protected
+      Mode (`PE`)
+    - Bit 31 enables 64-bit Long Mode; Bit 0 enables PCI Express bus scanning
+    answer: 1
+    why: 'Option B is correct: In x86 control register CR0, bit 31 is PG (Paging)
+      and bit 0 is PE (Protection Enable). 0x80000013 has both bits set, confirming
+      the kernel is executing in protected mode with paging active.'
+  - kind: mcq
+    concept: initial-stack-pointer
+    q: What data structure does `ESP = 0x00027f70` point to when `main()` begins?
+    choices:
+    - A dynamically allocated heap buffer from `malloc()`
+    - Physical address 0x00000000 inside the page directory
+    - The top of the `user_stack` array defined in `kernel/sched.c`
+    answer: 2
+    why: 'Option C is correct: `head.s` initialized `ESP` with `lss _stack_start,
+      %esp`. `stack_start` points to the top of `user_stack` in `sched.c` (at offset
+      4080, Evidence E-A1-09).'
+  - kind: why-fails
+    concept: premature-interrupt-enable
+    q: Why does `init/main.c` NOT execute `sti()` to enable interrupts until line
+      136, near the very end of the function?
+    choices:
+    - Device drivers, interrupt handlers, and the process scheduler must be initialized
+      first; an early interrupt would dispatch to a missing or half-configured handler
+    - Interrupts cannot be enabled in protected mode under any circumstances
+    - The 80386 processor only allows interrupts to be enabled in userspace Ring 3
+    answer: 0
+    why: 'Option A is correct: If an interrupt occurred before `sched_init()` or `trap_init()`,
+      the kernel would have no task structure or valid interrupt service routine to
+      handle it, causing an immediate crash.'
+  - kind: fillblank
+    concept: cr3-value-check
+    q: In Linux 0.11, the control register CR3 holds the physical base address of
+      the Page Directory, which is physical address 0x00000___.
+    answer_text: '000'
+    why: CR3 holds `0x00000000` because the Page Directory is placed at the very base
+      of physical RAM (`_pg_dir = 0x00000000`).
+  - kind: choose-better
+    concept: cs-rpl-privilege
+    q: Given `CS = 0x0008` (binary `0000000000001 0 00`), what is the Current Privilege
+      Level (CPL) of the CPU at `main()`?
+    choices:
+    - Ring 3 (Userspace privilege, determined by RPL bits 11)
+    - Ring 0 (Supervisor privilege, determined by RPL bits 00)
+    - Ring 1 (Hypervisor privilege)
+    answer: 1
+    why: 'Option B is correct: The low 2 bits of the Code Segment selector indicate
+      the Current Privilege Level. Bits 00 specify Ring 0 (highest privilege).'
+- id: b13
+  type: design
+  title: Pristine 1991 Source vs. Modern Runnable Fork (Toolchain Evolution)
+  explain_md: "### 1. Frame the Problem\nWhy can you not simply clone Linus Torvalds's\
+    \ original Linux 0.11 repository and type `make` on a modern 2026 Linux system?\n\
+    \nIn 1991, the C language and toolchains were in their infancy. Linus wrote Linux\
+    \ 0.11 using **GCC 1.40**, **as86** (Bruce Evans's 16-bit assembler), and pre-standard\
+    \ C dialects. Over the subsequent 35 years, compilers grew vastly more rigorous,\
+    \ linkers transitioned from a.out to ELF, and C standards introduced strict type\
+    \ checking.\n\nUnderstanding what broke and how the runnable fork repairs it teaches\
+    \ an invaluable systems engineering lesson: **the deep coupling between operating\
+    \ system code and compiler behavior**.\n\n### 2. The Notional Machine\nWhen you\
+    \ invoke modern GCC 16 against pristine 1991 code, four major toolchain incompatibilities\
+    \ trigger hard build failures:\n\n1. **Implicit `int` Return Types (Banned in\
+    \ C99/C23)**:\n   In 1991 K&R C, if a function declaration lacked a return type,\
+    \ the compiler assumed `int`.\n   In `init/main.c`:\n   ```c\n   /* Original 0.11\
+    \ */\n   main(void) { ... }\n   ```\n   GCC 16 aborts with:\n   `error: return\
+    \ type defaults to 'int' [-Wimplicit-int]`\n\n2. **Missing Function Prototypes\
+    \ & Variadic Functions**:\n   In `init/main.c`, Linus declared:\n   ```c\n   extern\
+    \ int vsprintf();\n   ```\n   In 1991, empty parentheses meant *\"takes unspecified\
+    \ arguments\"*. In modern C23, empty parentheses mean *\"takes void (zero arguments)\"\
+    *. When `printf` subsequently calls `vsprintf(buf, fmt, args)`, GCC 16 halts with:\n\
+    \   `error: too many arguments to function 'vsprintf'`\n\n3. **16-bit Assembler\
+    \ vs Modern GNU Assembler (`as`)**:\n   `bootsect.s` and `setup.s` were written\
+    \ for `as86`, which used an exclamation point `!` for comments and `#` for immediate\
+    \ constants (`mov ax, #0x07c0`). Modern GNU `as` uses `#` for line comments and\
+    \ `$` for immediate values!\n\n4. **Modern Default Compiler Hardening**:\n   Modern\
+    \ Linux distributions enable stack smashing protection (`-fstack-protector-strong`)\
+    \ and Position-Independent Executables (`-fpie`) by default. In a bare-metal kernel\
+    \ with no C library canary setup, stack protector canaries dereference unmapped\
+    \ segments and crash the machine!\n\n### 3. Source-Grounded Walkthrough\nLook\
+    \ at Evidence `E-A1-06` (The Unmodified Build Failure):\n```text\n$ cd sources/Linux-0.11-fork\
+    \ && make -j1\n...\ninit/main.c:104:1: error: return type defaults to 'int' [-Wimplicit-int]\n\
+    \  104 | main(void)\n      | ^~~~\ninit/main.c:157:25: error: too many arguments\
+    \ to function 'vsprintf'\n  157 |  write(1,printbuf,i=vsprintf(printbuf, fmt,\
+    \ args));\n      |                     ^~~~~~~~\nmake: *** [Makefile:142: init/main.o]\
+    \ Error 1\n```\n\nNow look at Evidence `E-A1-07` (The Solution):\nTo preserve\
+    \ the original kernel logic while satisfying modern GCC 16, the runnable fork\
+    \ supplies explicit compiler dialect flags:\n```text\n$ make -j1 CFLAGS=\"-g -m32\
+    \ -fno-builtin -fno-stack-protector -fomit-frame-pointer -std=gnu89 -Iinclude\
+    \ -I../include -I../../include\"\n...\nRoot device is (3, 6)\nBoot sector 512\
+    \ bytes.\nSetup is 312 bytes.\nNon-loaded kernel is 130752 bytes.\nLoaded kernel\
+    \ is 130752 bytes.\n```\nDeconstruct the essential engineering flags:\n* `-std=gnu89`:\
+    \ Reverts GCC to the 1989 ANSI C standard with GNU extensions, permitting implicit\
+    \ ints and unprototyped functions.\n* `-m32`: Generates 32-bit x86 code on a 64-bit\
+    \ host processor.\n* `-fno-stack-protector`: Disables stack canaries that require\
+    \ uninitialized runtime tables.\n* `-fno-builtin`: Prevents GCC from replacing\
+    \ kernel functions (like `memcpy` or `strcpy`) with host libc builtins.\n\n###\
+    \ 4. The Failure Mode & Boundary\nThe rookie temptation is rewriting historical\
+    \ kernel algorithms to look like modern C23. This is an anti-pattern. If you modify\
+    \ the kernel algorithms, you are no longer studying Linux 0.11. The disciplined\
+    \ approach is using compiler dialect pinning (`-std=gnu89`) to preserve the historical\
+    \ artifacts intact.\n\n### 5. The Compressed Mental Axiom\n*C is not static; historical\
+    \ code requires explicit dialect pinning (-std=gnu89) to survive modern toolchains.*"
+  diagram:
+    kind: flow
+    caption: Pristine Source vs Modern Build Harness Pipeline
+    nodes:
+    - id: source
+      label: Pristine 0.11 Source (1991)
+      shape: box
+    - id: gcc_default
+      label: GCC 16 (Default C23)
+      shape: decision
+    - id: fail
+      label: 'Build Fails: -Wimplicit-int'
+      shape: round
+    - id: cflags
+      label: 'Harness CFLAGS: -std=gnu89 -m32'
+      shape: box
+    - id: pass
+      label: 'Success: Bootable Image Built'
+      shape: round
+    edges:
+    - from: source
+      to: gcc_default
+      label: make
+    - from: gcc_default
+      to: fail
+      label: Modern strict rules
+    - from: source
+      to: cflags
+      label: Dialect Pinning
+    - from: cflags
+      to: pass
+      label: Compiles cleanly
+    steps:
+    - focus:
+      - source
+      - gcc_default
+      - fail
+      note: 'Step 1: Unmodified 1991 C code fails under strict modern C23 compiler
+        defaults'
+    - focus:
+      - source
+      - cflags
+      - pass
+      note: 'Step 2: Pinned -std=gnu89 and -m32 flags allow pristine logic to build
+        cleanly'
+  checks:
+  - kind: mcq
+    concept: cflags-std-gnu89
+    q: Which GCC flag is essential to allow modern compilers to accept 1991 C code
+      containing implicit int return types and empty function parameter lists?
+    choices:
+    - '`-O3`'
+    - '`-std=c23`'
+    - '`-std=gnu89`'
+    answer: 2
+    why: 'Option C is correct: `-std=gnu89` pins the compiler dialect to the 1989
+      ANSI C standard with GNU extensions, which legally permits implicit ints and
+      legacy function declarations (Evidence E-A1-07).'
+  - kind: why-fails
+    concept: fno-stack-protector-necessity
+    q: Why must `-fno-stack-protector` be passed when compiling bare-metal kernel
+      code with modern GCC?
+    choices:
+    - Modern GCC injects canary check functions (`__stack_chk_fail`) that rely on
+      libc thread-local storage, which does not exist in early boot
+    - Stack protector flags disable the CPU's memory paging unit
+    - Stack protector flags force the kernel to compile as 16-bit code
+    answer: 0
+    why: 'Option A is correct: Stack canaries require runtime support (canary initializers
+      and failure handlers in libc). In a standalone kernel, calling functions with
+      stack protection causes crashes on unmapped canary references.'
+  - kind: choose-better
+    concept: preservation-philosophy
+    q: When bringing up a historical operating system kernel on modern machines, which
+      engineering strategy is superior?
+    choices:
+    - Rewrite the entire kernel to use modern C++ templates and object-oriented classes
+    - Pin the compiler dialect using appropriate CFLAGS (`-std=gnu89 -m32`) while
+      keeping the historical kernel algorithms and source lines untouched
+    - Delete all assembly bootstrap code and replace it with UEFI firmware
+    answer: 1
+    why: 'Option B is correct: Dialect pinning preserves the exact historical implementation
+      and architectural artifacts, allowing authentic analysis of 1991 engineering
+      decisions without introducing modern regressions.'
+  - kind: fillblank
+    concept: m32-flag-role
+    q: To compile 32-bit x86 kernel code on a 64-bit host workstation, GCC requires
+      the flag `-m___`.
+    answer_text: '32'
+    why: The `-m32` flag instructs GCC to generate machine code for the 32-bit i386
+      ABI rather than the default 64-bit x86_64 target.
+  - kind: predict
+    concept: fno-builtin-effect
+    q: What happens if bare-metal kernel code is compiled without `-fno-builtin`?
+    choices:
+    - The processor disables protected mode during boot
+    - The kernel executable size increases by 400 megabytes
+    - GCC may replace custom kernel loops with calls to standard library functions
+      (like `memcpy` or `memset`) that have not yet been defined in early boot, causing
+      undefined symbol errors
+    answer: 2
+    why: 'Option C is correct: GCC recognizes common memory and string loop patterns
+      and replaces them with calls to library builtins. In a freestanding kernel,
+      these builtins may not exist or may conflict with kernel routines.'
+- id: b14
+  type: design
+  title: 'The Complete Boot-Trace Map: From Silicon Reset to Userspace Init'
+  explain_md: "### 1. Frame the Problem\nThroughout Chapter A1, you have deconstructed\
+    \ individual bootstrap steps: sector loading, 20-bit segmentation math, A20 gate\
+    \ mechanics, GDT descriptors, identity page tables, and C entry states.\n\nHowever,\
+    \ operating systems do not function as isolated pieces. A kernel is an unbroken\
+    \ chain of causality: each instruction creates the preconditions for the next.\
+    \ \n\nHow do all these components connect into a single, comprehensive mental\
+    \ model of bootloader execution?\n\n### 2. The Notional Machine\nWe synthesize\
+    \ the complete **8-Milestone Bootstrap Roadmap** from silicon reset to the birth\
+    \ of userspace:\n\n```text\n[Milestone 1: CPU Power-On] \n  Silicon reset vector\
+    \ -> CS:IP = 0xF000:0xFFF0 (Physical 0xFFFF0). 16-bit Real Mode.\n      │\n  \
+    \    ▼\n[Milestone 2: BIOS Floppy Load]\n  BIOS reads Sector 1 (bootsect.s, 512B)\
+    \ to Physical 0x07C00. Verifies 0xAA55.\n      │\n      ▼\n[Milestone 3: Bootsect\
+    \ Self-Relocation]\n  bootsect moves itself to 0x90000; far jumps to 0x9000:go.\n\
+    \  Loads setup.s (2048B) to 0x90200. Streams system to 0x10000 via INT 13h.\n\
+    \      │\n      ▼\n[Milestone 4: Setup Hardware Probing]\n  setup.s saves BIOS\
+    \ telemetry to 0x90000 (RAM size to 0x90002).\n  Moves system from 0x10000 down\
+    \ to physical 0x00000 (cli).\n      │\n      ▼\n[Milestone 5: Protected Mode Switch]\n\
+    \  setup.s pulses keyboard port 0x64/0x60 to enable A20 Gate.\n  Remaps 8259 PIC\
+    \ to 0x20. Loads temporary GDT/IDT. Sets CR0.PE = 1.\n  Far jump: jmpi 0, 8 branches\
+    \ into 32-bit segment 8 (0x00000).\n      │\n      ▼\n[Milestone 6: 32-bit Paging\
+    \ Construction]\n  head.s sets DS/ES/FS/GS to 0x10. Sets ESP to user_stack (0x27f70).\n\
+    \  Fills 256 dummy IDT entries. Builds Page Directory at 0x0 and 4 Page Tables\
+    \ (16MB).\n  Loads CR3 = 0x0. Sets CR0.PG = 1.\n      │\n      ▼\n[Milestone 7:\
+    \ Kernel C Entry Point]\n  setup_paging executes ret -> pops $_main into EIP!\n\
+    \  Lands at init/main.c:107 (eip = 0x6771) in Ring 0 with paging live.\n  Initializes\
+    \ memory, traps, buffer cache, sched, and drivers. Enables interrupts (sti).\n\
+    \      │\n      ▼\n[Milestone 8: Userspace Fork]\n  main() calls move_to_user_mode()\
+    \ -> switches CPU privilege to Ring 3!\n  Forks Process 1 (init()). Task 0 remains\
+    \ in kernel space as the idle loop (for(;;) pause()).\n```\n\n### 3. Source-Grounded\
+    \ Walkthrough\nNotice the privilege and mode transitions across this journey:\n\
+    1. **CPU Execution Mode**:\n   * Milestones 1–4: **16-bit Real Mode** (Segment\
+    \ * 16 + Offset).\n   * Milestone 5: **32-bit Flat Protected Mode** (Descriptor\
+    \ Segment Selectors).\n   * Milestones 6–7: **32-bit Protected Mode with Paging**\
+    \ (MMU Page Tables).\n   * Milestone 8: **Ring 3 Userspace Mode** (Application\
+    \ privilege).\n2. **Memory Map Shift**:\n   * Address `0x00000` starts as the\
+    \ BIOS Real-Mode Interrupt Vector Table.\n   * By Milestone 4, `system` overwrites\
+    \ `0x00000`.\n   * By Milestone 6, the Page Directory overwrites the startup code\
+    \ of `head.s` at `0x00000`!\n   Linus reused the exact same 4KB of physical memory\
+    \ three separate times during boot!\n\n### 4. The Failure Mode & Boundary\nThe\
+    \ fatal error is losing track of what privilege level and memory mode the CPU\
+    \ is in at any given moment:\n* Issuing a 32-bit pointer dereference in Milestone\
+    \ 2 crashes real mode.\n* Issuing a BIOS interrupt (`int 0x10`) in Milestone 6\
+    \ crashes protected mode.\n* Issuing privileged I/O instructions (`inb`/`outb`)\
+    \ in Milestone 8 triggers a General Protection Fault in Ring 3.\n\n### 5. The\
+    \ Compressed Mental Axiom\n*From raw power to userspace, an operating system bootstraps\
+    \ by successively constructing its own execution foundations.*"
+  diagram:
+    kind: flow
+    caption: The End-to-End Linux 0.11 Boot Architecture Roadmap
+    nodes:
+    - id: reset
+      label: '1. Reset (0xFFFF0: 16-bit Real)'
+      shape: round
+    - id: bsect
+      label: 2. bootsect (0x7C00 -> 0x90000)
+      shape: box
+    - id: setup
+      label: 3. setup (A20, CR0.PE -> PM32)
+      shape: box
+    - id: head
+      label: 4. head (CR0.PG, 16MB Paging)
+      shape: box
+    - id: main
+      label: 5. main() (Ring 0 C Init, sti)
+      shape: box
+    - id: user
+      label: 6. init() (Ring 3 Userspace)
+      shape: round
+    edges:
+    - from: reset
+      to: bsect
+      label: BIOS Floppy Read
+    - from: bsect
+      to: setup
+      label: rep movw & INT 13h
+    - from: setup
+      to: head
+      label: jmpi 0,8
+    - from: head
+      to: main
+      label: ret into C
+    - from: main
+      to: user
+      label: move_to_user_mode
+    steps:
+    - focus:
+      - reset
+      - bsect
+      note: 'Phase 1: Real-mode BIOS handoff and bootsector self-relocation'
+    - focus:
+      - setup
+      - head
+      note: 'Phase 2: Transition from real mode to flat 32-bit protected mode and
+        paging'
+    - focus:
+      - main
+      - user
+      note: 'Phase 3: Kernel C subsystem initialization and transition to Ring 3 userspace'
+  checks:
+  - kind: order
+    concept: privilege-progression-order
+    q: 'Arrange the CPU execution and privilege states in their exact historical order
+      during boot:'
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: 'The hardware strictly progresses: 16-bit Real Mode -> 32-bit Flat Protected
+      Mode -> Paging Enabled (Ring 0) -> Ring 3 Userspace.'
+    lines:
+    - 16-bit Real Mode (Address = Segment * 16 + Offset)
+    - 32-bit Protected Mode without Paging (Linear Addressing, Ring 0)
+    - 32-bit Protected Mode with Paging (Virtual Addressing, Ring 0)
+    - Userspace Mode (Ring 3 Privilege Level)
+  - kind: mcq
+    concept: memory-reuse-artifact
+    q: What physical memory structure eventually occupies address `0x00000000` once
+      the operating system reaches `main()`?
+    choices:
+    - The kernel Page Directory (`_pg_dir`), which overwrote the temporary startup
+      code of `head.s`
+    - The original real-mode BIOS interrupt table
+    - The userspace bash shell executable binary
+    answer: 0
+    why: 'Option A is correct: In `head.s`, Linus explicitly placed `_pg_dir` at `0x00000000`.
+      The temporary startup code of `head.s` executed at `0x00000000` and was subsequently
+      overwritten by the Page Directory (Evidence E-A1-04).'
+  - kind: why-fails
+    concept: bios-call-in-protected-mode
+    q: Why can code inside `init/main.c` NOT invoke BIOS video interrupt `int 0x10`
+      to print characters to the display?
+    choices:
+    - The BIOS chip is physically powered down after setup.s
+    - The BIOS routines are 16-bit real-mode code; executing them in 32-bit protected
+      mode with paging active causes invalid instruction decoding and memory faults
+    - Modern displays do not support text mode
+    answer: 1
+    why: 'Option B is correct: BIOS code consists of 16-bit real-mode instructions
+      that assume 1MB segmented addressing and lack protected-mode descriptor awareness.
+      Calling BIOS interrupts from 32-bit protected mode crashes the CPU.'
+  - kind: choose-better
+    concept: task0-idle-role
+    q: At the very end of `init/main.c`, what becomes of the original thread of execution
+      that booted the system?
+    choices:
+    - It returns back to the BIOS setup utility
+    - It terminates and unloads itself from memory
+    - It forks Process 1 (`init`) and becomes Task 0, executing an infinite `for(;;)
+      pause();` idle loop that runs whenever no other task is runnable
+    answer: 2
+    why: 'Option C is correct: Line 148 of `init/main.c` executes `for(;;) pause();`.
+      Task 0 never terminates; it serves as the kernel idle task scheduled whenever
+      all user processes are blocked (Evidence E-A1-05).'
+  - kind: fillblank
+    concept: user-mode-macro
+    q: In `init/main.c`, the kernel drops privilege from Ring 0 to Ring 3 by invoking
+      the macro named ___().
+    answer_text: move_to_user_mode
+    why: '`move_to_user_mode()` uses a simulated interrupt return (`iret`) stack frame
+      to reload CS and SS with Ring 3 privilege selectors.'

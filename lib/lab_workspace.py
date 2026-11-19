@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import difflib
 import os
+import shlex
 import shutil
 import subprocess
 import time
@@ -12,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 DENYLIST = ["rm -rf", "curl", "wget", "ssh", "mkfs", ":(){", "shutdown", "reboot"]
+TINKER_TERMINAL_ENV = "TERMLEARN_TINKER_TERMINAL"
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -46,12 +48,19 @@ def provision_lab_workspace(book: str, chapter: str, lab_def: dict[str, Any],
     """Provisions a multi-file lab workspace on disk (REQ-LAB-DIR-002..005).
 
     - If workspace does not exist, creates it and writes all initial files.
-    - If reset is True, re-writes all initial files declared in lab_def.
+    - If reset is True, clears the workspace and re-writes only declared initial files.
     - If workspace exists and reset is False, existing student modifications are preserved.
     """
     lab_id = str(lab_def.get("id", "lab1"))
     lab_dir = get_lab_dir(book, chapter, lab_id)
     lab_dir.mkdir(parents=True, exist_ok=True)
+
+    if reset:
+        for child in lab_dir.iterdir():
+            if child.is_dir() and not child.is_symlink():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
 
     files = lab_def.get("files", [])
     for file_info in files:
@@ -149,6 +158,112 @@ def run_command_in_workspace(workspace_dir: Path, command: str, stdin: str = "",
     except Exception as exc:
         res["error"] = str(exc)
 
+    return res
+
+
+def _default_tinker_terminal() -> str:
+    """Chooses a separate terminal when the learner has not configured one."""
+    if os.environ.get("TMUX"):
+        return "tmux new-window"
+    if shutil.which("alacritty") and (os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")):
+        return "alacritty -e"
+    return ""
+
+
+def build_tinker_terminal_command(workspace_dir: Path, command: str,
+                                  terminal: str | None = None) -> list[str] | None:
+    """Builds an argv that opens `command` in a separate terminal (REQ-LAB-EXE-009).
+
+    `terminal` is a prefix such as "alacritty -e", "xterm -e", "kitty",
+    "gnome-terminal --", or "tmux new-window". The tinker command always runs
+    with cwd set to the lab workspace and pauses before the terminal closes.
+    """
+    chosen = (terminal if terminal is not None
+              else os.environ.get(TINKER_TERMINAL_ENV, "")).strip()
+    if not chosen:
+        chosen = _default_tinker_terminal()
+    if not chosen:
+        return None
+    prefix = shlex.split(chosen)
+    if not prefix:
+        return None
+    cwd = shlex.quote(str(workspace_dir))
+    script = (
+        f"cd {cwd} && {command}; "
+        "printf '\\n[termlearn] tinker finished; press Enter to close...\\n'; read _"
+    )
+    return [*prefix, "sh", "-c", script]
+
+
+def spawn_tinker_in_terminal(workspace_dir: Path, command: str,
+                             terminal: str | None = None) -> dict[str, Any]:
+    """Spawns a separate terminal for a tinker command without suspending the TUI."""
+    res: dict[str, Any] = {
+        "spawned": False,
+        "denied": False,
+        "error": "",
+        "terminal": "",
+        "pid": 0,
+    }
+    hits = scan_command_denylist(command)
+    if hits:
+        res["denied"] = True
+        res["error"] = f"Command rejected: contains prohibited pattern(s): {', '.join(hits)}"
+        return res
+    argv = build_tinker_terminal_command(workspace_dir, command, terminal)
+    if not argv:
+        return res
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        proc = subprocess.Popen(argv, cwd=str(workspace_dir), start_new_session=True)
+    except Exception as exc:
+        res["error"] = str(exc)
+        return res
+    res["spawned"] = True
+    res["pid"] = proc.pid
+    res["terminal"] = " ".join(argv[:-3])
+    return res
+
+
+def run_tinker_command(workspace_dir: Path, command: str,
+                       timeout_s: int = 0) -> dict[str, Any]:
+    """Runs an interactive tinker command with inherited stdio (REQ-LAB-EXE-008).
+
+    The caller normally suspends the TUI first so the learner gets the real
+    terminal. A timeout of 0 (the default) means "no timeout".
+    """
+    res: dict[str, Any] = {
+        "command": command,
+        "returncode": -1,
+        "elapsed_ms": 0,
+        "timed_out": False,
+        "denied": False,
+        "error": "",
+    }
+    hits = scan_command_denylist(command)
+    if hits:
+        res["denied"] = True
+        res["error"] = f"Command rejected: contains prohibited pattern(s): {', '.join(hits)}"
+        return res
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+    t0 = time.perf_counter()
+    try:
+        proc = subprocess.run(
+            command,
+            shell=True,
+            cwd=str(workspace_dir),
+            stdin=None,
+            stdout=None,
+            stderr=None,
+            timeout=(timeout_s if timeout_s and timeout_s > 0 else None),
+        )
+        res["returncode"] = proc.returncode
+    except subprocess.TimeoutExpired:
+        res["timed_out"] = True
+        res["error"] = f"Tinker command timed out after {timeout_s}s"
+    except Exception as exc:
+        res["error"] = str(exc)
+    res["elapsed_ms"] = int((time.perf_counter() - t0) * 1000)
     return res
 
 

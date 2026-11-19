@@ -127,7 +127,7 @@ rest harden, prove, and maintain.
 | revise | `revise --book B --chapter C` | Notes + examples + common bugs. No scoring. |
 | quiz | `quiz --book B --chapter C [--sample N] [--seed S] [--concept TAG]` | Checks shuffled (`--seed` reproduces); `--concept` drills one tag. Score + per-concept breakdown saved. |
 | parsons | `parsons --book B --chapter C` | Ordering-only: type `3 1 2`, distractors named when picked. |
-| lab | `lab --book B --chapter C [--no-save-solution]` | Edit starter in `$EDITOR`, compile+run, hidden tests, progressive hints. `t` records a SHA-256 solution snapshot (skipped with the flag). |
+| lab | `lab --book B --chapter C [--no-save-solution]` | Edit starter in `$EDITOR`, compile+run, hidden tests, progressive hints, interactive tinker (`x`). `t` records a SHA-256 solution snapshot (skipped with the flag). |
 | test | `test --book B --chapter C [--force] [--no-final]` | Chapter gate: recorded quiz%, lab, and interactive `final_checks` (all required by default). `--no-final` skips final checks; `--force` advances but is logged. |
 | srs | `srs [--book B]` | Due flashcards across chapters (SM-2). Empty = all books. |
 | stats | `stats --book B` | Per-block and per-concept accuracy, weakest spots (with representative blocks), recent runs, SRS due. |
@@ -150,13 +150,30 @@ in-flight question).
 | study example | `r` run · `i` inspect toolchain (symbols/disasm/AST) · `Enter` continue |
 | study viz | `n` next step · `s` skip chapter-viz |
 | study remediation | `y` re-show example · `N` move on |
-| lab | `e` edit · `r` run · `t` hidden tests (+snapshot) · `d` last diff · `i` inspect · `h` hint |
+| lab | `e` edit · `r` run · `t` hidden tests (+snapshot) · `x` tinker · `d` last diff · `i` inspect · `h` hint |
 | test | `n` start / next final check · `1-N` answer · `q`/`h` back |
 | srs | `f` / `Space` flip · `e` edit card · `1` forgot `2` hard `3` good `4` easy |
 
 Keys are single letters, mnemonic (`r`un, `e`dit, `h`int, `s`kip/`s`huffle,
 `n`ext, `f`lip), identical across modes. `?` and `help` are reserved — they
 always print help, never count as answers.
+
+### Tinker commands
+
+Labs may declare an optional `commands.tinker` for interactive experiments
+(shells, debuggers, QEMU, tracing tools). In the TUI press `x` (or click
+**Tinker**); in the CLI `lab` mode type `x`.
+
+- If `TERMLEARN_TINKER_TERMINAL` is set, termlearn opens a separate terminal.
+  Example: `export TERMLEARN_TINKER_TERMINAL="alacritty -e"`.
+- Inside tmux it defaults to `tmux new-window`.
+- Otherwise, if `alacritty` is installed and a display is available, it uses
+  `alacritty -e`.
+- If none is available, the TUI suspends, runs the command in the current
+  terminal, and resumes when it exits.
+
+Tinker commands inherit your terminal's stdin/stdout/stderr and have no
+timeout by default; they run with the lab workspace as `cwd`.
 
 ## 6. Accessibility
 

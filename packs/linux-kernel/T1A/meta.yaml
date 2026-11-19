@@ -1,0 +1,21 @@
+meta:
+  book: linux-kernel
+  chapter_id: T1A
+  title: QEMU, gdb, and architecture vocabulary
+  source_ref: curriculum/linux-kernel/evidence/T1A/transcript.md; E-T1A-01..E-T1A-07
+  level: intro
+  prereqs:
+  - T0A
+objectives:
+- Contrast userspace ptrace process inspection with hypervisor GDB Remote Serial Protocol
+  (RSP) stubs, articulating how breakpoints interact with guest memory.
+- Control execution flow using break, run, next, step, and finish, inspecting stack
+  frames and local variables across function call boundaries.
+- Identify x86_64 and i386 register conventions, tracing argument registers, stack
+  pointers, and instruction pointer progression during function dispatch.
+- Deploy hardware data watchpoints to catch unanticipated memory mutations and buffer
+  corruptions at the exact guilty machine instruction.
+- Attach GDB remotely to a halted QEMU virtual machine, load kernel ELF symbol tables,
+  and halt at early boot entry points before OS services exist.
+- Discriminate between software breakpoints, hardware breakpoints, watchpoints, and
+  dynamic tracing based on execution frequency and timing sensitivity.

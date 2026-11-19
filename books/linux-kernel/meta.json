@@ -1,0 +1,104 @@
+{
+  "slug": "linux-kernel",
+  "title": "Linux Kernel: From First Contact to Architecture",
+  "authors": [
+    "Linux Kernel Curriculum Authors"
+  ],
+  "language": "en",
+  "source_file": "curriculum/linux-kernel/PLAN.md",
+  "spine_count": 13,
+  "chapters": [
+    {
+      "id": "T0A",
+      "spine_id": "chapter_0",
+      "file": "curriculum/linux-kernel/evidence/T0A/transcript.md",
+      "title": "T0a — First contact: compile, run, diagnose",
+      "chars": 3412
+    },
+    {
+      "id": "T0B",
+      "spine_id": "chapter_1",
+      "file": "curriculum/linux-kernel/evidence/T0B/transcript.md",
+      "title": "T0b — Source navigation: definitions, callers, and commits",
+      "chars": 7239
+    },
+    {
+      "id": "T1A",
+      "spine_id": "chapter_2",
+      "file": "curriculum/linux-kernel/evidence/T1A/transcript.md",
+      "title": "T1a — QEMU, gdb, and architecture vocabulary",
+      "chars": 4354
+    },
+    {
+      "id": "A1",
+      "spine_id": "chapter_3",
+      "file": "curriculum/linux-kernel/evidence/A1/transcript.md",
+      "title": "A1 — Early kernels: boot and first C",
+      "chars": 10017
+    },
+    {
+      "id": "A2",
+      "spine_id": "chapter_4",
+      "file": "curriculum/linux-kernel/evidence/A2/transcript.md",
+      "title": "A2 — Early kernels: processes and scheduling",
+      "chars": 8000
+    },
+    {
+      "id": "A3",
+      "spine_id": "chapter_5",
+      "file": "curriculum/linux-kernel/evidence/A3/transcript.md",
+      "title": "A3 — Early kernels: memory and paging",
+      "chars": 8000
+    },
+    {
+      "id": "A4",
+      "spine_id": "chapter_6",
+      "file": "curriculum/linux-kernel/evidence/A4/transcript.md",
+      "title": "A4 — Early kernels: filesystem, buffer cache, and syscalls",
+      "chars": 8000
+    },
+    {
+      "id": "A5",
+      "spine_id": "chapter_7",
+      "file": "curriculum/linux-kernel/evidence/A5/transcript.md",
+      "title": "A5 — Early kernels: build, run, and trace",
+      "chars": 8000
+    },
+    {
+      "id": "T0C",
+      "spine_id": "chapter_8",
+      "file": "curriculum/linux-kernel/evidence/T0C/transcript.md",
+      "title": "T0c — Build and patch: Kconfig, Kbuild, and modules",
+      "chars": 6000
+    },
+    {
+      "id": "T0D",
+      "spine_id": "chapter_9",
+      "file": "curriculum/linux-kernel/evidence/T0D/transcript.md",
+      "title": "T0d — Binary and type inspection: nm, readelf, objdump, size, pahole",
+      "chars": 6000
+    },
+    {
+      "id": "T0E",
+      "spine_id": "chapter_10",
+      "file": "curriculum/linux-kernel/evidence/T0E/transcript.md",
+      "title": "T0e — Static analysis: sparse, smatch, coccinelle",
+      "chars": 6000
+    },
+    {
+      "id": "T0F",
+      "spine_id": "chapter_11",
+      "file": "curriculum/linux-kernel/evidence/T0F/transcript.md",
+      "title": "T0f — Tooling capstone: symptom to verified patch",
+      "chars": 6000
+    },
+    {
+      "id": "T2",
+      "spine_id": "chapter_12",
+      "file": "curriculum/linux-kernel/evidence/T2/transcript.md",
+      "title": "T2 — strace: syscalls and boundaries",
+      "chars": 5000
+    }
+  ],
+  "warnings": []
+}

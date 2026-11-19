@@ -1,0 +1,146 @@
+{
+  "chapter": "T0B",
+  "captured_at": "2026-11-19",
+  "status": "captured",
+  "source_of_truth": "actual tool runs on local multi-file workload and pinned early-history.git",
+  "environment": "environment.json",
+  "transcript": "transcript.md",
+  "artifacts": [
+    "artifacts/workload/include/sensor_dev.h",
+    "artifacts/workload/src/sensor.c",
+    "artifacts/workload/src/bus.c",
+    "artifacts/workload/src/main.c",
+    "artifacts/workload/Makefile"
+  ],
+  "source": [],
+  "evidence": [
+    {
+      "id": "E-T0B-01",
+      "claim": "navigation toolchain versions observed in this environment (rg, git, cscope)",
+      "command": "rg --version | head -n 1 && git --version && cscope --version",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-02",
+      "claim": "ripgrep distinguishes declaration in include/, definition in src/sensor.c, and call site in main.c",
+      "command": "rg -n 'sensor_init' .",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/include/sensor_dev.h", "artifacts/workload/src/sensor.c", "artifacts/workload/src/main.c"]
+    },
+    {
+      "id": "E-T0B-03",
+      "claim": "unbounded search matches substring prefixes while word-boundary flag -w isolates exact symbol token",
+      "command": "rg -n 'poll' . ; rg -n -w 'sensor_poll' .",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-04",
+      "claim": "glob flag -g filters search space by file pattern",
+      "command": "rg -n -g '*.h' 'struct sensor_device' . ; rg -n -g 'src/*.c' 'sensor_init' .",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-05",
+      "claim": "context lines flag -C exposes surrounding function block and logic boundaries",
+      "command": "rg -n -C 2 'sanitize_sensor_id' src/sensor.c",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/src/sensor.c"]
+    },
+    {
+      "id": "E-T0B-06",
+      "claim": "macro token concatenation splits identifier names creating search traps for plain string queries",
+      "command": "rg -n 'temp_primary' . ; rg -n 'sensor_temp_primary' .",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/include/sensor_dev.h", "artifacts/workload/src/main.c"]
+    },
+    {
+      "id": "E-T0B-07",
+      "claim": "anchoring patterns with return type and function signature isolates canonical definitions",
+      "command": "rg -n '^int sensor_init\\(' .",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/src/sensor.c"]
+    },
+    {
+      "id": "E-T0B-08",
+      "claim": "caller enumeration isolates true invocation sites across subsystem modules",
+      "command": "rg -n 'sensor_poll\\(' src/",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/src/bus.c"]
+    },
+    {
+      "id": "E-T0B-09",
+      "claim": "patterns beginning with dash require -- or -e to avoid option parsing errors and distinguish struct member access",
+      "command": "rg -n -e '->id' src/ ; rg -n -e '\\.id' .",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-10",
+      "claim": "git cat-file -p HEAD reveals tree hash, parent commit link, author, and commit message",
+      "command": "git log --oneline --graph -n 5 ; git cat-file -p HEAD",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-11",
+      "claim": "git log -S pickaxe pinpoints the exact commit that introduced or deleted occurrences of a symbol",
+      "command": "git log -S 'sanitize_sensor_id' --oneline",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-12",
+      "claim": "git log -L traces the chronological source evolution and diffs of a specific function",
+      "command": "git log -L :sensor_init:src/sensor.c --oneline",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-13",
+      "claim": "git blame -n identifies line-by-line commit authorship, timestamps, and origin lines",
+      "command": "git blame -n -L 12,24 src/sensor.c",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-14",
+      "claim": "historical git archaeology on early-history.git traces kernel constants back to Linux 0.01/0.11",
+      "command": "git -C sources/early-history.git log -S 'PAGE_SIZE' --oneline 0.11",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-15",
+      "claim": "cscope -b -R builds inverted index cscope.out database for fast cross-reference queries",
+      "command": "cscope -b -R ; ls -la cscope.out",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T0B-16",
+      "claim": "static search cannot trace dynamic dispatch or runtime function pointer invocations",
+      "command": "rg -n 'read_sample' .",
+      "cwd": "evidence/T0B/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    }
+  ]
+}

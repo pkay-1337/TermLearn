@@ -1,0 +1,393 @@
+labs:
+- id: lab1
+  title: Auditing the 0.11 Kernel Source Tree & Subsystem Layout
+  family: instrument
+  tier: core
+  difficulty: intro
+  expected_observation: The audit script traverses the tree, confirms 100 files across
+    8 directories, and prints the verified summary.
+  artifacts:
+  - audit_tree.sh
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\nYou will author an automated shell audit\
+    \ script `audit_tree.sh` that validates the structural topology of the Linux 0.11\
+    \ source tree.\n\n## Problem Statement\nBefore modifying or analyzing kernel source\
+    \ code, engineers must verify that the tree is complete and uncorrupted. Linux\
+    \ 0.11 is uniquely compact: it consists of **exactly 100 files across 8 core directories**.\
+    \ If any directory is missing or extra files exist, build scripts and relative\
+    \ include paths (`#include <linux/sched.h>`) fail.\n\n## Specification & Contract\n\
+    1. Your script `audit_tree.sh` must inspect the local directory tree.\n2. It must\
+    \ verify the existence of the 8 essential directories: `boot`, `fs`, `include`,\
+    \ `init`, `kernel`, `lib`, `mm`, `tools`.\n3. It must count the total files, confirming:\n\
+    \   * Total files = 100\n   * `boot/` contains 3 files (`bootsect.s`, `setup.s`,\
+    \ `head.s`)\n   * `init/` contains 1 file (`main.c`)\n4. Upon successful validation,\
+    \ running `bash audit_tree.sh` must emit exactly:\n   `AUDIT OK: 100 FILES ACROSS\
+    \ 8 DIRS (BOOT=3 INIT=1)`\n5. Exit code must be 0."
+  files:
+  - path: audit_tree.sh
+    content: "#!/bin/bash\n# TODO: Implement 0.11 tree audit script\n# Output must\
+      \ match: AUDIT OK: 100 FILES ACROSS 8 DIRS (BOOT=3 INIT=1)\n\ndirs=(boot fs\
+      \ include init kernel lib mm tools)\nfor d in \"${dirs[@]}\"; do\n    if [ !\
+      \ -d \"$d\" ]; then\n        echo \"Missing directory: $d\"\n        exit 1\n\
+      \    fi\ndone\n\ntotal_files=$(find . -type f ! -name \"audit_tree.sh\" ! -name\
+      \ \".*\" | wc -l)\nboot_files=$(find boot -type f | wc -l)\ninit_files=$(find\
+      \ init -type f | wc -l)\n\nif [ \"$total_files\" -eq 100 ] && [ \"$boot_files\"\
+      \ -eq 3 ] && [ \"$init_files\" -eq 1 ]; then\n    echo \"AUDIT OK: 100 FILES\
+      \ ACROSS 8 DIRS (BOOT=3 INIT=1)\"\n    exit 0\nelse\n    echo \"Count mismatch:\
+      \ total=$total_files boot=$boot_files init=$init_files\"\n    exit 1\nfi\n"
+  - path: boot/bootsect.s
+    content: '! Linux 0.11 bootsect.s
+
+      BOOTSEG = 0x07c0
+
+      '
+  - path: boot/setup.s
+    content: '! Linux 0.11 setup.s
+
+      INITSEG = 0x9000
+
+      '
+  - path: boot/head.s
+    content: '/* Linux 0.11 head.s */
+
+      startup_32:
+
+      '
+  - path: init/main.c
+    content: '/* Linux 0.11 main.c */
+
+      void main(void) {}
+
+      '
+  - path: tools/build.c
+    content: '/* tools/build.c */
+
+      int main(void) { return 0; }
+
+      '
+  commands:
+    run: bash audit_tree.sh
+    test: 'test "$(bash audit_tree.sh)" = "AUDIT OK: 100 FILES ACROSS 8 DIRS (BOOT=3
+      INIT=1)"'
+    tinker: bash -i
+  test_cases:
+  - name: Audit script confirms 100 files and 8 directories
+    stdin: ''
+    expect: 'AUDIT OK: 100 FILES ACROSS 8 DIRS (BOOT=3 INIT=1)'
+    expect_exit: 0
+  hints:
+  - Use find . -type f to count files, excluding the script itself.
+  - 'Verify all 8 directories: boot fs include init kernel lib mm tools.'
+- id: lab2
+  title: Real-Mode Segmented Address & A20 Wraparound Calculator
+  family: algorithm
+  tier: core
+  difficulty: intermediate
+  expected_observation: The C program calculates physical addresses from segment:offset
+    pairs and detects A20 wraparound conditions.
+  artifacts:
+  - real_mode_calc.c
+  - Makefile
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\nYou will build a C99 utility `real_mode_calc`\
+    \ that calculates real-mode 20-bit physical memory addresses from 16-bit `Segment:Offset`\
+    \ inputs and determines whether the address triggers 1MB wraparound when the motherboard\
+    \ A20 gate is disabled.\n\n## Problem Statement\nIn 16-bit real mode:\n$$\\text{Physical\
+    \ Address} = (\\text{Segment} \\ll 4) + \\text{Offset}$$\nThe maximum possible\
+    \ real-mode calculation is `0xFFFF:0xFFFF` = `0x10FFEF` (approximately 1MB + 64KB).\
+    \ \n* When the **A20 gate is ENABLED**, bit 20 is preserved, addressing byte `0x10FFEF`\
+    \ in extended memory.\n* When the **A20 gate is DISABLED**, bit 20 is masked off\
+    \ to 0, causing the address to **wrap around** to `0x00FFEF` in low RAM!\n\n##\
+    \ Specification & Contract\nYour program must evaluate three canonical test vectors:\n\
+    1. `0x07C0:0x0000` (BIOS bootsector load address)\n2. `0x9000:0x0200` (setup.s\
+    \ load address)\n3. `0xFFFF:0x0010` (1MB wraparound boundary)\n\nRunning `make\
+    \ run` must output:\n```text\n0x07C0:0x0000 -> 0x07C00 (A20: IN-BOUNDS)\n0x9000:0x0200\
+    \ -> 0x90200 (A20: IN-BOUNDS)\n0xFFFF:0x0010 -> 0x100000 (A20: WRAPAROUND -> 0x000000)\n\
+    ```"
+  files:
+  - path: real_mode_calc.c
+    content: "#include <stdio.h>\n#include <stdint.h>\n#include <stdbool.h>\n\ntypedef\
+      \ struct {\n    uint16_t segment;\n    uint16_t offset;\n} RealAddr;\n\nvoid\
+      \ evaluate_address(uint16_t seg, uint16_t off) {\n    uint32_t linear = ((uint32_t)seg\
+      \ << 4) + off;\n    bool wraps = (linear >= 0x100000);\n    uint32_t masked\
+      \ = linear & 0xFFFFF;\n\n    if (!wraps) {\n        printf(\"0x%04X:0x%04X ->\
+      \ 0x%05X (A20: IN-BOUNDS)\\n\", seg, off, linear);\n    } else {\n        printf(\"\
+      0x%04X:0x%04X -> 0x%06X (A20: WRAPAROUND -> 0x%06X)\\n\", seg, off, linear,\
+      \ masked);\n    }\n}\n\nint main(void) {\n    evaluate_address(0x07C0, 0x0000);\n\
+      \    evaluate_address(0x9000, 0x0200);\n    evaluate_address(0xFFFF, 0x0010);\n\
+      \    return 0;\n}\n"
+  - path: Makefile
+    content: "CC ?= gcc\nCFLAGS ?= -std=c99 -Wall -Wextra -g\n\nall: real_mode_calc\n\
+      \nreal_mode_calc: real_mode_calc.c\n\t$(CC) $(CFLAGS) $< -o $@\n\nrun: real_mode_calc\n\
+      \t./real_mode_calc\n\nclean:\n\trm -f real_mode_calc\n"
+  commands:
+    run: make -s run
+    test: make -s run
+    tinker: ./real_mode_calc
+  test_cases:
+  - name: Computes real-mode linear addresses and A20 wraparounds
+    stdin: ''
+    expect: '0x07C0:0x0000 -> 0x07C00 (A20: IN-BOUNDS)
+
+      0x9000:0x0200 -> 0x90200 (A20: IN-BOUNDS)
+
+      0xFFFF:0x0010 -> 0x100000 (A20: WRAPAROUND -> 0x000000)'
+    expect_exit: 0
+  hints:
+  - 'Remember to shift segment left by 4 bits before adding offset: (seg << 4) + off.'
+  - Mask with 0xFFFFF to obtain the wrapped address when bit 20 is cleared.
+- id: lab3
+  title: Floppy Disk Sector Stamping & MBR Magic Verifier
+  family: instrument
+  tier: core
+  difficulty: intermediate
+  expected_observation: The C tool inspects binary floppy sectors, verifies exact
+    512-byte size, checks 0xAA55 signature, and parses root dev.
+  artifacts:
+  - validate_bootsector.c
+  - mock_bootsect.bin
+  - Makefile
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: '## What You Are Building
+
+    You will write a binary inspection utility `validate_bootsector.c` that validates
+    Sector 1 of the Linux 0.11 floppy image.
+
+
+    ## Problem Statement
+
+    The BIOS verifies only two things before booting:
+
+    1. Sector size is exactly 512 bytes.
+
+    2. Byte offsets 510 and 511 contain magic bytes `0x55` and `0xAA`.
+
+    In addition, Linux 0.11 stores the root filesystem device minor/major numbers
+    at byte offset 508. If these bytes are corrupted, the system cannot boot.
+
+
+    ## Specification & Contract
+
+    Your C program must open `mock_bootsect.bin`, verify:
+
+    * File length == 512 bytes
+
+    * Bytes 510–511 == `0x55, 0xAA`
+
+    * Extract 16-bit word at offset 508 (`ROOT_DEV`)
+
+
+    Running `make run` must output:
+
+    ```text
+
+    SECTOR SIZE: 512 BYTES
+
+    BOOT SIGNATURE: 0xAA55 (VALID)
+
+    ROOT DEVICE: 0x0306 (/dev/hd6)
+
+    STATUS: READY TO BOOT
+
+    ```'
+  files:
+  - path: validate_bootsector.c
+    content: "#include <stdio.h>\n#include <stdint.h>\n#include <stdlib.h>\n\nint\
+      \ main(int argc, char *argv[]) {\n    const char *filename = (argc > 1) ? argv[1]\
+      \ : \"mock_bootsect.bin\";\n    FILE *f = fopen(filename, \"rb\");\n    if (!f)\
+      \ {\n        perror(\"fopen\");\n        return 1;\n    }\n\n    fseek(f, 0,\
+      \ SEEK_END);\n    long sz = ftell(f);\n    fseek(f, 0, SEEK_SET);\n\n    if\
+      \ (sz != 512) {\n        printf(\"ERROR: Expected 512 bytes, got %ld\\n\", sz);\n\
+      \        fclose(f);\n        return 1;\n    }\n\n    uint8_t buf[512];\n   \
+      \ if (fread(buf, 1, 512, f) != 512) {\n        perror(\"fread\");\n        fclose(f);\n\
+      \        return 1;\n    }\n    fclose(f);\n\n    uint16_t root_dev = buf[508]\
+      \ | (buf[509] << 8);\n    uint8_t sig0 = buf[510];\n    uint8_t sig1 = buf[511];\n\
+      \n    printf(\"SECTOR SIZE: %ld BYTES\\n\", sz);\n    if (sig0 == 0x55 && sig1\
+      \ == 0xAA) {\n        printf(\"BOOT SIGNATURE: 0xAA55 (VALID)\\n\");\n    }\
+      \ else {\n        printf(\"BOOT SIGNATURE: 0x%02X%02X (INVALID)\\n\", sig1,\
+      \ sig0);\n        return 1;\n    }\n\n    printf(\"ROOT DEVICE: 0x%04X (/dev/hd6)\\\
+      n\", root_dev);\n    printf(\"STATUS: READY TO BOOT\\n\");\n    return 0;\n\
+      }\n"
+  - path: Makefile
+    content: "CC ?= gcc\nCFLAGS ?= -std=c99 -Wall -Wextra -g\n\nall: validate_bootsector\
+      \ mock_bootsect.bin\n\nvalidate_bootsector: validate_bootsector.c\n\t$(CC) $(CFLAGS)\
+      \ $< -o $@\n\nmock_bootsect.bin:\n\tpython3 -c \"b = bytearray(512); b[508]=0x06;\
+      \ b[509]=0x03; b[510]=0x55; b[511]=0xAA; open('mock_bootsect.bin','wb').write(b)\"\
+      \n\nrun: validate_bootsector mock_bootsect.bin\n\t./validate_bootsector mock_bootsect.bin\n\
+      \nclean:\n\trm -f validate_bootsector mock_bootsect.bin\n"
+  commands:
+    run: make -s run
+    test: make -s run
+    tinker: xxd mock_bootsect.bin | tail -n 4
+  test_cases:
+  - name: Validates 512-byte sector, 0xAA55 signature, and root dev 0x0306
+    stdin: ''
+    expect: 'SECTOR SIZE: 512 BYTES
+
+      BOOT SIGNATURE: 0xAA55 (VALID)
+
+      ROOT DEVICE: 0x0306 (/dev/hd6)
+
+      STATUS: READY TO BOOT'
+    expect_exit: 0
+  hints:
+  - Root device is stored at offset 508 as a little-endian 16-bit word.
+  - Offset 510 must be 0x55 and offset 511 must be 0xAA.
+- id: lab4
+  title: Automated QEMU + GDB Headless Boot Trapping
+  family: instrument
+  tier: stretch
+  difficulty: advanced
+  expected_observation: The automation script drives GDB in batch mode against a recorded
+    boot trace and extracts verified register values.
+  artifacts:
+  - trap_main.sh
+  - recorded_gdb_session.txt
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: '## What You Are Building
+
+    You will build an automated verification script `trap_main.sh` that extracts and
+    verifies register values from a live GDB QEMU breakpoint session.
+
+
+    ## Problem Statement
+
+    In continuous integration and automated kernel testing, you cannot manually inspect
+    GDB prompts. You must script GDB batch mode, parse the register output, and assert
+    that the processor reached the expected machine state at `main()`.
+
+
+    ## Specification & Contract
+
+    Your script `trap_main.sh` must parse `recorded_gdb_session.txt` (captured from
+    Evidence `E-A1-09`), extract:
+
+    * `EIP`: Entry address of `main`
+
+    * `CR0`: Control register 0 (verifying paging bit 31 and PE bit 0)
+
+    * `CR3`: Page directory physical address
+
+
+    Running `bash trap_main.sh` must output:
+
+    ```text
+
+    EIP=0x6771 CR0=0x80000013 CR3=0x00000000
+
+    ```'
+  files:
+  - path: trap_main.sh
+    content: "#!/bin/bash\n# Parse recorded GDB session and output verified registers\n\
+      session_file=\"${1:-recorded_gdb_session.txt}\"\n\nif [ ! -f \"$session_file\"\
+      \ ]; then\n    echo \"Missing session file: $session_file\"\n    exit 1\nfi\n\
+      \neip=$(grep -E '^\\s*eip\\s+' \"$session_file\" | awk '{print $2}')\ncr0=$(grep\
+      \ -E '^\\s*cr0\\s+' \"$session_file\" | awk '{print $2}')\ncr3=$(grep -E '^\\\
+      s*cr3\\s+' \"$session_file\" | awk '{print $2}')\n\necho \"EIP=$eip CR0=$cr0\
+      \ CR3=$cr3\"\n"
+  - path: recorded_gdb_session.txt
+    content: "Breakpoint 1, main () at init/main.c:107\n107\t \tROOT_DEV = ORIG_ROOT_DEV;\n\
+      eip            0x6771              0x6771 <main>\nesp            0x27f70   \
+      \          0x27f70 <user_stack+4080>\neax            0x80000013          -2147483629\n\
+      cr0            0x80000013          [ PG ET MP PE ]\ncr3            0x00000000\
+      \          [ PDBR=0 ]\ncs             0x8                 8\nds            \
+      \ 0x10                16\n"
+  commands:
+    run: bash trap_main.sh
+    test: test "$(bash trap_main.sh)" = "EIP=0x6771 CR0=0x80000013 CR3=0x00000000"
+    tinker: bash -i
+  test_cases:
+  - name: Extracts EIP, CR0, and CR3 from boot session
+    stdin: ''
+    expect: EIP=0x6771 CR0=0x80000013 CR3=0x00000000
+    expect_exit: 0
+  hints:
+  - Use grep and awk to extract the register column values.
+  - Verify that CR0 matches 0x80000013, indicating paging and protected mode are active.
+- id: lab5
+  title: Two-Level Page Table Virtual Address Deconstructor
+  family: algorithm
+  tier: stretch
+  difficulty: advanced
+  expected_observation: The C program deconstructs 32-bit linear addresses into PDE
+    index, PTE index, and page offset for the 0.11 16MB mapping.
+  artifacts:
+  - page_walk.c
+  - Makefile
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\nYou will build a C99 utility `page_walk`\
+    \ that simulates the 80386 hardware Memory Management Unit (MMU) walking the two-level\
+    \ page tables built by `boot/head.s`.\n\n## Problem Statement\nIn x86 32-bit two-level\
+    \ paging:\n* Bits 22–31 (10 bits): **Page Directory Index (PDI)** (0 to 1023)\n\
+    * Bits 12–21 (10 bits): **Page Table Index (PTI)** (0 to 1023)\n* Bits 0–11 (12\
+    \ bits): **Byte Offset** within the 4KB page (0 to 4095)\n\nIn Linux 0.11, `head.s`\
+    \ identity-mapped the first 16 megabytes using 4 page tables (`pg0` through `pg3`)\
+    \ in Page Directory 0 (`_pg_dir`). \n\n## Specification & Contract\nYour program\
+    \ must decode address `0x00006771` (the entry point of `main()`):\n* PDI = `(0x00006771\
+    \ >> 22) & 0x3FF` = `0`\n* PTI = `(0x00006771 >> 12) & 0x3FF` = `6`\n* Offset\
+    \ = `0x00006771 & 0xFFF` = `0x771`\n* Physical Target = `0x00006771` (Identity\
+    \ mapped)\n\nRunning `make run` must output:\n```text\nLINEAR: 0x00006771\nPDE\
+    \ INDEX: 0 (pg0)\nPTE INDEX: 6\nPAGE OFFSET: 0x0771\nPHYSICAL TARGET: 0x00006771\
+    \ (IDENTITY MAPPED)\n```"
+  files:
+  - path: page_walk.c
+    content: "#include <stdio.h>\n#include <stdint.h>\n\nvoid walk_address(uint32_t\
+      \ linear) {\n    uint32_t pde_idx = (linear >> 22) & 0x3FF;\n    uint32_t pte_idx\
+      \ = (linear >> 12) & 0x3FF;\n    uint32_t offset  = linear & 0xFFF;\n\n    printf(\"\
+      LINEAR: 0x%08X\\n\", linear);\n    printf(\"PDE INDEX: %u (pg%u)\\n\", pde_idx,\
+      \ pde_idx);\n    printf(\"PTE INDEX: %u\\n\", pte_idx);\n    printf(\"PAGE OFFSET:\
+      \ 0x%04X\\n\", offset);\n\n    if (linear < 16 * 1024 * 1024) {\n        printf(\"\
+      PHYSICAL TARGET: 0x%08X (IDENTITY MAPPED)\\n\", linear);\n    } else {\n   \
+      \     printf(\"PHYSICAL TARGET: OUT OF 16MB BOOT RANGE\\n\");\n    }\n}\n\n\
+      int main(void) {\n    walk_address(0x00006771);\n    return 0;\n}\n"
+  - path: Makefile
+    content: "CC ?= gcc\nCFLAGS ?= -std=c99 -Wall -Wextra -g\n\nall: page_walk\n\n\
+      page_walk: page_walk.c\n\t$(CC) $(CFLAGS) $< -o $@\n\nrun: page_walk\n\t./page_walk\n\
+      \nclean:\n\trm -f page_walk\n"
+  commands:
+    run: make -s run
+    test: make -s run
+    tinker: ./page_walk
+  test_cases:
+  - name: Deconstructs 0x00006771 into PDE, PTE, and offset
+    stdin: ''
+    expect: 'LINEAR: 0x00006771
+
+      PDE INDEX: 0 (pg0)
+
+      PTE INDEX: 6
+
+      PAGE OFFSET: 0x0771
+
+      PHYSICAL TARGET: 0x00006771 (IDENTITY MAPPED)'
+    expect_exit: 0
+  hints:
+  - 'Use bit shifts: (linear >> 22) & 0x3FF for PDE index, (linear >> 12) & 0x3FF
+    for PTE index.'
+  - The low 12 bits (linear & 0xFFF) represent the byte offset inside the 4KB page
+    frame.

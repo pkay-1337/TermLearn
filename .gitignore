@@ -8,4 +8,11 @@ htmlcov/
 *.bak.*
 *.bak
 labs/
+curriculum/linux-kernel/sources/
+curriculum/linux-kernel/build/
+curriculum/linux-kernel/evidence/*/artifacts/workload/app
+curriculum/linux-kernel/evidence/*/artifacts/workload/debugme
+curriculum/linux-kernel/evidence/*/artifacts/workload/cscope.*
+curriculum/linux-kernel/evidence/*/artifacts/workload/**/*.o
+curriculum/linux-kernel/evidence/*/artifacts/workload/*.o
 

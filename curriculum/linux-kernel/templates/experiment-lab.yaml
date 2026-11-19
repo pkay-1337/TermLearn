@@ -1,0 +1,69 @@
+labs:
+  - id: lab1
+    title: "Watch a packet cross loopback"
+    instruction_md: |
+      ## What you are observing
+
+      A packet sent to 127.0.0.1 leaves a socket, enters the IP output path,
+      reaches the loopback device, and is delivered back up the receive path.
+      In this lab you will capture the userspace view, then open an interactive
+      shell in the same workspace to inspect interfaces, routes, and counters.
+
+      ## Predict
+
+      Before running anything, write down:
+      - which interface the route to 127.0.0.1 uses;
+      - whether the packet appears on a physical interface;
+      - which counters change after a ping.
+
+      ## Run
+
+      Run `sh probe.sh`. It prints the loopback interface name and the route.
+
+      ## Tinker
+
+      Press `x` (TUI) or type `x` (CLI). Explore with:
+      - `ip -d link show lo`
+      - `ip route get 127.0.0.1`
+      - `ss -lntup`
+      - `ping -c 3 127.0.0.1`
+      - `ip -s link show lo`
+
+      ## Explain
+
+      1. Where does the loopback driver sit relative to `ip_output` and
+         `ip_input`?
+      2. Why does the packet not need ARP?
+      3. Which counter would change if the loopback interface were down?
+
+      ## Cleanup
+
+      Nothing to clean up. Do not change host routes.
+    files:
+      - path: "probe.sh"
+        content: |
+          #!/bin/sh
+          set -eu
+          ip -o link show lo | awk -F': ' '{print $2}'
+      - path: "check.sh"
+        content: |
+          #!/bin/sh
+          set -eu
+          name=$(ip -o link show lo | awk -F': ' '{print $2}')
+          test "$name" = "lo"
+          ip route get 127.0.0.1 | grep -q 'dev lo'
+          echo "ok"
+    commands:
+      run: "sh probe.sh"
+      test: "sh check.sh"
+      tinker: "sh"
+      timeout_s: 10
+    test_cases:
+      - name: "probe prints the loopback interface"
+        stdin: ""
+        expect: "lo\n"
+        expect_exit: 0
+    hints:
+      - "Start with `ip -d link show lo` and `ip route get 127.0.0.1`."
+      - "Compare the route output for 127.0.0.1 with a route to a real address."
+      - "Read `drivers/net/loopback.c` and find where the skb is delivered."

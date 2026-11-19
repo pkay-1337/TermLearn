@@ -243,6 +243,13 @@ OptionList:focus > .option-list--option-highlighted {
     color: $accent-cyan;
 }
 
+.lab-badges-label {
+    color: $accent-cyan;
+    text-style: bold;
+    padding: 0 1;
+    margin: 0 0 1 0;
+}
+
 .study-link-note {
     margin: 0 1;
     color: $text-muted;

@@ -81,11 +81,12 @@ It must exit with code 0 and zero errors.
 - [ ] Ask: "Could two reasonable implementations differ in observable behavior?" If yes, add the missing tie-breaker, ordering rule, or lifecycle detail to `instruction_md`.
 - [ ] Each lab has `id`, `title`, a complete `instruction_md`, non-empty safe files, `commands.run`, `commands.test`, `test_cases[].expect`, and 1–3 progressive hints.
 - [ ] Student implementation files are blank or TODO-stubbed; headers, drivers, and test runners are complete and compilable.
-- [ ] Running `commands.test` on untouched starter files fails for the intended reason.
+- [ ] On untouched starter files, both `commands.run` (TUI `r`) and `commands.test` (TUI `t`) fail for the intended reason.
+- [ ] Reset removes generated artifacts and hidden state from prior attempts, so a solved workspace returns to fail-first.
 - [ ] Commands contain no destructive operations, network access, unbounded waits, or workspace escapes.
 - [ ] Hints progress from general to specific to concrete operation.
-- [ ] A real reference solution makes `commands.run` output byte-match `test_cases[].expect`.
-- [ ] With that reference solution, the lifecycle changes from fail to pass.
+- [ ] A real reference solution makes `commands.run` output byte-match `test_cases[].expect` and `commands.test` exit 0.
+- [ ] With that reference solution, both TUI `r` and `t` change from fail to pass.
 - [ ] If the book has no executable code, labs are omitted and the reason is recorded in the audit trail.
 
 ## 7. Cards and Mastery Test

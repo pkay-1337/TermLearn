@@ -1,0 +1,380 @@
+quiz:
+- kind: mcq
+  concept: source-tree-scope
+  q: How many total files and lines of code make up the complete pristine Linux 0.11
+    operating system?
+  choices:
+  - Exactly 100 files containing approximately 13,839 lines of code across 8 directories
+  - 70,000 files containing 35 million lines of code
+  - 1,200 files containing 150,000 lines of code
+  answer: 0
+  why: 'Option A is correct: Linux 0.11 contains exactly 100 files and 13,839 lines
+    of code (Evidence E-A1-01). Option B describes modern Linux. Option C reflects
+    Linux 1.2.'
+- kind: mcq
+  concept: source-of-truth
+  q: Which repository in your curriculum workspace represents the immutable historical
+    Source of Truth for Linux 0.11?
+  choices:
+  - sources/Linux-0.11-fork containing GCC 16 build flags
+  - sources/early-history.git checked out at tag 0.11 (commit b65b60f4)
+  - The host /usr/src/linux-headers directory
+  answer: 1
+  why: 'Option B is correct: `early-history.git` at tag 0.11 contains the exact historical
+    bytes committed by Linus in 1991. Option A contains modern runnable harness modifications.
+    Option C contains host headers.'
+- kind: mcq
+  concept: custody-stage-order
+  q: Which component immediately precedes `init/main.c` in the bootstrap chain of
+    custody?
+  choices:
+  - The BIOS POST routines
+  - boot/bootsect.s
+  - boot/head.s
+  answer: 2
+  why: 'Option C is correct: `boot/head.s` constructs identity paging and issues `ret`
+    directly into `main()`. Option A starts the system. Option B is Stage 1.'
+- kind: mcq
+  concept: real-mode-reset-vector
+  q: At what physical memory address does the x86 80386 processor execute its first
+    power-on instruction?
+  choices:
+  - 0xFFFF0 (16 bytes below the 1MB boundary in BIOS ROM)
+  - 0x00000 (at the base of RAM)
+  - 0x07C00 (where the bootsector is loaded)
+  answer: 0
+  why: 'Option A is correct: At reset, CS:IP is forced to 0xF000:0xFFF0, which computes
+    to physical address 0xFFFF0 in BIOS ROM. Option B holds the interrupt vector table.
+    Option C is the floppy bootsector load address.'
+- kind: mcq
+  concept: real-mode-segment-math
+  q: In 16-bit real mode, what physical address is referenced by segment `0x9000`
+    with offset `0x0200`?
+  choices:
+  - '0x09200'
+  - '0x90200'
+  - '0x90002'
+  answer: 1
+  why: 'Option B is correct: Physical Address = (0x9000 << 4) + 0x0200 = 0x90000 +
+    0x0200 = 0x90200. Option A forgot the 4-bit left shift. Option C added 2 instead
+    of 0x0200.'
+- kind: mcq
+  concept: mbr-signature
+  q: What magic 2-byte signature must reside at byte offsets 510 and 511 of Sector
+    1 for the BIOS to boot the disk?
+  choices:
+  - 0x7F, 0x45 (ELF magic)
+  - 0x12, 0x34 (RSP port)
+  - 0x55, 0xAA (little-endian 0xAA55)
+  answer: 2
+  why: 'Option C is correct: The IBM PC standard requires bytes 0x55 at offset 510
+    and 0xAA at offset 511. Option A is ELF header bytes. Option B is a TCP port.'
+- kind: mcq
+  concept: root-dev-offset
+  q: At which byte offset in `bootsect.s` is the root filesystem device identifier
+    (`ROOT_DEV = 0x306`) stored?
+  choices:
+  - Offset 508
+  - Offset 0
+  - Offset 256
+  answer: 0
+  why: 'Option A is correct: Bytes 508–509 store `ROOT_DEV` so build tools can patch
+    the root partition without assembling source code.'
+- kind: mcq
+  concept: bootsect-relocation-reason
+  q: Why does `bootsect.s` copy itself from `0x07C00` to `0x90000`?
+  choices:
+  - Because 0x07C00 is located in read-only video display memory
+  - Because the kernel image `system` is later moved down to physical address 0x00000,
+    which would overwrite 0x07C00
+  - Because the 80386 CPU can only execute instructions above 512KB
+  answer: 1
+  why: 'Option B is correct: The incoming kernel image `system` is placed at 0x00000,
+    which extends well past 0x07C00 and would overwrite an un-relocated bootsector.'
+- kind: mcq
+  concept: rep-movw-words
+  q: In `bootsect.s`, why is register `CX` set to 256 immediately before the `rep
+    movw` instruction?
+  choices:
+  - Because bootsect contains 256 sectors
+  - Because 256 represents the maximum number of file handles in Linux
+  - Because moving 256 16-bit words copies exactly 512 bytes (one complete disk sector)
+  answer: 2
+  why: 'Option C is correct: `movw` copies 2 bytes per word. 256 words * 2 bytes =
+    512 bytes (Evidence E-A1-02).'
+- kind: mcq
+  concept: a20-gate-hardware
+  q: What happens if the motherboard A20 gate is left disabled when entering 32-bit
+    protected mode?
+  choices:
+  - The 21st address wire remains grounded, causing all odd megabytes (1MB, 3MB, 5MB...)
+    to alias/wrap to even megabytes
+  - The CPU instruction decoder refuses to decode 32-bit opcodes
+  - The monitor screen resolution drops to 320x200
+  answer: 0
+  why: 'Option A is correct: When A20 is disabled, address bit 20 is always 0. Accessing
+    0x100000 (1MB) reads 0x000000 (0MB), corrupting memory above 1MB.'
+- kind: mcq
+  concept: setup-pic-remap
+  q: Why does `setup.s` reprogram the 8259 interrupt controllers to remap hardware
+    IRQs to `0x20`–`0x2F`?
+  choices:
+  - To accelerate hardware timer tick rates from 100Hz to 1000Hz
+  - Because the default BIOS mapping (0x08-0x0F) collides with Intel 386 protected-mode
+    hardware exception vectors
+  - Because protected mode only supports 16 total interrupt vectors
+  answer: 1
+  why: 'Option B is correct: Intel reserved vectors 0x00-0x1F for CPU exceptions (e.g.
+    0x08 is Double Fault). Remapping IRQs to 0x20 avoids collisions.'
+- kind: mcq
+  concept: cr0-pe-switch
+  q: Which control register bit actively switches the x86 CPU into 32-bit Protected
+    Mode?
+  choices:
+  - Bit 31 of CR0 (PG)
+  - Bit 9 of EFLAGS (IF)
+  - Bit 0 of CR0 (PE - Protection Enable)
+  answer: 2
+  why: 'Option C is correct: Bit 0 of CR0 is the PE (Protection Enable) flag. When
+    set to 1, the CPU transitions from Real Mode to Protected Mode.'
+- kind: mcq
+  concept: jmpi-0-8-meaning
+  q: In `setup.s`, what does the instruction `jmpi 0, 8` accomplish immediately after
+    setting `CR0.PE`?
+  choices:
+  - It loads CS with GDT selector 8 (Kernel Code Segment) and jumps to offset 0 (startup_32
+    in head.s)
+  - It calls BIOS interrupt 8 to read the system clock
+  - It reboots the machine into real mode
+  answer: 0
+  why: 'Option A is correct: Selector 8 (index 1 in GDT, RPL 0) references the Kernel
+    Code Segment descriptor. Offset 0 jumps to physical address 0x00000 where head.s
+    resides.'
+- kind: mcq
+  concept: head-paging-size
+  q: How many total megabytes of physical RAM are identity-mapped by `boot/head.s`?
+  choices:
+  - 4 Megabytes
+  - 16 Megabytes (using 1 Page Directory and 4 Page Tables)
+  - 4 Gigabytes
+  answer: 1
+  why: 'Option B is correct: `head.s` creates 4 page tables (`pg0` through `pg3`).
+    Each table maps 1024 pages of 4KB = 4MB. 4 * 4MB = 16MB total (Evidence E-A1-04).'
+- kind: mcq
+  concept: head-to-main-mechanism
+  q: How does `head.s` transfer execution to `init/main.c:main()` after setting up
+    page tables?
+  choices:
+  - By executing a software interrupt `int 0x80`
+  - By calling the dynamic linker `/lib/ld-linux.so`
+  - By pushing `$_main` onto the stack and issuing `ret` at the end of `setup_paging`
+  answer: 2
+  why: 'Option C is correct: `pushl $_main` was executed before jumping to `setup_paging`.
+    When `setup_paging` finishes, `ret` pops `$_main` directly into `EIP`.'
+- kind: mcq
+  concept: cr0-pg-bit
+  q: Which bit of control register CR0 enables the hardware Memory Management Unit
+    (MMU) paging translation?
+  choices:
+  - Bit 31 (PG - Paging Enable, 0x80000000)
+  - Bit 0 (PE - Protection Enable)
+  - Bit 1 (MP - Monitor Coprocessor)
+  answer: 0
+  why: 'Option A is correct: Bit 31 of CR0 is the PG (Paging Enable) flag. When set,
+    all linear addresses are translated through page tables pointed to by CR3.'
+- kind: mcq
+  concept: early-c-inline-asm
+  q: Why is GCC inline assembly (`__asm__`) used extensively in `include/asm/io.h`
+    and `init/main.c`?
+  choices:
+  - To bypass GCC optimization bugs
+  - Because C has no native language keywords for hardware port I/O (`inb`/`outb`),
+    control registers, or CPU interrupt flags
+  - Because assembly code uses less disk space than C
+  answer: 1
+  why: 'Option B is correct: Standard C cannot communicate with hardware buses or
+    special CPU registers directly; inline assembly provides the bridge.'
+- kind: mcq
+  concept: asm-volatile-necessity
+  q: Why must hardware I/O macros like `inb(port)` include the `volatile` keyword
+    in their `__asm__` declaration?
+  choices:
+  - To enable 16-bit real mode memory calculations
+  - To force GCC to link against external libraries
+  - To prevent the compiler optimizer from caching port reads or eliminating repeated
+    hardware reads in spinloops
+  answer: 2
+  why: 'Option C is correct: Hardware register states change externally. Without `volatile`,
+    GCC assumes pure functional semantics and optimizes repeated reads into a single
+    read.'
+- kind: mcq
+  concept: physical-memory-cap
+  q: In `init/main.c`, what is the maximum physical memory ceiling supported by Linux
+    0.11?
+  choices:
+  - 16 Megabytes (hard-capped because head.s only mapped 16MB)
+  - 4 Gigabytes
+  - 640 Kilobytes
+  answer: 0
+  why: 'Option A is correct: Line 114 of `main.c` checks `if (memory_end > 16*1024*1024)
+    memory_end = 16*1024*1024;` because only 4 page tables (16MB) were configured
+    in `head.s`.'
+- kind: mcq
+  concept: buffer-cache-size
+  q: On a virtual machine configured with 16MB of RAM, what is the size of the buffer
+    cache pool in Linux 0.11?
+  choices:
+  - 1 Megabyte
+  - 4 Megabytes (buffer_memory_end = 4MB, main memory starts at 4MB)
+  - 12 Megabytes
+  answer: 1
+  why: 'Option B is correct: `main.c` checks `if (memory_end > 12*1024*1024) buffer_memory_end
+    = 4*1024*1024;`. User main memory occupies 4MB to 16MB (12MB total).'
+- kind: mcq
+  concept: hardware-memory-hole
+  q: Why does Linux 0.11 not allocate general-purpose user memory in the range `0x000A0000`
+    to `0x000FFFFF`?
+  choices:
+  - Because that range contains Linux kernel thread stacks
+  - Because RAM in that range is reserved for floppy disk sector staging
+  - Because that range is the IBM PC hardware hole containing video RAM (VGA) and
+    motherboard BIOS ROM
+  answer: 2
+  why: 'Option C is correct: 0xA0000 to 0xFFFFF is mapped to physical adapter hardware
+    (VGA text buffer at 0xB8000, BIOS ROM at 0xF0000).'
+- kind: mcq
+  concept: tools-build-purpose
+  q: What is the primary role of `tools/build.c` in the Linux 0.11 build system?
+  choices:
+  - It stitches raw bootsect, setup, and stripped system binaries into a contiguous
+    floppy disk image (`Image`) and sets MBR bytes
+  - It compiles C code into assembly files
+  - It generates DWARF debugging symbols for GDB
+  answer: 0
+  why: 'Option A is correct: `tools/build.c` was Linus''s custom tool to combine 16-bit
+    boot sectors and 32-bit kernel binaries into a bootable sector-aligned floppy
+    image.'
+- kind: mcq
+  concept: qemu-freeze-flag
+  q: Which QEMU command-line flag freezes the virtual CPU at power-on reset, waiting
+    for GDB to connect before executing instructions?
+  choices:
+  - '`-s` (which starts the GDB server)'
+  - '`-S` (which freezes CPU execution at reset)'
+  - '`-m 16M`'
+  answer: 1
+  why: 'Option B is correct: `-S` halts the CPU at reset until GDB attaches and issues
+    `continue`.'
+- kind: mcq
+  concept: main-trapped-address
+  q: In Evidence E-A1-09, what is the instruction pointer (`EIP`) value when GDB halts
+    at the entry of `main()`?
+  choices:
+  - '0x00000000'
+  - '0x00090000'
+  - '0x00006771'
+  answer: 2
+  why: 'Option C is correct: GDB output in Evidence E-A1-09 confirms `eip = 0x6771
+    <main>` at `init/main.c:107`.'
+- kind: mcq
+  concept: cr0-verified-value
+  q: In Evidence E-A1-09, register EAX holds `0x80000013` at the entry of `main()`.
+    What does this prove about CPU state?
+  choices:
+  - Both 32-bit Protected Mode (bit 0 PE=1) and Virtual Memory Paging (bit 31 PG=1)
+    are active
+  - The CPU is operating in 16-bit real mode
+  - Hardware interrupts are currently enabled
+  answer: 0
+  why: 'Option A is correct: 0x80000013 has bit 31 (PG=1) and bit 0 (PE=1) set, verifying
+    protected mode and paging are both live.'
+- kind: mcq
+  concept: esp-at-main
+  q: What data structure does `ESP = 0x00027f70` point to when execution lands in
+    `main()`?
+  choices:
+  - The top of the real-mode BIOS stack at 0x0400
+  - The top of the `user_stack` array allocated in `kernel/sched.c`
+  - The Page Directory at physical address 0x0
+  answer: 1
+  why: 'Option B is correct: `head.s` initialized `ESP` with `_stack_start`, pointing
+    to `user_stack+4080` in `sched.c` (Evidence E-A1-09).'
+- kind: mcq
+  concept: cs-selector-at-main
+  q: What is the value of the Code Segment selector (`CS`) at the entry of `main()`
+    in Linux 0.11?
+  choices:
+  - 0x10 (Kernel Data Segment)
+  - 0x00 (NULL Selector)
+  - 0x08 (Kernel Code Segment, GDT index 1, RPL 0)
+  answer: 2
+  why: 'Option C is correct: `CS = 0x0008` (index 1 in GDT, RPL 0) grants Ring 0 code
+    execution across 4GB flat memory.'
+- kind: mcq
+  concept: interrupts-at-main-start
+  q: Are hardware interrupts enabled or disabled when execution first enters `init/main.c:main()`?
+  choices:
+  - Strictly disabled (IF=0 in EFLAGS); interrupts are not enabled until `sti()` on
+    line 136
+  - Enabled immediately by the hardware timer
+  - Handled in userspace by task 1
+  answer: 0
+  why: 'Option A is correct: Linus explicitly documents that interrupts remain disabled
+    until all driver, trap, and scheduler tables are populated (line 136 `sti()`).'
+- kind: mcq
+  concept: gcc-implicit-int-error
+  q: Why does compiling unmodified 1991 C code under modern GCC 16 produce `-Wimplicit-int`
+    errors?
+  choices:
+  - Because modern CPUs do not have 32-bit registers
+  - Because modern C standards (C99/C23) ban omitting the return type of functions
+    like `main()`, which K&R C permitted
+  - Because Linux 0.11 was written in Pascal
+  answer: 1
+  why: 'Option B is correct: 1991 C permitted `main(void)` without explicit `int`.
+    Modern compilers treat implicit int as a fatal error (Evidence E-A1-06).'
+- kind: mcq
+  concept: cflags-gnu89-solution
+  q: Which compiler flag resolves implicit int and legacy prototype errors when building
+    the runnable 0.11 harness with GCC 16?
+  choices:
+  - '`-std=c23`'
+  - '`-Wall`'
+  - '`-std=gnu89`'
+  answer: 2
+  why: 'Option C is correct: `-std=gnu89` instructs GCC to accept 1989 ANSI C syntax
+    with GNU extensions, successfully compiling historical idioms (Evidence E-A1-07).'
+- kind: mcq
+  concept: user-mode-transition
+  q: In `init/main.c`, which macro lowers CPU privilege from Ring 0 to Ring 3 (userspace)?
+  choices:
+  - '`move_to_user_mode()`'
+  - '`sti()`'
+  - '`sched_init()`'
+  answer: 0
+  why: 'Option A is correct: `move_to_user_mode()` constructs a simulated interrupt
+    return (`iret`) stack frame to reload CS/SS with Ring 3 selectors.'
+- kind: mcq
+  concept: task0-fate
+  q: After forking Process 1 (`init`) in `main()`, what does the original kernel thread
+    (Task 0) do?
+  choices:
+  - It exits and unloads from RAM
+  - It executes an infinite idle loop `for(;;) pause();`, running whenever no user
+    processes are runnable
+  - It reboots the computer back to the BIOS
+  answer: 1
+  why: 'Option B is correct: Task 0 becomes the kernel idle task, running `for(;;)
+    pause();` at every idle moment (Evidence E-A1-05).'
+- kind: mcq
+  concept: pdi-pti-bits
+  q: In x86 32-bit paging, how many bits of a linear address are used for the Page
+    Directory Index and Page Table Index respectively?
+  choices:
+  - 16 bits and 16 bits
+  - 8 bits and 24 bits
+  - 10 bits (PDI) and 10 bits (PTI), leaving 12 bits for the 4KB page offset
+  answer: 2
+  why: 'Option C is correct: 10 bits ($2^{10} = 1024$ entries) for PDE, 10 bits for
+    PTE, and 12 bits ($2^{12} = 4096$ bytes) for page offset ($10 + 10 + 12 = 32$
+    bits).'

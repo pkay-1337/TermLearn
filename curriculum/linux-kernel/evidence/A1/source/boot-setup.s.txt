@@ -1,0 +1,188 @@
+source: 0.11:boot/setup.s
+sha256: 1856453ce77a05f1008dc6e4e918920da8941dc614eaacafad13f553a399d4ab
+commands:
+  git show 0.11:boot/setup.s | nl -ba | sed -n '1,80p'
+  git show 0.11:boot/setup.s | nl -ba | sed -n '100,200p'
+
+     1	!
+     2	!	setup.s		(C) 1991 Linus Torvalds
+     3	!
+     4	! setup.s is responsible for getting the system data from the BIOS,
+     5	! and putting them into the appropriate places in system memory.
+     6	! both setup.s and system has been loaded by the bootblock.
+     7	!
+     8	! This code asks the bios for memory/disk/other parameters, and
+     9	! puts them in a "safe" place: 0x90000-0x901FF, ie where the
+    10	! boot-block used to be. It is then up to the protected mode
+    11	! system to read them from there before the area is overwritten
+    12	! for buffer-blocks.
+    13	!
+    14	
+    15	! NOTE! These had better be the same as in bootsect.s!
+    16	
+    17	INITSEG  = 0x9000	! we move boot here - out of the way
+    18	SYSSEG   = 0x1000	! system loaded at 0x10000 (65536).
+    19	SETUPSEG = 0x9020	! this is the current segment
+    20	
+    21	.globl begtext, begdata, begbss, endtext, enddata, endbss
+    22	.text
+    23	begtext:
+    24	.data
+    25	begdata:
+    26	.bss
+    27	begbss:
+    28	.text
+    29	
+    30	entry start
+    31	start:
+    32	
+    33	! ok, the read went well so we get current cursor position and save it for
+    34	! posterity.
+    35	
+    36		mov	ax,#INITSEG	! this is done in bootsect already, but...
+    37		mov	ds,ax
+    38		mov	ah,#0x03	! read cursor pos
+    39		xor	bh,bh
+    40		int	0x10		! save it in known place, con_init fetches
+    41		mov	[0],dx		! it from 0x90000.
+    42	
+    43	! Get memory size (extended mem, kB)
+    44	
+    45		mov	ah,#0x88
+    46		int	0x15
+    47		mov	[2],ax
+    48	
+    49	! Get video-card data:
+    50	
+    51		mov	ah,#0x0f
+    52		int	0x10
+    53		mov	[4],bx		! bh = display page
+    54		mov	[6],ax		! al = video mode, ah = window width
+    55	
+    56	! check for EGA/VGA and some config parameters
+    57	
+    58		mov	ah,#0x12
+    59		mov	bl,#0x10
+    60		int	0x10
+    61		mov	[8],ax
+    62		mov	[10],bx
+    63		mov	[12],cx
+    64	
+    65	! Get hd0 data
+    66	
+    67		mov	ax,#0x0000
+    68		mov	ds,ax
+    69		lds	si,[4*0x41]
+    70		mov	ax,#INITSEG
+    71		mov	es,ax
+    72		mov	di,#0x0080
+    73		mov	cx,#0x10
+    74		rep
+    75		movsb
+    76	
+    77	! Get hd1 data
+    78	
+    79		mov	ax,#0x0000
+    80		mov	ds,ax
+
+   100		mov	di,#0x0090
+   101		mov	cx,#0x10
+   102		mov	ax,#0x00
+   103		rep
+   104		stosb
+   105	is_disk1:
+   106	
+   107	! now we want to move to protected mode ...
+   108	
+   109		cli			! no interrupts allowed !
+   110	
+   111	! first we move the system to it's rightful place
+   112	
+   113		mov	ax,#0x0000
+   114		cld			! 'direction'=0, movs moves forward
+   115	do_move:
+   116		mov	es,ax		! destination segment
+   117		add	ax,#0x1000
+   118		cmp	ax,#0x9000
+   119		jz	end_move
+   120		mov	ds,ax		! source segment
+   121		sub	di,di
+   122		sub	si,si
+   123		mov 	cx,#0x8000
+   124		rep
+   125		movsw
+   126		jmp	do_move
+   127	
+   128	! then we load the segment descriptors
+   129	
+   130	end_move:
+   131		mov	ax,#SETUPSEG	! right, forgot this at first. didn't work :-)
+   132		mov	ds,ax
+   133		lidt	idt_48		! load idt with 0,0
+   134		lgdt	gdt_48		! load gdt with whatever appropriate
+   135	
+   136	! that was painless, now we enable A20
+   137	
+   138		call	empty_8042
+   139		mov	al,#0xD1		! command write
+   140		out	#0x64,al
+   141		call	empty_8042
+   142		mov	al,#0xDF		! A20 on
+   143		out	#0x60,al
+   144		call	empty_8042
+   145	
+   146	! well, that went ok, I hope. Now we have to reprogram the interrupts :-(
+   147	! we put them right after the intel-reserved hardware interrupts, at
+   148	! int 0x20-0x2F. There they won't mess up anything. Sadly IBM really
+   149	! messed this up with the original PC, and they haven't been able to
+   150	! rectify it afterwards. Thus the bios puts interrupts at 0x08-0x0f,
+   151	! which is used for the internal hardware interrupts as well. We just
+   152	! have to reprogram the 8259's, and it isn't fun.
+   153	
+   154		mov	al,#0x11		! initialization sequence
+   155		out	#0x20,al		! send it to 8259A-1
+   156		.word	0x00eb,0x00eb		! jmp $+2, jmp $+2
+   157		out	#0xA0,al		! and to 8259A-2
+   158		.word	0x00eb,0x00eb
+   159		mov	al,#0x20		! start of hardware int's (0x20)
+   160		out	#0x21,al
+   161		.word	0x00eb,0x00eb
+   162		mov	al,#0x28		! start of hardware int's 2 (0x28)
+   163		out	#0xA1,al
+   164		.word	0x00eb,0x00eb
+   165		mov	al,#0x04		! 8259-1 is master
+   166		out	#0x21,al
+   167		.word	0x00eb,0x00eb
+   168		mov	al,#0x02		! 8259-2 is slave
+   169		out	#0xA1,al
+   170		.word	0x00eb,0x00eb
+   171		mov	al,#0x01		! 8086 mode for both
+   172		out	#0x21,al
+   173		.word	0x00eb,0x00eb
+   174		out	#0xA1,al
+   175		.word	0x00eb,0x00eb
+   176		mov	al,#0xFF		! mask off all interrupts for now
+   177		out	#0x21,al
+   178		.word	0x00eb,0x00eb
+   179		out	#0xA1,al
+   180	
+   181	! well, that certainly wasn't fun :-(. Hopefully it works, and we don't
+   182	! need no steenking BIOS anyway (except for the initial loading :-).
+   183	! The BIOS-routine wants lots of unnecessary data, and it's less
+   184	! "interesting" anyway. This is how REAL programmers do it.
+   185	!
+   186	! Well, now's the time to actually move into protected mode. To make
+   187	! things as simple as possible, we do no register set-up or anything,
+   188	! we let the gnu-compiled 32-bit programs do that. We just jump to
+   189	! absolute address 0x00000, in 32-bit protected mode.
+   190	
+   191		mov	ax,#0x0001	! protected mode (PE) bit
+   192		lmsw	ax		! This is it!
+   193		jmpi	0,8		! jmp offset 0 of segment 8 (cs)
+   194	
+   195	! This routine checks that the keyboard command queue is empty
+   196	! No timeout is used - if this hangs there is something wrong with
+   197	! the machine, and we probably couldn't proceed anyway.
+   198	empty_8042:
+   199		.word	0x00eb,0x00eb
+   200		in	al,#0x64	! 8042 status port

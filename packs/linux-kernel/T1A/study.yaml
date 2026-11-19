@@ -1,0 +1,2404 @@
+blocks:
+- id: b1
+  title: 'Debugger Execution Model: ptrace vs Remote Serial Protocol Stub'
+  type: model
+  explain_md: "### 1. Frame the Problem\nWhen you run a userspace program under GDB\
+    \ and type `break main; run`, how does the debugger freeze a running thread at\
+    \ a specific instruction without hardware support? In a normal Linux environment,\
+    \ GDB relies on operating system mediation: the kernel exposes the `ptrace(2)`\
+    \ system call (`PTRACE_ATTACH`, `PTRACE_CONT`, `PTRACE_PEEKTEXT`). The OS kernel\
+    \ handles the trap, suspends the thread, and delivers a `SIGTRAP` signal to GDB.\n\
+    \nNow picture the challenge of debugging an operating system kernel itself. When\
+    \ you boot Linux, who acts as the host kernel? Nobody. The kernel *is* the operating\
+    \ system; there is no supervisor OS to invoke `ptrace`. If the kernel crashes\
+    \ or loops, there is no signal handler to catch it.\n\n### 2. The Notional Machine\n\
+    To debug bare-metal or virtualized operating systems, the boundary shifts from\
+    \ OS system calls to hypervisor emulation:\n\n1. **Userspace Model (`ptrace`)**:\n\
+    \   - GDB runs alongside your application as a peer process.\n   - GDB asks the\
+    \ host Linux kernel to attach via `ptrace`.\n   - The kernel intercepts process\
+    \ execution and reflects control back to GDB via signals.\n\n2. **Hypervisor /\
+    \ Kernel Model (QEMU Remote Serial Protocol Stub)**:\n   - QEMU acts as the virtual\
+    \ silicon (CPU, RAM, motherboards, bus controllers).\n   - QEMU embeds a dedicated\
+    \ GDB stub listening on a TCP socket (by default, port `1234`).\n   - The debugger\
+    \ connects over TCP using the GDB Remote Serial Protocol (RSP), exchanging ASCII\
+    \ packet streams (such as `$m<addr>,<len>#checksum` to read memory or `$vCont;c#checksum`\
+    \ to continue).\n   - QEMU pauses its internal virtual CPU (vCPU) execution loop\
+    \ directly without any guest OS cooperation.\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at the empirical contrast between the userspace workload in Evidence `E-T1A-03`\
+    \ and the QEMU kernel run in Evidence `E-T1A-07`:\n\nIn userspace (`E-T1A-03`):\n\
+    ```text\n$ gdb -q -batch -ex \"break socket_probe\" -ex \"run\" ./debugme\nBreakpoint\
+    \ 1, socket_probe (fd=7) at debugme.c:5\n...\n[Inferior 1 (process 151076) exited\
+    \ normally]\n```\nNotice `[Inferior 1 (process 151076)]`: GDB directly tracked\
+    \ a host process ID created via `fork` and monitored via `ptrace`.\n\nNow look\
+    \ at the remote kernel session (`E-T1A-07`):\n```text\n$ qemu-system-i386 -m 16M\
+    \ -boot a -fda Image -hda hdc-0.11.img -s -S -display none &\n$ gdb -q -batch\
+    \ -ex \"file tools/system\" -ex \"target remote :1234\" -ex \"break main\" -ex\
+    \ \"continue\"\nBreakpoint 1 at 0x6771: file init/main.c, line 107.\n[Inferior\
+    \ 1 (process 1) detached]\n```\nHere, GDB did not spawn a process with `run`.\
+    \ It connected across a TCP socket to `:1234`. The inferior was the remote vCPU\
+    \ inside QEMU.\n\n### 4. The Failure Mode & Boundary\nBecause GDB in remote mode\
+    \ is talking to an external emulator rather than managing a local process, issuing\
+    \ `run` inside GDB will fail:\n```text\n(gdb) run\nThe \"remote\" target does\
+    \ not support \"run\". Try \"help target\" or \"continue\".\n```\nFurthermore,\
+    \ if QEMU has not been started with `-s` or is blocked, GDB fails instantly with:\n\
+    ```text\n:1234: Connection refused.\n```\n\n### 5. The Compressed Mental Axiom\n\
+    *Userspace GDB borrows the kernel's ptrace eye; remote kernel GDB talks to the\
+    \ hypervisor's wire protocol over TCP.*"
+  diagram:
+    kind: flow
+    caption: 'Debugger Architecture: Userspace ptrace vs Hypervisor RSP Stub'
+    nodes:
+    - id: gdb_user
+      label: GDB (Userspace)
+      shape: box
+    - id: kernel
+      label: Host Linux Kernel (ptrace)
+      shape: decision
+    - id: proc
+      label: Inferior Process (PID 151076)
+      shape: box
+    - id: gdb_rem
+      label: GDB (Remote Host)
+      shape: box
+    - id: tcp
+      label: TCP Socket (:1234)
+      shape: io
+    - id: qemu
+      label: QEMU Virtual Machine (vCPU)
+      shape: box
+    edges:
+    - from: gdb_user
+      to: kernel
+      label: ptrace syscall
+    - from: kernel
+      to: proc
+      label: SIGTRAP / freeze
+    - from: gdb_rem
+      to: tcp
+      label: RSP packet stream
+    - from: tcp
+      to: qemu
+      label: pause vCPU execution
+    steps:
+    - focus:
+      - gdb_user
+      - kernel
+      - proc
+      note: 'Userspace: kernel traps inferior and sends signal to GDB'
+    - focus:
+      - gdb_rem
+      - tcp
+      - qemu
+      note: 'Kernel: QEMU hypervisor pauses vCPU over TCP Remote Serial Protocol'
+  viz:
+    kind: ascii-memory
+    caption: Remote Serial Protocol Packet Handoff
+    steps:
+    - '[Step 1: GDB Transmits RSP Query Over TCP] · Regs: gdb_socket=fd 3, port=1234
+      · State: TCP Buffer Out: $qSupported:multiprocess+;swbreak+;hwbreak+#df | QEMU
+      Stub State: Listening on 0.0.0.0:1234 · (GDB opens connection and probes hypervisor
+      stub capabilities)'
+    - '[Step 2: QEMU Replies and Freezes Virtual CPU] · Regs: vcpu_state=HALTED, eip=0xfff0
+      · State: TCP Buffer In: $PacketSize=1000;hwbreak+;qXfer:features:read+#d0 |
+      Guest vCPU: Paused at power-on reset vector 0x0000fff0 · (QEMU acknowledges
+      packet and maintains vCPU execution freeze)'
+  example:
+    lang: text
+    code: '# Connecting GDB to QEMU''s Remote Serial Protocol stub over TCP
+
+      $ gdb -q -ex "file tools/system" -ex "target remote :1234"
+
+      Remote debugging using :1234
+
+      0x0000fff0 in do_execve () at exec.c:199
+
+      (gdb) info registers eip
+
+      eip            0xfff0              0xfff0 <startup_32+65520>'
+    explain_md: GDB connects over TCP port 1234 to QEMU without starting a local process.
+      It queries initial register state directly from the virtual CPU reset vector.
+  checks:
+  - kind: choose-better
+    concept: debugger-execution-boundary
+    q: What fundamental architectural mechanism allows GDB to freeze and inspect an
+      operating system kernel running inside QEMU?
+    choices:
+    - QEMU implements an embedded GDB Remote Serial Protocol (RSP) stub over a TCP
+      socket
+    - The guest operating system executes host Linux ptrace system calls during early
+      boot
+    - GDB compiles kernel C source files into native host shared libraries on the
+      fly
+    answer: 0
+    why: 'Option A is correct: QEMU acts as the virtual hardware emulator and implements
+      an RSP stub on TCP port 1234 that freezes the virtual CPU loop. Option B is
+      incorrect because the guest kernel runs on bare virtual hardware and has no
+      host ptrace mechanism. Option C is incorrect because GDB does not recompile
+      source files into host libraries.'
+  - kind: why-fails
+    concept: remote-target-run-error
+    q: 'After connecting GDB to QEMU via `target remote :1234`, you type `run` and
+      GDB outputs:
+
+      `The "remote" target does not support "run". Try "help target" or "continue".`
+
+      Why does this command fail?'
+    choices:
+    - The unstripped kernel image was compiled with optimization flags that block
+      the run command
+    - Remote targets are already running or paused; execution must be resumed using
+      continue
+    - The host Linux kernel requires elevated root privileges before permitting the
+      run command
+    answer: 1
+    why: 'Option B is correct: in remote debugging, QEMU is already managing the execution
+      state, so GDB cannot spawn or create a new process; it must resume execution
+      with `continue`. Option A is incorrect because compiler optimization has no
+      bearing on remote target commands. Option C is incorrect because root permissions
+      do not change GDB''s remote target semantics.'
+  - kind: predict
+    concept: remote-connection-refusal
+    q: You run `gdb -q -ex "target remote :1234"` on a machine where QEMU has not
+      been launched. What error message does GDB display?
+    choices:
+    - 'Kernel panic: unable to mount root filesystem on unknown block.'
+    - Program received signal SIGSEGV, Segmentation fault.
+    - ':1234: Connection refused.'
+    answer: 2
+    why: 'Option C is correct: GDB attempts a standard TCP connection to localhost:1234,
+      which fails immediately with Connection refused when no process is listening.
+      Option B is incorrect because connection failure does not trigger a segmentation
+      fault in GDB. Option A is incorrect because the guest kernel has not even been
+      booted.'
+  - kind: choose-better
+    concept: evaluating-debugger-channels
+    q: You need to debug an operating system bootloader before it has configured memory
+      paging or interrupt handlers. Which debugging approach succeeds without requiring
+      guest operating system services?
+    choices:
+    - Attach GDB to the hypervisor's remote RSP stub over TCP
+    - Invoke ptrace(PTRACE_ATTACH) from a background userspace monitor
+    - Insert printf statements directed to standard output inside bootsect.s
+    answer: 0
+    why: 'Option A is correct: hypervisor RSP debugging operates outside the virtual
+      machine, inspecting hardware registers and RAM independently of guest OS state.
+      Option B is incorrect because ptrace requires a running host kernel and task
+      structures which do not exist inside bare guest silicon. Option C is incorrect
+      because printf requires standard C runtime library infrastructure not present
+      in raw bootloader sectors.'
+  - kind: fillblank
+    concept: remote-protocol-acronym
+    q: GDB communicates with QEMU's embedded stub over TCP using ASCII packets defined
+      by the GDB ________ Serial Protocol.
+    code: GDB <token> Serial Protocol (RSP)
+    answer_text: Remote
+    why: The protocol is officially named the GDB Remote Serial Protocol (RSP). It
+      is an ASCII-based request-response wire protocol originally designed for serial
+      lines and now used over TCP.
+  - kind: order
+    concept: remote-kernel-attach-sequence
+    q: Order the 4 steps required to connect GDB to a halted QEMU kernel session;
+      all displayed lines are used.
+    lines:
+    - Launch QEMU with -s -S flags to start the GDB stub and freeze the vCPU
+    - Start GDB loading the unstripped kernel ELF binary symbols with file
+    - Connect GDB to the hypervisor stub using target remote :1234
+    - Resume guest execution towards the target breakpoint using continue
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: First, QEMU must be running and listening with `-s -S`. Second, GDB loads
+      local symbols with `file`. Third, GDB connects over the network socket with
+      `target remote :1234`. Fourth, GDB commands the remote CPU to resume execution
+      with `continue`.
+- id: b2
+  title: 'GDB Fundamental Controls: Breakpoints, Inspection, and Registers'
+  type: syntax
+  explain_md: "### 1. Frame the Problem\nNavigating a systems program without breakpoints\
+    \ is like driving in the dark: you launch the binary, it runs to completion or\
+    \ crashes, and you are left guessing what happened. To diagnose problems, you\
+    \ need fine-grained controls to pause execution, inspect variable values in multiple\
+    \ formats, and examine the CPU's physical registers.\n\n### 2. The Notional Machine\n\
+    GDB interacts with machine state through three primary operational axes:\n\n1.\
+    \ **Breakpoints (`break` / `b`)**:\n   - Sets an execution trap at a symbol name\
+    \ (`break socket_probe`) or source coordinate (`break debugme.c:12`).\n   - Resolves\
+    \ the symbolic function name to a 64-bit or 32-bit instruction address using the\
+    \ ELF `.debug_info` DWARF table.\n   - When the CPU's instruction pointer matches\
+    \ this address, execution suspends before the instruction executes.\n\n2. **Variable\
+    \ & Expression Inspection (`print` / `p`)**:\n   - `print expr`: Evaluates the\
+    \ expression in the current scope and prints it in natural format.\n   - Format\
+    \ specifiers:\n     - `print /x expr`: Hexadecimal format (essential for memory\
+    \ addresses, masks, and bitflags).\n     - `print /d expr`: Signed decimal.\n\
+    \     - `print /t expr`: Binary format (inspecting individual bitfields).\n\n\
+    3. **Silicon Register Inspection (`info registers`)**:\n   - Dumps the exact machine\
+    \ register file of the active CPU:\n     - x86_64: `rax`, `rbx`, `rcx`, `rdx`,\
+    \ `rsi`, `rdi`, `rbp`, `rsp`, `r8`-`r15`, `rip`.\n     - i386: `eax`, `ebx`, `ecx`,\
+    \ `edx`, `esi`, `edi`, `ebp`, `esp`, `eip`.\n   - Disassembling machine instructions:\
+    \ `x/Ni $rip` examines $N$ machine instructions starting at the instruction pointer.\n\
+    \n### 3. Source-Grounded Walkthrough\nLook at the session in Evidence `E-T1A-03`:\n\
+    ```text\n$ gdb -q -batch -ex \"break socket_probe\" -ex \"run\" -ex \"print fd\"\
+    \ -ex \"info registers\" ./debugme\nBreakpoint 1 at 0x1144: file debugme.c, line\
+    \ 5.\nBreakpoint 1, socket_probe (fd=7) at debugme.c:5\n5\t    int doubled = fd\
+    \ * 2;\n$1 = 7\n```\nNotice what happened:\n1. `break socket_probe` resolved the\
+    \ symbol to address `0x1144`.\n2. `run` initiated execution; GDB trapped at entry\
+    \ to `socket_probe`.\n3. `print fd` reported `$1 = 7`.\n4. The instruction pointer\
+    \ (`rip` or `eip`) was parked right on line 5 *before* `doubled` was computed.\n\
+    \n### 4. The Failure Mode & Boundary\nIf a binary was built without debug symbols\
+    \ (missing `-g`) or stripped with `strip`, GDB will fail to map addresses to C\
+    \ source lines:\n```text\n(gdb) break socket_probe\nFunction \"socket_probe\"\
+    \ not defined.\nMake breakpoint pending on future shared library load? (y or [n])\n\
+    ```\nWithout `.debug_info`, GDB cannot read local variable names (`No symbol \"\
+    fd\" in current context.`), forcing you to inspect raw registers instead.\n\n\
+    ### 5. The Compressed Mental Axiom\n*Break sets the trap, run starts the race,\
+    \ and info registers freeze-frames the silicon.*"
+  diagram:
+    kind: flow
+    caption: GDB Breakpoint Resolution and State Inspection Cycle
+    nodes:
+    - id: src
+      label: break socket_probe
+      shape: round
+    - id: dwarf
+      label: DWARF Symbol Table (.debug_info)
+      shape: box
+    - id: addr
+      label: Address 0x1144 (Text Offset)
+      shape: box
+    - id: run
+      label: run / continue
+      shape: box
+    - id: trap
+      label: 'Trap Hit: CPU Suspended'
+      shape: decision
+    - id: inspect
+      label: print /x & info registers
+      shape: io
+    edges:
+    - from: src
+      to: dwarf
+      label: lookup symbol
+    - from: dwarf
+      to: addr
+      label: resolves offset
+    - from: addr
+      to: run
+      label: sets trap
+    - from: run
+      to: trap
+      label: execution reaches PC
+    - from: trap
+      to: inspect
+      label: query CPU registers
+    steps:
+    - focus:
+      - src
+      - dwarf
+      - addr
+      note: Breakpoint maps C symbol to concrete virtual address
+    - focus:
+      - addr
+      - run
+      - trap
+      note: Execution halts as soon as program counter reaches trap address
+    - focus:
+      - trap
+      - inspect
+      note: Developer inspects live registers and memory state
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nint main(void)\n{\n    int counter = 0x42;\n    printf(\"\
+      counter=%d\\n\", counter);\n    return 0;\n}"
+    run_expected: 'counter=66
+
+      '
+    explain_md: A standalone C application containing an initialized variable that
+      can be observed in hexadecimal format with print /x counter under GDB.
+  checks:
+  - kind: choose-better
+    concept: gdb-format-specifiers
+    q: You are debugging a driver and need to inspect an integer variable `flags`
+      as a raw hexadecimal value in GDB. Which command achieves this?
+    choices:
+    - format hex flags
+    - print /x flags
+    - dump memory flags
+    answer: 1
+    why: 'Option B is correct: `print /x` formats the expression in hexadecimal. Option
+      A is incorrect because `format` is not a valid GDB inspection command. Option
+      C is incorrect because `dump memory` is used to dump memory ranges to a file,
+      not format variables to the terminal.'
+  - kind: why-fails
+    concept: stripped-binary-symbol-failure
+    q: 'You launch GDB against a production binary and execute `break socket_probe`.
+      GDB responds with:
+
+      `Function "socket_probe" not defined.`
+
+      Why did GDB fail to set the breakpoint by function name?'
+    choices:
+    - The socket_probe function was renamed to main by the linker during object code
+      packaging
+    - GDB only supports setting breakpoints on functions declared inside the standard
+      C library
+    - The binary was stripped or built without the -g compiler flag, omitting debug
+      symbols
+    answer: 2
+    why: 'Option C is correct: without the `-g` compiler flag, GCC omits DWARF symbol
+      tables (`.debug_info`), preventing GDB from resolving function names to virtual
+      addresses. Option B is incorrect because GDB supports user-defined functions.
+      Option A is incorrect because linkers do not rename functions to `main`.'
+  - kind: predict
+    concept: register-inspection-output
+    q: 'Given the output from Evidence E-T1A-07 where GDB halts at `main`: `eip 0x6771
+      <main>`, what does GDB print if you execute `print /x $eip`?'
+    choices:
+    - $1 = 0x6771
+    - $1 = 26481
+    - $1 = main
+    answer: 0
+    why: 'Option A is correct: `print /x $eip` evaluates the instruction pointer register
+      and prints its exact value formatted in hexadecimal. Option B is incorrect because
+      that is the decimal representation. Option C is incorrect because `/x` prints
+      numeric hexadecimal values rather than symbolic strings.'
+  - kind: fillblank
+    concept: disassembly-inspection-command
+    q: To disassemble and display the next 8 machine instructions starting at the
+      instruction pointer, you execute `________ $rip` (or `$eip` on 32-bit systems).
+    code: <command> $rip
+    answer_text: x/8i
+    why: The command `x/8i $rip` uses the examine (`x`) command with count 8 and format
+      `i` (instruction) to disassemble machine code from the current instruction pointer.
+  - kind: order
+    concept: breakpoint-lifecycle
+    q: Order the 4 steps to set a breakpoint, start a program, and inspect a local
+      variable in GDB; all displayed lines are used.
+    lines:
+    - Launch GDB targeting the compiled executable binary
+    - Set a breakpoint on the target function using break <func>
+    - Start process execution using the run command
+    - Inspect the paused variable value using print <var>
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: First, start GDB with the binary. Second, set the breakpoint before execution
+      begins. Third, execute `run` to start the program until the trap triggers. Fourth,
+      inspect local variables while paused.
+  - kind: mcq
+    from_chapter: T0A
+    from_block: b2
+    concept: compiler-debug-flags-prereq
+    q: Which compiler flag must be passed to GCC during compilation so that GDB can
+      map machine addresses back to source code lines and variable names?
+    choices:
+    - -O3
+    - -g
+    - -shared
+    answer: 1
+    why: 'Option B is correct: `-g` generates DWARF debugging information in the ELF
+      binary. Option A is incorrect because `-O3` enables aggressive optimization
+      which can inline or eliminate variables. Option C is incorrect because `-shared`
+      produces a shared library rather than debug info.'
+- id: b3
+  title: 'Execution Flow Navigation: Stepping, Nexting, and Stack Frames'
+  type: syntax
+  explain_md: "### 1. Frame the Problem\nWhen execution pauses at a breakpoint, how\
+    \ do you advance through your code without setting twenty more breakpoints? If\
+    \ you have a statement containing a complex function call like `int result = socket_probe(fd);`,\
+    \ you face a fundamental choice: do you want to step *into* that function and\
+    \ trace its internal implementation, or do you want to step *over* it and observe\
+    \ its final return value?\n\n### 2. The Notional Machine\nGDB provides three primary\
+    \ stepping verbs and a stack navigation hierarchy:\n\n1. **Step (`step` / `s`)**:\n\
+    \   - Advances execution by exactly one source line.\n   - If the line contains\
+    \ a function call, execution **descends into** the callee, stopping at the first\
+    \ line of the called function.\n\n2. **Next (`next` / `n`)**:\n   - Advances execution\
+    \ by one source line **stepping over** function calls.\n   - The callee executes\
+    \ to completion at full hardware speed without pausing, and GDB halts on the very\
+    \ next source line in the current function.\n\n3. **Finish (`finish` / `fin`)**:\n\
+    \   - Resumes execution until the current stack frame returns to its caller.\n\
+    \   - Prints the value returned by the function upon exit.\n\n4. **Stack Frame\
+    \ Navigation (`backtrace`, `frame`)**:\n   - Every function invocation creates\
+    \ an activation record (stack frame) containing saved registers, local variables,\
+    \ and the return address.\n   - `backtrace` (`bt`): Prints the active call stack\
+    \ from leaf frame `#0` up to `#N`.\n   - `frame <N>`: Switches GDB's inspection\
+    \ context to frame $N$, allowing you to inspect caller variables without altering\
+    \ the instruction pointer.\n\n### 3. Source-Grounded Walkthrough\nExamine Evidence\
+    \ `E-T1A-05`:\n```text\n(gdb) break main\n(gdb) run\nBreakpoint 1, main () at\
+    \ debugme.c:12\n12\t    int fd = 7;\n(gdb) next\n13\t    int result = socket_probe(fd);\n\
+    (gdb) step\nsocket_probe (fd=7) at debugme.c:5\n5\t    int doubled = fd * 2;\n\
+    (gdb) bt\n#0  socket_probe (fd=7) at debugme.c:5\n#1  0x0000555555555186 in main\
+    \ () at debugme.c:13\n(gdb) finish\n0x0000555555555186 in main () at debugme.c:13\n\
+    13\t    int result = socket_probe(fd);\nValue returned is $1 = 14\n```\nTrace\
+    \ the exact transitions:\n1. At line 13, `step` descended into `socket_probe`.\n\
+    2. `bt` showed frame `#0` (`socket_probe`) stacked on top of frame `#1` (`main`).\n\
+    3. `finish` executed the rest of `socket_probe` and returned to line 13 of `main`,\
+    \ capturing `Value returned is $1 = 14`.\n\n### 4. The Failure Mode & Boundary\n\
+    What happens if you run `finish` when you are already in the top-level `main()`\
+    \ function?\n```text\n(gdb) finish\n\"finish\" not meaningful in the outermost\
+    \ frame.\n```\nBecause `main()` is the root frame of the program's call tree,\
+    \ there is no parent C frame to return to. To finish the program, you must type\
+    \ `continue`.\n\n### 5. The Compressed Mental Axiom\n*Next steps over the chasm,\
+    \ step dives into the callee, and finish climbs back to the caller.*"
+  diagram:
+    kind: flow
+    caption: 'Stack Navigation: Step into, Next over, and Finish to Caller'
+    nodes:
+    - id: callsite
+      label: 'main(): line 13: result = socket_probe(fd)'
+      shape: box
+    - id: choice
+      label: Stepping Choice
+      shape: decision
+    - id: next_node
+      label: 'next: Execute atomic call'
+      shape: box
+    - id: step_node
+      label: 'step: Enter callee frame #0'
+      shape: box
+    - id: body
+      label: 'socket_probe(): line 5: doubled = fd * 2'
+      shape: box
+    - id: finish_node
+      label: 'finish: Run to return statement'
+      shape: box
+    - id: ret
+      label: 'main(): line 14: printf("result=%d")'
+      shape: box
+    edges:
+    - from: callsite
+      to: choice
+      label: at line 13
+    - from: choice
+      to: next_node
+      label: next
+    - from: next_node
+      to: ret
+      label: halts on line 14
+    - from: choice
+      to: step_node
+      label: step
+    - from: step_node
+      to: body
+      label: 'enters leaf frame #0'
+    - from: body
+      to: finish_node
+      label: finish
+    - from: finish_node
+      to: ret
+      label: returns value $1=14
+    steps:
+    - focus:
+      - callsite
+      - choice
+      - next_node
+      - ret
+      note: Next executes the entire function call atomically without pausing inside
+    - focus:
+      - callsite
+      - choice
+      - step_node
+      - body
+      note: 'Step descends into the function body creating new frame #0'
+    - focus:
+      - body
+      - finish_node
+      - ret
+      note: 'Finish executes remaining instructions in frame #0 and returns to caller'
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nstatic int compute(int x)\n{\n    return x * 3;\n\
+      }\n\nint main(void)\n{\n    int val = 4;\n    int res = compute(val);\n    printf(\"\
+      res=%d\\n\", res);\n    return 0;\n}"
+    run_expected: 'res=12
+
+      '
+    explain_md: 'Stepping into compute(val) with step enters frame #0; typing finish
+      immediately completes compute and reports the return value.'
+  checks:
+  - kind: choose-better
+    concept: step-vs-next-semantics
+    q: 'You are paused on line 13: `int result = socket_probe(fd);`. Which command
+      executes the entire helper function atomically and halts on the following line
+      without descending into its source code?'
+    choices:
+    - finish
+    - step
+    - next
+    answer: 2
+    why: 'Option C is correct: `next` executes the function call atomically without
+      descending into it. Option B is incorrect because `step` enters the callee function
+      body. Option A is incorrect because `finish` executes until the current frame
+      returns, which is not applicable before entering.'
+  - kind: why-fails
+    concept: finish-in-outermost-frame
+    q: 'While paused at line 12 of `main()` in `debugme.c`, you issue the command
+      `finish`. GDB prints:
+
+      `"finish" not meaningful in the outermost frame.`
+
+      Why does this command fail?'
+    choices:
+    - main is the root frame of the program and has no caller C frame to return to
+    - The function was compiled with static linkage, preventing stack frame unwinding
+    - The finish command requires passing an explicit return value as an argument
+    answer: 0
+    why: 'Option A is correct: `finish` runs until the current frame returns to its
+      caller; because `main()` is the outermost frame in the user application, GDB
+      cannot return to a caller frame. Option B is incorrect because linkage does
+      not alter frame semantics. Option C is incorrect because `finish` takes no arguments.'
+  - kind: predict
+    concept: backtrace-frame-identification
+    q: You step into `socket_probe()` from `main()`. When you execute `bt`, what frame
+      number corresponds to the currently active executing function?
+    choices:
+    - '#1'
+    - '#0'
+    - '#2'
+    answer: 1
+    why: 'Option B is correct: frame `#0` is always the innermost, actively executing
+      leaf frame on the stack. Frame `#1` is its immediate caller.'
+  - kind: mcq
+    concept: stack-frame-traversal-trace
+    q: What frame's local variables are visible when you execute `frame 1` after stepping
+      from `main()` into `socket_probe()`?
+    choices:
+    - No local variables are visible because switching frames invalidates memory inspection
+    - The local variables of socket_probe() are visible because frame 1 forces execution
+      forward
+    - The local variables of main() are visible while execution remains paused in
+      socket_probe()
+    answer: 2
+    why: 'Option C is correct: `frame 1` changes GDB''s inspection context to frame
+      `#1` (`main`), allowing inspection of `main`''s locals while the program remains
+      paused inside `socket_probe`. Option B is incorrect because frame 0 is `socket_probe`.
+      Option A is incorrect because inspecting frames does not invalidate memory.'
+  - kind: fillblank
+    concept: stack-backtrace-abbreviation
+    q: The short standard abbreviation for the GDB command that displays the full
+      call stack backtrace is ________.
+    code: (gdb) <abbrev>
+    answer_text: bt
+    why: In GDB, `bt` is the universal shorthand command for `backtrace`.
+  - kind: order
+    concept: inspect-caller-frame-workflow
+    q: Order the 4 steps to enter a helper function, switch to the caller's frame,
+      inspect caller variables, and return to the leaf frame; all displayed lines
+      are used.
+    lines:
+    - Step into the callee function using the step command
+    - Display the call stack activation records using bt
+    - Switch inspection focus to the caller frame using frame 1
+    - Return inspection focus to the executing frame using frame 0
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: First, enter the function with `step`. Second, inspect the stack with `bt`.
+      Third, switch to caller context with `frame 1`. Fourth, restore focus to the
+      active leaf frame with `frame 0`.
+- id: b4
+  title: 'Userspace Debug Cycle: State Inspection and Stepwise Verification'
+  type: algorithm
+  explain_md: "### 1. Frame the Problem\nDebugging is not random poking; it is a systematic\
+    \ scientific method. When code produces wrong results, developers often print\
+    \ everything or guess lines. The professional debugging cycle establishes an invariant\
+    \ before an instruction, steps across the mutation, and verifies that the silicon\
+    \ altered state according to specification.\n\n### 2. The Notional Machine\nThe\
+    \ Stepwise Verification Cycle consists of five deliberate stages:\n\n```text\n\
+    +---------------------------------------------------------------+\n| 1. Formulate\
+    \ Hypothesis: Line X should mutate var from A to B |\n+---------------------------------------------------------------+\n\
+    \                               │\n                               ▼\n+---------------------------------------------------------------+\n\
+    | 2. Breakpoint on Doorstep: Halt on Line X BEFORE execution    |\n+---------------------------------------------------------------+\n\
+    \                               │\n                               ▼\n+---------------------------------------------------------------+\n\
+    | 3. Pre-condition Check: info locals / print var (state is A)  |\n+---------------------------------------------------------------+\n\
+    \                               │\n                               ▼\n+---------------------------------------------------------------+\n\
+    | 4. Controlled Mutation: Execute next to advance one statement |\n+---------------------------------------------------------------+\n\
+    \                               │\n                               ▼\n+---------------------------------------------------------------+\n\
+    | 5. Post-condition Check: print var (verify state changed to B)|\n+---------------------------------------------------------------+\n\
+    ```\n\n### 3. Source-Grounded Walkthrough\nLet us trace Evidence `E-T1A-03` line-by-line\
+    \ in `debugme.c`:\n```c\nstatic int socket_probe(int fd)\n{\n    int doubled =\
+    \ fd * 2;\n    printf(\"probe fd=%d doubled=%d\\n\", fd, doubled);\n    return\
+    \ doubled;\n}\n```\nNow look at the exact transcript from GDB:\n```text\n(gdb)\
+    \ break socket_probe\n(gdb) run\nBreakpoint 1, socket_probe (fd=7) at debugme.c:5\n\
+    5\t    int doubled = fd * 2;\n(gdb) print fd\n$1 = 7\n(gdb) print doubled\n$2\
+    \ = 0\n(gdb) next\n6\t    printf(\"probe fd=%d doubled=%d\\n\", fd, doubled);\n\
+    (gdb) print doubled\n$3 = 14\n```\nObserve the crucial truth:\n1. When GDB halted\
+    \ at line 5, the CPU was paused on the *doorstep* of the statement. The assignment\
+    \ `int doubled = fd * 2;` had **not** happened yet!\n2. `print doubled` returned\
+    \ `0` (or whatever uninitialized stack slot held).\n3. Only after typing `next`\
+    \ did the arithmetic and store execute.\n4. On line 6, `print doubled` confirmed\
+    \ the new value: `$3 = 14`.\n\n### 4. The Failure Mode & Boundary\nThe most common\
+    \ beginner trap is reading variable values before their assignment statement has\
+    \ executed. In C, local variables allocated on the stack are not guaranteed to\
+    \ be zero; reading them before initialization yields uninitialized stack stack\
+    \ garbage. If you halt on line 5 and assume `doubled` holds its computed value,\
+    \ your diagnosis will be completely false.\n\n### 5. The Compressed Mental Axiom\n\
+    *A breakpoint pauses on the doorstep of a line before its statement alters CPU\
+    \ state.*"
+  viz:
+    kind: ascii-memory
+    caption: Stack Frame State Before and After Assignment
+    steps:
+    - '[Step 1: Paused on Doorstep of Line 5] · Regs: rip=0x1144, rdi=7 · State: 0x7fffffffe010
+      (fd): 0x00000007 | 0x7fffffffe014 (doubled): 0x00000000 [uninitialized garbage]
+      · (Breakpoint stops before the multiplication and store instructions execute)'
+    - '[Step 2: Executed next - Arrived at Line 6] · Regs: rip=0x1150, rax=14 · State:
+      0x7fffffffe010 (fd): 0x00000007 | 0x7fffffffe014 (doubled): 0x0000000e [14 computed
+      & stored] · (Line 5 store completed: doubled now contains verified value 14)'
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nint main(void)\n{\n    int x = 10;\n    int y = x\
+      \ + 5;\n    printf(\"x=%d y=%d\\n\", x, y);\n    return 0;\n}"
+    run_expected: 'x=10 y=15
+
+      '
+    explain_md: Pausing on int y = x + 5 halts before y is assigned; executing next
+      completes the addition and updates stack memory.
+  checks:
+  - kind: predict
+    concept: pre-execution-variable-state
+    q: 'In Evidence E-T1A-03, GDB halts on line 5: `int doubled = fd * 2;`. What value
+      does `print doubled` return at that exact moment before issuing `next`?'
+    choices:
+    - 0 (or uninitialized stack slot value before assignment)
+    - 14 (the fully computed multiplication result)
+    - 7 (the value of the input parameter fd)
+    answer: 0
+    why: 'Option A is correct: the breakpoint pauses before line 5 executes, so `doubled`
+      has not yet received the result of `fd * 2`. Option B is incorrect because the
+      assignment has not run yet. Option C is incorrect because `fd` is stored in
+      a separate stack location.'
+  - kind: spot-bug
+    concept: premature-variable-inspection-bug
+    q: Examine the code and diagnostic session. Why did the developer conclude the
+      return value was wrong?
+    code: int status = check_hardware();
+    diagnostic_log: '(gdb) break main
+
+      Breakpoint 1, main () at app.c:8
+
+      8   int status = check_hardware();
+
+      (gdb) print status
+
+      $1 = -1'
+    choices:
+    - The status variable was allocated in CPU registers that GDB is forbidden from
+      reading
+    - The breakpoint halted before check_hardware() was called, so status contained
+      uninitialized stack garbage
+    - GDB cannot inspect return values unless the program is compiled with -O3 optimization
+    answer: 1
+    why: 'Option B is correct: breakpoints halt on the doorstep of the statement before
+      the function call or assignment takes place. Option A is incorrect because GDB
+      can read registers. Option C is incorrect because `-O3` makes inspection harder,
+      not easier.'
+  - kind: why-fails
+    concept: info-locals-scope-limitation
+    q: While halted inside `socket_probe()`, you run `info locals` expecting to see
+      the variable `result` defined in `main()`. Why does GDB not display `result`?
+    choices:
+    - The variable result was converted into an unreadable pointer by the linker
+    - Local variables in main() are deleted from memory as soon as any helper function
+      is called
+    - info locals only displays variables belonging to the currently active stack
+      frame (#0)
+    answer: 2
+    why: 'Option C is correct: `info locals` displays variables in the current stack
+      frame. To see `result` in `main()`, you must switch context using `frame 1`.
+      Option B is incorrect because `main`''s frame remains intact on the stack. Option
+      A is incorrect because linkers do not alter local variable types.'
+  - kind: mcq
+    concept: single-step-mutation-trace
+    q: 'In Evidence E-T1A-03, what are the observed values of local variable `doubled`:
+      1) halted at line 5 before assignment; 2) stepped to line 6 after assignment?'
+    choices:
+    - 'Before step: 0; After step: 14'
+    - 'Before step: 14; After step: 14'
+    - 'Before step: 7; After step: 0'
+    answer: 0
+    why: 'Option A is correct: as verified in Evidence E-T1A-03, `doubled` was 0 before
+      line 5 ran, and 14 after `next` advanced past the computation. Options B and
+      C do not reflect the pre- and post-execution state.'
+  - kind: fillblank
+    concept: locals-inspection-command
+    q: What GDB command prints all local variables defined within the current stack
+      frame?
+    code: (gdb) info ________
+    answer_text: locals
+    why: The command `info locals` prints the names and current values of all local
+      variables in the active frame.
+  - kind: choose-better
+    concept: batch-mode-vs-interactive
+    q: You need to verify an automated test hypothesis across 100 automated builds
+      without manual terminal typing. Which approach is better?
+    choices:
+    - Launch an interactive GDB session and manually type commands into stdin
+    - Run GDB in batch mode using flags -q -batch and scriptable -ex commands
+    - Add sleep(10) calls into the C source code and attach via top
+    answer: 1
+    why: 'Option B is correct: `gdb -q -batch -ex "..."` runs commands deterministically
+      and exits with a reliable status code, perfect for automated test pipelines.
+      Option A is manual and unscalable. Option C pollutes the source code and does
+      not automate debugging.'
+- id: b5
+  title: 'Register and ABI Conventions: x86_64 vs 32-Bit Calling Standard'
+  type: model
+  explain_md: "### 1. Frame the Problem\nIn high-level C, you write `socket_probe(fd)`.\
+    \ But silicon chips have no concept of C variables or function signatures; they\
+    \ only have hardware registers and memory buses. How does the caller pass `fd`\
+    \ to the callee? Where does the callee place its return value? And which registers\
+    \ is a function allowed to overwrite without corrupting the caller?\n\nThe answers\
+    \ are governed by the Application Binary Interface (ABI). If you misunderstand\
+    \ the ABI, disassembly will look like arbitrary register soup.\n\n### 2. The Notional\
+    \ Machine\nLet us contrast the standard 64-bit Linux ABI with the historical 32-bit\
+    \ Linux 0.11 convention:\n\n1. **System V AMD64 ABI (Modern 64-bit Linux)**:\n\
+    \   - **First 6 Integer/Pointer Arguments**: Passed directly in CPU registers!\n\
+    \     - 1st: `RDI`\n     - 2nd: `RSI`\n     - 3rd: `RDX`\n     - 4th: `RCX`\n\
+    \     - 5th: `R8`\n     - 6th: `R9`\n     - (Arguments beyond 6 are pushed onto\
+    \ the stack).\n   - **Return Value**: Returned in `RAX` (and `RDX` for 128-bit\
+    \ values).\n   - **Caller-Saved (Scratch / Volatile)**: `RAX`, `RCX`, `RDX`, `RSI`,\
+    \ `RDI`, `R8`, `R9`, `R10`, `R11`. A function may overwrite these freely without\
+    \ saving them.\n   - **Callee-Saved (Non-Volatile / Preserved)**: `RBX`, `RBP`,\
+    \ `R12`, `R13`, `R14`, `R15`. If a function uses these, it **must** push them\
+    \ to the stack and restore them before returning.\n   - **Stack Alignment Invariant**:\
+    \ The stack pointer `RSP` **must** be 16-byte aligned (`RSP % 16 == 0`) immediately\
+    \ before a `call` instruction executes.\n\n2. **i386 cdecl ABI (32-Bit Linux 0.11)**:\n\
+    \   - All arguments are pushed onto the stack in reverse (right-to-left) order.\n\
+    \   - Return value in `EAX`.\n   - General-purpose registers: `EAX`, `EBX`, `ECX`,\
+    \ `EDX`, `ESI`, `EDI`, `EBP`, `ESP`, `EIP`.\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at the evidence across both architectures:\n\nIn 64-bit userspace (`E-T1A-03`):\n\
+    When `main()` called `socket_probe(fd)` where `fd = 7`, GCC loaded `7` into `rdi`\
+    \ (or its 32-bit slice `edi`). Inside `socket_probe`, the multiplication `fd *\
+    \ 2` used `edi`, and returned the result `14` in `eax`.\n\nNow look at the 32-bit\
+    \ kernel startup in Evidence `E-T1A-07` and `A1`:\n```text\neip            0x6771\
+    \              0x6771 <main>\nesp            0x27f70             0x27f70 <user_stack+4080>\n\
+    eax            0x80000013          -2147483629\n=> 0x6771 <main>:\tlea    0x4(%esp),%ecx\n\
+    \   0x6775 <main+4>:\tand    $0xfffffff0,%esp\n   0x6778 <main+7>:\tpush   -0x4(%ecx)\n\
+    \   0x677b <main+10>:\tpush   %ebp\n   0x677c <main+11>:\tmov    %esp,%ebp\n```\n\
+    Look closely at `main`'s prologue in 32-bit Linux:\n- `and $0xfffffff0,%esp` aligns\
+    \ the stack pointer to a 16-byte boundary.\n- `push %ebp; mov %esp,%ebp` establishes\
+    \ the standard base pointer frame!\n\n### 4. The Failure Mode & Boundary\nIn 64-bit\
+    \ Linux, if you invoke a library function like `printf` with an unaligned stack\
+    \ (e.g. `RSP % 16 != 0`), the program will crash with `SIGSEGV` inside libc! This\
+    \ happens because modern vector instructions (like `movaps`) require 16-byte aligned\
+    \ memory addresses; an unaligned stack violates hardware requirements.\n\n###\
+    \ 5. The Compressed Mental Axiom\n*Registers are the CPU's scratchpad: DI, SI,\
+    \ DX, CX, 8, 9 carry your arguments, AX brings back the answer.*"
+  diagram:
+    kind: art
+    caption: x86_64 Calling Convention Register Assignment Map
+    art: '+-----------------------------------------------------------------------+
+
+      |                       x86_64 SYSTEM V ABI REGISTER ROLES              |
+
+      +-------------------+---------------------------------------------------+
+
+      | Register          | Primary Architectural Role                        |
+
+      +-------------------+---------------------------------------------------+
+
+      | RDI               | 1st function argument (pointer or integer)        |
+
+      | RSI               | 2nd function argument                             |
+
+      | RDX               | 3rd function argument                             |
+
+      | RCX               | 4th function argument                             |
+
+      | R8                | 5th function argument                             |
+
+      | R9                | 6th function argument                             |
+
+      | RAX               | Function return value / scratch                   |
+
+      | RSP               | Stack pointer (must be 16-byte aligned at call)   |
+
+      | RBP               | Base frame pointer (callee-saved)                 |
+
+      | RBX, R12-R15      | Callee-saved registers (must restore before ret)  |
+
+      | RIP               | Instruction Pointer (Program Counter)             |
+
+      +-------------------+---------------------------------------------------+'
+  viz:
+    kind: ascii-memory
+    caption: x86_64 Calling Convention Register Assignment
+    steps:
+    - '[Step 1: Caller Loads Arguments into Registers] · Regs: rdi=0x00000007 (arg1
+      fd), rsi=0x00000002 (arg2), rsp=0x7fffffffe000 · State: Stack RSP[0..7]: [16-byte
+      aligned boundary before call] | RAX: 0x00000000 [scratch] · (Caller populates
+      RDI and RSI directly without touching stack memory)'
+    - '[Step 2: Callee Finishes and Places Return in RAX] · Regs: rax=0x0000000e (ret
+      14), rsp=0x7fffffffe000 · State: Stack RSP[0..7]: [Stack frame unwound] | RDI:
+      0x00000007 [caller-saved clobbered] · (Function return value 14 passed back
+      to caller in RAX)'
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nint add_four(int a, int b, int c, int d)\n{\n   \
+      \ return a + b + c + d;\n}\n\nint main(void)\n{\n    int total = add_four(1,\
+      \ 2, 3, 4);\n    printf(\"total=%d\\n\", total);\n    return 0;\n}"
+    run_expected: 'total=10
+
+      '
+    explain_md: In x86_64 assembly, arguments 1, 2, 3, 4 are passed in RDI, RSI, RDX,
+      and RCX respectively, and the sum 10 is returned in RAX.
+  checks:
+  - kind: choose-better
+    concept: first-argument-register-x86_64
+    q: Under the System V AMD64 ABI used in 64-bit Linux, which CPU register receives
+      the first integer or pointer argument passed to a function?
+    choices:
+    - RDX
+    - RAX
+    - RDI
+    answer: 2
+    why: 'Option C is correct: RDI holds the first integer or pointer argument. Option
+      B is incorrect because RAX holds the function return value. Option A is incorrect
+      because RDX holds the third argument.'
+  - kind: predict
+    concept: return-value-register
+    q: A 64-bit C function `int compute(int x)` finishes execution and returns the
+      integer `42`. In which register does GDB observe `42` upon returning to the
+      caller?
+    choices:
+    - RAX (or EAX)
+    - RDI (or EDI)
+    - RSP (or ESP)
+    answer: 0
+    why: 'Option A is correct: integer return values are returned in RAX (or its 32-bit
+      low register EAX). Option B is incorrect because RDI is used for the first input
+      argument. Option C is incorrect because RSP is the stack pointer.'
+  - kind: why-fails
+    concept: unaligned-stack-sse-crash
+    q: An assembly routine jumps to `printf` on x86_64 without aligning `RSP` to a
+      16-byte boundary. Why does the program immediately crash with SIGSEGV inside
+      libc?
+    choices:
+    - The kernel terminates processes whose stack pointer holds any address ending
+      in an odd number
+    - printf executes SSE vector instructions that fault if stack memory is not 16-byte
+      aligned
+    - GDB inserts hardware breakpoints that reject unaligned stack pointer modifications
+    answer: 1
+    why: 'Option B is correct: the AMD64 ABI mandates that `RSP` must be 16-byte aligned
+      before `call`. Libc implementations use vector instructions like `movaps` which
+      fault on unaligned addresses. Option A is incorrect because the CPU MMU does
+      not enforce this at the syscall level. Option C is incorrect because GDB does
+      not crash programs for alignment.'
+  - kind: order
+    concept: argument-register-order
+    q: Order the first 4 registers used for passing integer arguments in the 64-bit
+      Linux ABI; all displayed lines are used.
+    lines:
+    - RDI (1st argument)
+    - RSI (2nd argument)
+    - RDX (3rd argument)
+    - RCX (4th argument)
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: The System V AMD64 ABI order for the first 4 integer/pointer arguments is
+      strictly `RDI`, `RSI`, `RDX`, and `RCX`.
+  - kind: fillblank
+    concept: stack-pointer-register-name
+    q: In x86_64 machine architecture, the register that holds the current top-of-stack
+      address is ________.
+    code: 'Register: %________'
+    answer_text: rsp
+    why: The 64-bit stack pointer register is named `rsp` (extended from 32-bit `esp`
+      and 16-bit `sp`).
+  - kind: choose-better
+    concept: callee-saved-register-preservation
+    q: You are writing an assembly function that needs to use register `RBX`. What
+      must your function do to satisfy the ABI contract?
+    choices:
+    - Zero out RBX using xor before returning so that the caller does not read stale
+      data
+    - Freely overwrite RBX without saving it, because RBX is designated as a volatile
+      scratch register
+    - Push RBX to the stack at entry and pop it back before returning, because RBX
+      is callee-saved
+    answer: 2
+    why: 'Option C is correct: RBX is a callee-saved register under the System V ABI;
+      any function modifying it must preserve its value across the call. Option B
+      is incorrect because RBX is not a scratch register. Option A is incorrect because
+      zeroing it clobbers the caller''s value.'
+- id: b6
+  title: 'Data Watchpoints: Hardware Registers and Mutation Triggers'
+  type: syntax
+  explain_md: "### 1. Frame the Problem\nBreakpoints stop execution when the instruction\
+    \ pointer reaches a known line of code. But what do you do when a variable's value\
+    \ changes unexpectedly, and you have no idea which thread, function, or rogue\
+    \ pointer wrote to it?\n\nSearching for all assignments statically will fail if\
+    \ the write occurs through an aliased pointer, buffer overflow, or dynamic callback.\
+    \ You need a mechanism that halts the CPU the exact instant a specific memory\
+    \ address is modified.\n\n### 2. The Notional Machine\nGDB provides data watchpoints\
+    \ backed by dedicated silicon hardware:\n\n1. **Watchpoint Types**:\n   - `watch\
+    \ <expr>`: Breaks when the value of the expression is **written / modified**.\n\
+    \   - `rwatch <expr>`: Breaks when the memory address is **read**.\n   - `awatch\
+    \ <expr>`: Breaks when the address is **accessed** (read or written).\n\n2. **Silicon\
+    \ Hardware Mechanism (x86 Debug Registers)**:\n   - x86 CPUs feature dedicated\
+    \ hardware debug registers: `DR0`, `DR1`, `DR2`, and `DR3` hold linear memory\
+    \ addresses.\n   - Control register `DR7` enables monitoring for 1, 2, 4, or 8-byte\
+    \ write or read/write cycles.\n   - When the CPU bus executes a memory cycle matching\
+    \ a `DR` register, the silicon raises a Debug Exception (`#DB`, interrupt vector\
+    \ 1).\n   - Execution halts *before or immediately after* the guilty store instruction,\
+    \ without running any software single-stepping!\n\n### 3. Source-Grounded Walkthrough\n\
+    Examine Evidence `E-T1A-04`:\n```text\n(gdb) break main\n(gdb) run\nBreakpoint\
+    \ 1, main () at debugme.c:12\n12\t    int fd = 7;\n(gdb) watch fd\nHardware watchpoint\
+    \ 2: fd\n(gdb) continue\nContinuing.\n\nHardware watchpoint 2: fd\n\nOld value\
+    \ = 0\nNew value = 7\nmain () at debugme.c:13\n13\t    int result = socket_probe(fd);\n\
+    ```\nLook at what GDB reported:\n- `Hardware watchpoint 2: fd`: GDB successfully\
+    \ programmed one of the CPU's hardware debug registers (`DR0`-`DR3`).\n- When\
+    \ line 12 wrote `7` into `fd`, the CPU hardware triggered.\n- GDB reported the\
+    \ exact mutation: `Old value = 0, New value = 7`.\n- When `main()` exited, GDB\
+    \ cleaned up:\n```text\nWatchpoint 2 deleted because the program has left the\
+    \ block in which its expression is valid.\n```\n\n### 4. The Failure Mode & Boundary\n\
+    Hardware debug registers are extremely scarce: x86 processors provide only **four**\
+    \ hardware breakpoints/watchpoints (`DR0`-`DR3`). If you set five hardware watchpoints\
+    \ simultaneously, GDB cannot use hardware registers for the fifth watchpoint.\
+    \ It falls back to **software watchpoints**: GDB single-steps the program one\
+    \ machine instruction at a time, reading memory after every single instruction\
+    \ to check if the value changed. This causes a devastating 1000x execution slowdown!\n\
+    \n### 5. The Compressed Mental Axiom\n*Breakpoints trap execution paths; watchpoints\
+    \ trap data mutations.*"
+  diagram:
+    kind: flow
+    caption: Hardware Watchpoint Silicon Detection Cycle
+    nodes:
+    - id: watch_cmd
+      label: 'GDB command: watch fd'
+      shape: round
+    - id: dr_reg
+      label: CPU Debug Register DR0
+      shape: box
+    - id: exec
+      label: Normal CPU Execution (Full Speed)
+      shape: box
+    - id: write
+      label: Store Instruction writes to fd
+      shape: box
+    - id: cmp
+      label: Hardware Address Comparator
+      shape: decision
+    - id: trap
+      label: Debug Exception (#DB Vector 1)
+      shape: decision
+    - id: gdb
+      label: 'GDB reports: Old = 0, New = 7'
+      shape: io
+    edges:
+    - from: watch_cmd
+      to: dr_reg
+      label: programs linear address
+    - from: dr_reg
+      to: exec
+      label: armed in silicon
+    - from: exec
+      to: write
+      label: reaches assignment
+    - from: write
+      to: cmp
+      label: memory bus cycle
+    - from: cmp
+      to: trap
+      label: address match detected
+    - from: trap
+      to: gdb
+      label: halts execution instantly
+    steps:
+    - focus:
+      - watch_cmd
+      - dr_reg
+      note: GDB programs the variable address into CPU register DR0
+    - focus:
+      - exec
+      - write
+      - cmp
+      note: CPU runs at native silicon speed until store matches comparator
+    - focus:
+      - cmp
+      - trap
+      - gdb
+      note: 'Silicon raises #DB exception exposing previous and new values'
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nint main(void)\n{\n    volatile int status = 1;\n\
+      \    status = 99;\n    printf(\"status=%d\\n\", status);\n    return 0;\n}"
+    run_expected: 'status=99
+
+      '
+    explain_md: Setting watch status in GDB triggers a hardware watchpoint when status
+      changes from 1 to 99, reporting old and new values.
+  checks:
+  - kind: choose-better
+    concept: hardware-watchpoint-registers
+    q: What dedicated CPU hardware facility allows x86 processors to trigger watchpoints
+      on memory writes without slowing down normal execution?
+    choices:
+    - Hardware debug registers DR0 through DR3
+    - The Model Specific Register MSR_WATCH_ADDR
+    - Floating point control register FPU_STATUS
+    answer: 0
+    why: 'Option A is correct: x86 CPUs provide four hardware debug registers (DR0-DR3)
+      that compare memory addresses on the bus during instruction execution. Option
+      B is incorrect because watchpoints are handled by DR registers, not an MSR.
+      Option C is incorrect because FPU registers handle floating-point arithmetic.'
+  - kind: predict
+    concept: watchpoint-scope-lifetime
+    q: In Evidence E-T1A-04, what does GDB do when a watched local variable `fd` leaves
+      its defining block in `main()`?
+    choices:
+    - Triggers an infinite loop because stack memory was unmapped by the kernel
+    - Automatically deletes the watchpoint because its expression is no longer valid
+    - Converts the watchpoint into a permanent global watchpoint at address 0x0
+    answer: 1
+    why: 'Option B is correct: when the function exits and the stack frame is popped,
+      GDB automatically deletes the watchpoint because the local variable expression
+      has left scope. Option A is incorrect because GDB does not enter a loop. Option
+      C is incorrect because local watchpoints are deleted, not converted.'
+  - kind: why-fails
+    concept: software-watchpoint-slowdown
+    q: A developer sets 6 concurrent watchpoints on different variables in GDB. Suddenly,
+      the application runs hundreds of times slower. Why did this performance cliff
+      occur?
+    choices:
+    - The GDB TCP socket buffer overflowed, requiring network packet retransmission
+    - The Linux kernel limits each process to exactly two hardware interrupts per
+      second
+    - x86 hardware only has 4 debug registers; the 5th and 6th watchpoints forced
+      GDB into slow software single-stepping
+    answer: 2
+    why: 'Option C is correct: x86 CPUs only have 4 hardware debug registers (DR0-DR3).
+      Exceeding this limit forces GDB to use software watchpoints, single-stepping
+      every instruction and checking memory, which degrades performance by 1000x.
+      Options B and C are incorrect.'
+  - kind: choose-better
+    concept: watchpoint-vs-breakpoint-choice
+    q: A global configuration struct `g_config.mode` is intermittently getting overwritten
+      with zero, but there are 45 different functions that touch `g_config`. Which
+      diagnostic tool locates the culprit most efficiently?
+    choices:
+    - Set a hardware watchpoint using `watch g_config.mode`
+    - Set 45 individual software breakpoints on every function touching g_config
+    - Add an infinite loop at the start of main() and attach via top
+    answer: 0
+    why: 'Option A is correct: `watch g_config.mode` arms a hardware register that
+      halts execution on the exact instruction performing the write, regardless of
+      which of the 45 functions executed it. Option B requires immense manual overhead.
+      Option C does not locate the mutation.'
+  - kind: fillblank
+    concept: read-watchpoint-command
+    q: What GDB command sets a watchpoint that triggers only when an expression is
+      read, but not when it is written?
+    code: (gdb) ________ <expr>
+    answer_text: rwatch
+    why: The command `rwatch` (read watchpoint) stops execution when the target memory
+      location is read by any CPU instruction.
+  - kind: order
+    concept: watchpoint-firing-lifecycle
+    q: Order the 4 stages from setting a hardware watchpoint to inspecting the guilty
+      instruction; all displayed lines are used.
+    lines:
+    - Execute watch <variable> in GDB to arm a CPU debug register
+    - Resume execution at native hardware speed using continue
+    - 'Memory store instruction triggers hardware Debug Exception #DB'
+    - GDB halts and displays the old value, new value, and source line
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: First, arm the register with `watch`. Second, resume execution with `continue`.
+      Third, the store instruction triggers `#DB`. Fourth, GDB prints the mutation
+      details.
+- id: b7
+  title: 'Memory Corruption Detection: Trapping Stray Writes and Buffer Spills'
+  type: algorithm
+  explain_md: "### 1. Frame the Problem\nOne of the most insidious bugs in systems\
+    \ C is memory corruption. An off-by-one loop in a string buffer or an unvalidated\
+    \ array index silently overruns its allocated boundary. The program does not crash\
+    \ immediately. Instead, an adjacent variable—perhaps a status code, function pointer,\
+    \ or device ID—mysteriously flips value thousands of cycles later.\n\nTracing\
+    \ this bug backwards with static search is nearly impossible because the offending\
+    \ code never references the corrupted variable by name.\n\n### 2. The Notional\
+    \ Machine\nForensic memory trapping operates by anchoring the hardware to the\
+    \ *victim* rather than guessing the *attacker*:\n\n```text\n+-----------------------------------------------------------------+\n\
+    | 1. Identify the Victim: Field dev->status is getting corrupted  |\n+-----------------------------------------------------------------+\n\
+    \                                │\n                                ▼\n+-----------------------------------------------------------------+\n\
+    | 2. Anchor Silicon: watch dev->status (or watch *0xaddr)         |\n+-----------------------------------------------------------------+\n\
+    \                                │\n                                ▼\n+-----------------------------------------------------------------+\n\
+    | 3. Unfettered Execution: continue runs at native hardware speed |\n+-----------------------------------------------------------------+\n\
+    \                                │\n                                ▼\n+-----------------------------------------------------------------+\n\
+    | 4. Hardware Trap: Offending store trips DR comparator           |\n+-----------------------------------------------------------------+\n\
+    \                                │\n                                ▼\n+-----------------------------------------------------------------+\n\
+    | 5. Forensic Attribution: bt reveals guilty function and line    |\n+-----------------------------------------------------------------+\n\
+    ```\n\n### 3. Source-Grounded Walkthrough\nImagine a struct where an array sits\
+    \ directly before a status integer:\n```c\nstruct device_state {\n    char name[8];\n\
+    \    int status;\n};\n```\nSuppose a buggy routine writes a 10-byte string into\
+    \ `dev.name`. Bytes 0–7 fill `name`, but bytes 8–9 spill directly into the memory\
+    \ bytes of `status`!\n\nHere is how you catch it in GDB:\n1. Halt before the corruption\
+    \ occurs:\n   ```text\n   (gdb) break init_device\n   (gdb) run\n   ```\n2. Arm\
+    \ the hardware watchpoint on the victim:\n   ```text\n   (gdb) watch dev.status\n\
+    \   Hardware watchpoint 2: dev.status\n   ```\n3. Resume execution:\n   ```text\n\
+    \   (gdb) continue\n   ```\n4. The instant the loop writes byte 8, the CPU hardware\
+    \ raises `#DB`. GDB intercepts it and halts:\n   ```text\n   Hardware watchpoint\
+    \ 2: dev.status\n   Old value = 1\n   New value = 0x61616161\n   string_copy (src=0x...,\
+    \ dst=0x555555558018) at utils.c:42\n   42\t    *dst++ = *src++;\n   ```\n5. You\
+    \ type `bt`. The stack trace reveals that `parse_device_name` called `string_copy`\
+    \ with an oversized payload. You found the exact guilty line without guessing!\n\
+    \n### 4. The Failure Mode & Boundary\nIf you watch a variable by pointer expression\
+    \ like `watch dev->status`, and the pointer `dev` itself is reassigned to point\
+    \ to another memory buffer, GDB evaluates the *expression* `dev->status`. If you\
+    \ want to watch the specific physical address forever regardless of pointer reassignment,\
+    \ watch the memory address directly:\n```text\n(gdb) watch *0x555555558018\n```\n\
+    \n### 5. The Compressed Mental Axiom\n*When memory corrupts in the dark, aim a\
+    \ hardware watchpoint at the victim address.*"
+  viz:
+    kind: ascii-memory
+    caption: Buffer Overflow Memory Spill Trapped by Hardware Watchpoint
+    steps:
+    - '[Step 1: Normal In-Bounds Allocation] · Regs: rip=0x1120, rdi=0x6020 · State:
+      0x6020-0x6027 (name[0..7]): ''s'',''e'',''n'',''s'',''o'',''r'',''\0'',''\0''
+      | 0x6028-0x602b (status): 0x00000001 [valid state] · (Hardware watchpoint armed
+      at address 0x6028 on status field)'
+    - '[Step 2: Buffer Overrun Spills Across Boundary] · Regs: rip=0x1188, rax=0x61616161
+      · State: 0x6020-0x6027 (name[0..7]): ''s'',''e'',''n'',''s'',''o'',''r'',''_'',''1''
+      | 0x6028-0x602b (status): 0x61616161 [CORRUPTED BY SPILL] · (Hardware debug
+      register trips immediately on the store instruction at 0x1188)'
+  example:
+    lang: c
+    code: "#include <stdio.h>\n#include <string.h>\n\nstruct record {\n    char tag[4];\n\
+      \    int code;\n};\n\nint main(void)\n{\n    struct record r = {\"ok\", 100};\n\
+      \    /* Bug: writing 5 bytes into a 4-byte buffer spills into code */\n    memcpy(r.tag,\
+      \ \"overflow\", 5);\n    printf(\"code=%d\\n\", r.code);\n    return 0;\n}"
+    run_expected: 'code=1869771877
+
+      '
+    explain_md: Writing past the bounds of tag spills into code; setting watch r.code
+      halts execution directly on the memcpy invocation.
+  checks:
+  - kind: spot-bug
+    concept: buffer-spillover-diagnosis
+    q: Examine the following code and diagnostic session. What caused GDB to trigger
+      a hardware watchpoint on `n.id`?
+    code: 'struct node { char key[4]; int id; };
+
+      struct node n = {"abc", 1};
+
+      strcpy(n.key, "long_key_string");'
+    diagnostic_log: 'Hardware watchpoint 2: n.id
+
+      Old value = 1
+
+      New value = 1735289202
+
+      0x00007ffff7d8911e in strcpy () from /usr/lib/libc.so.6'
+    choices:
+    - The id field was freed from the heap by the standard C memory allocator
+    - strcpy wrote past the 4-byte boundary of key, overwriting the memory address
+      of id
+    - GDB detected that the key string was not formatted in UTF-8 encoding
+    answer: 1
+    why: 'Option B is correct: `key` is only 4 bytes, so copying `long_key_string`
+      overruns the buffer into adjacent memory occupied by `id`, triggering the watchpoint
+      on `n.id`. Option A is incorrect because `n` is allocated on the stack. Option
+      C is incorrect because character encoding does not cause watchpoints to fire.'
+  - kind: predict
+    concept: watchpoint-backtrace-utility
+    q: When a hardware watchpoint triggers on memory corruption, what does executing
+      `backtrace` immediately reveal?
+    choices:
+    - The machine code instructions of the BIOS interrupt vector table
+    - A listing of all disk files opened by the process since startup
+    - The exact function call chain and source line responsible for performing the
+      illicit memory write
+    answer: 2
+    why: 'Option C is correct: because the CPU halted at the exact store instruction,
+      `backtrace` captures the live call stack leading directly to the offending write
+      statement. Options B and C are incorrect.'
+  - kind: why-fails
+    concept: watching-pointer-expression-trap
+    q: You execute `watch dev->status` in GDB. Later, the function reassigns `dev
+      = NULL`. GDB errors with `Cannot access memory at address 0x4`. Why did this
+      happen?
+    choices:
+    - GDB re-evaluates the expression dev->status; when dev became NULL, dereferencing
+      offset 4 faulted
+    - The hardware debug registers DR0-DR3 were erased by the operating system kernel
+    - GDB is forbidden from watching variables when pointer variables are involved
+    answer: 0
+    why: 'Option A is correct: `watch dev->status` watches the logical expression.
+      When `dev` changes to `NULL`, GDB attempts to evaluate `(NULL)->status` at offset
+      4, which fails. To avoid this, watch the address directly with `watch *0x<addr>`.
+      Options B and C are incorrect.'
+  - kind: mcq
+    concept: memory-corruption-address-trace
+    q: Struct `record { char tag[4]; int code; }` is at `0x1000`. `tag` is at `0x1000-0x1003`
+      and `code` at `0x1004-0x1007`. A loop writes 6 bytes starting at `0x1000`. Which
+      bytes of `code` are corrupted?
+    choices:
+    - None, because the compiler automatically prevents struct overruns
+    - Bytes 0x1004 and 0x1005 (the lowest two bytes of code)
+    - All 4 bytes of code plus the caller's return address at 0x1008
+    answer: 1
+    why: 'Option B is correct: the 6-byte write fills bytes 0x1000, 0x1001, 0x1002,
+      0x1003 (tag), and spills into bytes 0x1004 and 0x1005 of `code`. Option A is
+      incorrect because C does not bounds-check struct arrays. Option C is incorrect
+      because only 6 bytes were written.'
+  - kind: fillblank
+    concept: watch-memory-address-syntax
+    q: To set a hardware watchpoint directly on 4 bytes of memory at explicit hexadecimal
+      address `0x601080`, you execute `watch ________`.
+    code: (gdb) watch *________
+    answer_text: '0x601080'
+    why: The syntax `watch *0x601080` tells GDB to treat `0x601080` as a pointer and
+      watch the memory value at that target address.
+  - kind: choose-better
+    concept: watchpoint-vs-printf-for-corruption
+    q: A memory corruption bug occurs sporadically once every 50,000 loop iterations.
+      Which strategy finds the corrupting instruction with the least developer effort?
+    choices:
+    - Recompile the binary without optimization and visually scan the assembly listing
+    - Insert 50,000 printf statements logging memory addresses into a 10GB text file
+    - Set a hardware watchpoint on the corrupted address and run with continue
+    answer: 2
+    why: 'Option C is correct: the hardware watchpoint runs at native silicon speed
+      until the single faulty iteration writes to the address, halting instantly at
+      the source line. Option B generates massive I/O overhead and log pollution.
+      Option A cannot identify runtime corruption.'
+- id: b8
+  title: 'QEMU Virtualization Boundary: Host Process vs Guest Silicon'
+  type: model
+  explain_md: "### 1. Frame the Problem\nDeveloping operating system kernels on physical\
+    \ bare metal is brutally slow: compile, flash to a USB drive, reboot the physical\
+    \ machine, watch it hang on a black screen with no output, and start over. \n\n\
+    Virtualization transforms this workflow. But to debug effectively, you must understand\
+    \ the virtualization boundary: what is the host operating system, what is QEMU,\
+    \ and what is the guest kernel?\n\n### 2. The Notional Machine\nThe virtualization\
+    \ boundary divides the world into three distinct execution contexts:\n\n```text\n\
+    +-------------------------------------------------------------------------+\n\
+    | HOST OPERATING SYSTEM (Linux x86_64 Host)                               |\n\
+    |                                                                         |\n\
+    |  $ qemu-system-i386 ...                                                 |\n\
+    |  PID 151534: Ordinary userspace process running under host Linux kernel |\n\
+    |                                                                         |\n\
+    |  +-------------------------------------------------------------------+  |\n\
+    |  | QEMU PROCESS INTERIOR (Virtual Silicon Emulator)                  |  |\n\
+    |  |                                                                   |  |\n\
+    |  |  • Guest Physical RAM: 16MB allocated via mmap/malloc in host RAM |  |\n\
+    |  |  • Virtual CPU (vCPU): Software loop emulating 80386/x86 registers|  |\n\
+    |  |  • Peripheral Devices: Emulated floppy disk, IDE drive, 8259 PIC  |  |\n\
+    |  |  • GDB RSP Server: Listening on host TCP port 1234                |  |\n\
+    |  |                                                                   |  |\n\
+    |  |  +-------------------------------------------------------------+  |  |\n\
+    |  |  | GUEST OPERATING SYSTEM (Linux 0.11)                         |  |  |\n\
+    |  |  |  • Believes it owns physical hardware at address 0x00000000 |  |  |\n\
+    |  |  |  • Configures GDT, IDT, and paging tables in virtual RAM    |  |  |\n\
+    |  |  |  • Completely unaware it is executing inside a host buffer  |  |  |\n\
+    |  |  +-------------------------------------------------------------+  |  |\n\
+    |  +-------------------------------------------------------------------+  |\n\
+    +-------------------------------------------------------------------------+\n\
+    ```\n\n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T1A-07` and `A1`:\n\
+    ```text\n$ qemu-system-i386 -m 16M -boot a -fda Image -hda hdc-0.11.img -s -S\
+    \ -display none &\n```\nTrace what happens on your host machine:\n1. Host Linux\
+    \ launches `qemu-system-i386` as an unprivileged userspace process (PID 151534\
+    \ in Evidence `A1`).\n2. QEMU allocates a 16MB memory buffer (`-m 16M`) representing\
+    \ Guest Physical Memory.\n3. QEMU opens `Image` and maps it to virtual floppy\
+    \ drive `A:`.\n4. QEMU opens TCP port `1234` (`-s`) and halts the vCPU at the\
+    \ hardware reset vector `0x0000fff0` (`-S`).\n5. When GDB on the host connects\
+    \ to `:1234`, it sends RSP packets over the loopback network interface. QEMU reads\
+    \ its internal vCPU state and returns the registers to GDB.\n\n### 4. The Failure\
+    \ Mode & Boundary\nThe most common conceptual blunder is confusing **Host Virtual\
+    \ Addresses** with **Guest Physical Addresses**. \n\nIf the guest kernel running\
+    \ inside QEMU writes to physical address `0x00000000`, that is address zero of\
+    \ the *guest's* 16MB simulated RAM! On your host Linux machine, that memory actually\
+    \ resides somewhere like `0x7f8a10000000` inside QEMU's heap. You cannot dereference\
+    \ guest kernel addresses directly from host tools; you must access them through\
+    \ QEMU's GDB stub.\n\n### 5. The Compressed Mental Axiom\n*QEMU is a software\
+    \ illusion of silicon; its GDB stub is a stethoscope into the virtual machine.*"
+  diagram:
+    kind: art
+    caption: Three-Tier Virtualization Isolation Model
+    art: "+-----------------------------------------------------------------------+\n\
+      | HOST LINUX ENVIRONMENT (Ring 3 Userspace & Ring 0 Host Kernel)        |\n\
+      |                                                                       |\n\
+      |  [GDB Client] <--- TCP :1234 (RSP) ---> [QEMU Process (PID 151534)]   |\n\
+      +--------------------------------------------------+--------------------+\n\
+      \                                                   |\n                    \
+      \                               v\n+-----------------------------------------------------------------------+\n\
+      | QEMU EMULATION INTERIOR                                               |\n\
+      |                                                                       |\n\
+      |  +-----------------------------+     +-----------------------------+  |\n\
+      |  | Guest vCPU Register State   |     | Guest Physical RAM (16MB)   |  |\n\
+      |  | EIP: 0x6771  ESP: 0x27f70   |     | 0x00000000 - 0x01000000     |  |\n\
+      |  | EAX: 0x80000013 (CR0 PG|PE) |     | (Host mmap memory buffer)   |  |\n\
+      |  +-----------------------------+     +-----------------------------+  |\n\
+      |                                                                       |\n\
+      |  +-----------------------------------------------------------------+  |\n\
+      |  | GUEST KERNEL EXECUTION CONTEXT (Linux 0.11 bootsect -> main)     |  |\n\
+      |  +-----------------------------------------------------------------+  |\n\
+      +-----------------------------------------------------------------------+"
+  viz:
+    kind: ascii-memory
+    caption: Host Memory vs Guest Memory Mapping in QEMU
+    steps:
+    - '[Step 1: QEMU Allocates 16MB Host Buffer for Guest RAM] · Regs: host_pid=151534,
+      guest_ram_size=16MB · State: Host Virtual 0x7f8a10000000: Mapped to Guest Physical
+      0x00000000 | Host Virtual 0x7f8a11000000: Mapped to Guest Physical 0x01000000
+      (16MB limit) · (Host kernel protects host RAM; guest executes inside isolated
+      buffer)'
+    - '[Step 2: Guest Kernel Configures IDT at Guest Physical 0x0] · Regs: guest_cr3=0x00000000,
+      guest_eip=0x00006771 · State: Guest Physical 0x00000000: Page Directory Base
+      & IDT vectors | Host Virtual 0x7f8a10000000: [Contains IDT bytes written by
+      guest head.s] · (Guest OS believes it owns address zero; host isolates it in
+      process memory)'
+  example:
+    lang: text
+    code: '# Launching QEMU with 16MB guest RAM and GDB stub halted at reset vector
+
+      $ qemu-system-i386 -m 16M -boot a -fda Image -hda hdc-0.11.img -s -S -display
+      none &
+
+      [1] 151534
+
+      $ ss -tulpn | grep 1234
+
+      tcp  LISTEN 0  1  0.0.0.0:1234  0.0.0.0:*  users:(("qemu-system-i38",pid=151534,fd=12))'
+    explain_md: QEMU launches as a normal host userspace process and binds a listening
+      TCP socket on port 1234 for GDB Remote Serial Protocol connections.
+  checks:
+  - kind: choose-better
+    concept: qemu-process-nature
+    q: From the perspective of your host Linux operating system, what is the running
+      `qemu-system-i386` virtual machine?
+    choices:
+    - An ordinary userspace process executing simulated CPU instructions in software
+    - A kernel-space device driver executing with unrestricted Ring 0 host privileges
+    - A hardware microcontroller plugged directly into the motherboard PCI bus
+    answer: 0
+    why: 'Option A is correct: QEMU runs as a standard userspace process in host Linux,
+      simulating guest CPU execution and hardware devices. Option B is incorrect because
+      QEMU does not run as a host kernel driver. Option C is incorrect because QEMU
+      is a software program.'
+  - kind: predict
+    concept: guest-vs-host-address-space
+    q: A guest operating system inside QEMU writes data to physical address `0x10000`.
+      Where does this write physically land on the host machine?
+    choices:
+    - Directly into physical host motherboard RAM address 0x10000, overwriting host
+      memory
+    - Inside an allocated memory buffer (mmap/malloc) managed by the QEMU host process
+    - Onto the swap partition of the host Linux filesystem
+    answer: 1
+    why: 'Option B is correct: QEMU maps guest physical memory into an allocated buffer
+      in its own host virtual address space. Option A is incorrect because guest physical
+      addresses are isolated and do not correspond to host physical RAM. Option C
+      is incorrect because guest writes go to virtual RAM buffers.'
+  - kind: why-fails
+    concept: host-tool-guest-dereference-failure
+    q: A developer writes a host C program that attempts to inspect the Linux 0.11
+      kernel by dereferencing pointer `*(int *)0x6771`. Why does this program crash
+      with SIGSEGV?
+    choices:
+    - QEMU encrypts guest memory so that other processes cannot read it
+    - The host Linux kernel forbids reading any memory address smaller than 1 megabyte
+    - Address 0x6771 is a guest address inside QEMU, not a valid mapped address in
+      the host program's address space
+    answer: 2
+    why: 'Option C is correct: each host process has its own isolated virtual address
+      space; address `0x6771` in the guest lives inside QEMU''s private buffer and
+      is unmapped in the independent host program. Options B and C are incorrect.'
+  - kind: choose-better
+    concept: qemu-vs-bare-metal-tradeoff
+    q: You are iterating on early kernel boot code and crash during interrupt vector
+      initialization. Why is testing in QEMU superior to testing on physical hardware?
+    choices:
+    - QEMU can freeze execution at the reset vector and allow register inspection
+      without physical reboots
+    - QEMU automatically corrects kernel bugs and fixes invalid machine opcodes at
+      runtime
+    - QEMU runs 10 times faster than bare-metal hardware because it bypasses memory
+      caches
+    answer: 0
+    why: 'Option A is correct: QEMU allows instant reloading, vCPU freezing with `-S`,
+      and register inspection over GDB RSP without physical reboots. Option B is incorrect
+      because QEMU does not fix bugs. Option C is incorrect because software emulation
+      is generally slower than native hardware.'
+  - kind: fillblank
+    concept: gdb-stub-shorthand-flag
+    q: In QEMU CLI grammar, the shorthand flag that enables the GDB Remote Serial
+      Protocol server on TCP port 1234 is -________.
+    code: qemu-system-i386 -________ -S
+    answer_text: s
+    why: The lowercase `-s` flag is QEMU shorthand for `-gdb tcp::1234`.
+  - kind: mcq
+    from_chapter: T0B
+    from_block: b1
+    concept: static-source-vs-virtual-memory-interleave
+    q: In Chapter T0b, we learned that C header declarations allocate zero bytes of
+      memory. Where does memory for kernel global variables actually get allocated
+      during a QEMU boot session?
+    choices:
+    - Inside the C source code text file stored on the host filesystem
+    - Inside the guest physical memory buffer allocated by QEMU when the kernel image
+      is loaded
+    - Inside the Git repository object database under .git/objects
+    answer: 1
+    why: 'Option B is correct: memory for variables exists at runtime in guest physical
+      memory allocated by QEMU. Option A is incorrect because source files only hold
+      text. Option C is incorrect because Git objects store version-controlled history,
+      not live runtime memory.'
+- id: b9
+  title: 'QEMU Boot CLI Flags: Media, Display, and CPU Freezing'
+  type: syntax
+  explain_md: "### 1. Frame the Problem\nLaunching a virtual machine by clicking a\
+    \ GUI menu is useless for kernel automation and continuous testing. You need precise,\
+    \ programmatic control over every simulated component: how much RAM to allocate,\
+    \ which floppy or hard disk image to insert, whether to display a graphical window\
+    \ or keep output in your terminal, and crucially, whether the virtual CPU should\
+    \ freeze at power-on so you can attach a debugger before the first instruction\
+    \ executes.\n\n### 2. The Notional Machine\nMastering QEMU's command-line interface\
+    \ requires understanding six core flag families:\n\n1. **Debugging & vCPU Control**:\n\
+    \   - `-s`: Shorthand for `-gdb tcp::1234`. Opens an RSP server on TCP port 1234.\n\
+    \   - `-S`: Freezes the virtual CPU at startup. The machine powers on in reset\
+    \ state and does **not** execute any instructions until GDB sends `continue`.\n\
+    \n2. **Memory & Architecture**:\n   - `-m <size>`: Sets the guest physical RAM\
+    \ size (e.g. `-m 16M` for 16 megabytes or `-m 4G` for 4 gigabytes).\n\n3. **Storage\
+    \ & Boot Media**:\n   - `-boot <order>`: Boot sequence (e.g. `-boot a` boots from\
+    \ floppy first; `-boot c` boots from hard drive).\n   - `-fda <file>`: Attaches\
+    \ a raw disk image file to virtual Floppy Drive A.\n   - `-hda <file>`: Attaches\
+    \ a raw disk image file to Master IDE Hard Drive A.\n\n4. **Display & Console\
+    \ Redirection**:\n   - `-display none`: Disables graphical window creation completely;\
+    \ essential for headless scripts and automated tests.\n   - `-nographic`: Disables\
+    \ graphical video and redirects the emulated serial port directly to your terminal's\
+    \ standard input and output.\n\n5. **Direct Kernel Boot (Modern Linux)**:\n  \
+    \ - `-kernel <bzImage>`: Loads an uncompressed kernel image directly into guest\
+    \ memory, bypassing the floppy/BIOS bootloader.\n   - `-append \"<cmdline>\"`:\
+    \ Passes kernel boot command-line arguments (e.g. `-append \"console=ttyS0 root=/dev/sda1\"\
+    `).\n   - `-initrd <file>`: Loads an initial RAM disk image.\n\n### 3. Source-Grounded\
+    \ Walkthrough\nLook at the exact QEMU invocation from Evidence `E-T1A-07` and\
+    \ `A1`:\n```text\n$ qemu-system-i386 -m 16M -boot a -fda Image -hda hdc-0.11.img\
+    \ -s -S -display none &\n```\nDeconstruct every single flag:\n- `qemu-system-i386`:\
+    \ Launches the 32-bit x86 virtual machine emulator.\n- `-m 16M`: Allocates exactly\
+    \ 16 megabytes of guest RAM (matching original 1991 PC hardware).\n- `-boot a`:\
+    \ Instructs the simulated BIOS to boot from floppy drive A.\n- `-fda Image`: Loads\
+    \ the 0.11 bootable floppy disk image containing `bootsect.s`, `setup.s`, and\
+    \ `system`.\n- `-hda hdc-0.11.img`: Attaches the root filesystem hard disk image.\n\
+    - `-s`: Binds the GDB RSP server to `0.0.0.0:1234`.\n- `-S`: Holds the virtual\
+    \ CPU frozen at the 80386 reset vector (`0x0000fff0`).\n- `-display none`: Runs\
+    \ completely headlessly in the background.\n\n### 4. The Failure Mode & Boundary\n\
+    The most catastrophic omission is forgetting the uppercase `-S` flag:\nIf you\
+    \ run `qemu-system-i386 ... -s` without `-S`, QEMU unfreezes the vCPU the exact\
+    \ millisecond the process launches. Within 50 milliseconds, the kernel has finished\
+    \ booting or crashed into a halt loop. When you finally start GDB and type `target\
+    \ remote :1234`, you have missed the entire boot sequence!\n\n### 5. The Compressed\
+    \ Mental Axiom\n*-s opens the door on port 1234; -S holds the elevator so you\
+    \ can get in before it leaves.*"
+  diagram:
+    kind: flow
+    caption: 'QEMU Startup Lifecycle: With -S vs Without -S'
+    nodes:
+    - id: qemu_cmd
+      label: Launch QEMU CLI
+      shape: round
+    - id: check_s
+      label: Is -S passed?
+      shape: decision
+    - id: halt_state
+      label: vCPU Frozen at Reset Vector (0xfff0)
+      shape: box
+    - id: run_state
+      label: vCPU Runs Immediately at Startup
+      shape: box
+    - id: gdb_attach
+      label: GDB attaches via :1234 & sets breaks
+      shape: box
+    - id: missed
+      label: Boot Finished or Crashed Before GDB Attaches
+      shape: box
+    edges:
+    - from: qemu_cmd
+      to: check_s
+      label: parse CLI flags
+    - from: check_s
+      to: halt_state
+      label: YES (-S present)
+    - from: check_s
+      to: run_state
+      label: NO (-S omitted)
+    - from: halt_state
+      to: gdb_attach
+      label: GDB attaches safely
+    - from: run_state
+      to: missed
+      label: races past boot
+    steps:
+    - focus:
+      - qemu_cmd
+      - check_s
+      - halt_state
+      - gdb_attach
+      note: -S freezes vCPU at reset, allowing GDB to attach before any instructions
+        execute
+    - focus:
+      - check_s
+      - run_state
+      - missed
+      note: Omitting -S runs the CPU immediately, missing early bootstrap and breakpoints
+  example:
+    lang: text
+    code: '# Launch QEMU for automated test harness in background
+
+      $ qemu-system-i386 -m 16M -boot a -fda Image -hda hdc-0.11.img -s -S -display
+      none &
+
+      [1] 151534
+
+      $ kill -0 151534 && echo "QEMU running and waiting on port 1234"
+
+      QEMU running and waiting on port 1234'
+    explain_md: Launching QEMU with -s -S -display none starts a headless background
+      instance ready for GDB attachment on port 1234.
+  checks:
+  - kind: choose-better
+    concept: qemu-uppercase-s-semantics
+    q: What is the critical behavioral difference between passing `-s` and passing
+      `-S` when launching QEMU?
+    choices:
+    - Lowercase -s saves a snapshot to disk; uppercase -S restores the previous snapshot
+    - Lowercase -s sets single-core mode; uppercase -S enables symmetric multiprocessing
+    - Lowercase -s enables the GDB server on port 1234; uppercase -S freezes the CPU
+      at reset until GDB resumes it
+    answer: 2
+    why: 'Option C is correct: `-s` is shorthand for `-gdb tcp::1234`, while `-S`
+      halts the virtual CPU at reset. Option B is incorrect because SMP is configured
+      with `-smp`. Option A is incorrect because snapshots use `-snapshot`.'
+  - kind: why-fails
+    concept: omitting-uppercase-s-boot-race
+    q: A student launches QEMU with `qemu-system-i386 -m 16M -fda Image -s`, then
+      opens GDB and sets a breakpoint on `main`. The breakpoint is never hit. Why
+      did this failure occur?
+    choices:
+    - Because -S was omitted, QEMU executed the entire bootloader and entered main
+      before GDB even launched
+    - The lowercase -s flag disables breakpoints inside functions named main
+    - QEMU requires an internet connection to download symbol tables for -s
+    answer: 0
+    why: 'Option A is correct: without `-S`, the CPU executes immediately. Because
+      bootsect and setup take mere milliseconds in emulation, the kernel had already
+      executed past `main` before GDB connected. Options B and C are incorrect.'
+  - kind: predict
+    concept: headless-display-flag
+    q: You are writing a continuous integration script that boots a kernel inside
+      QEMU on a remote server without an X11/Wayland desktop. Which flag prevents
+      QEMU from failing due to missing graphical display servers?
+    choices:
+    - -gui auto
+    - -display none (or -nographic)
+    - -screen 1080p
+    answer: 1
+    why: 'Option B is correct: `-display none` tells QEMU not to open any graphical
+      window, allowing it to run cleanly on headless servers. Options B and C are
+      not valid QEMU headless display flags.'
+  - kind: order
+    concept: assemble-qemu-command-line
+    q: Order the 4 flag components to launch a headless QEMU session with 16MB RAM,
+      floppy Image, and frozen GDB stub; all displayed lines are used.
+    lines:
+    - 'Binary: qemu-system-i386'
+    - 'Memory and Boot Media: -m 16M -boot a -fda Image'
+    - 'GDB Stub and Freeze: -s -S'
+    - 'Headless Display: -display none'
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: First, the target emulator binary `qemu-system-i386`. Second, memory and
+      storage media configuration. Third, the debugging stub flags `-s -S`. Fourth,
+      the headless display flag `-display none`.
+  - kind: fillblank
+    concept: qemu-memory-flag-syntax
+    q: To allocate exactly 16 megabytes of virtual RAM to a QEMU guest machine, you
+      pass the flag -________.
+    code: qemu-system-i386 -________ -boot a
+    answer_text: m 16M
+    why: The memory sizing flag is `-m 16M` (or `-m 16`).
+  - kind: mcq
+    from_chapter: T0A
+    from_block: b1
+    concept: cli-flag-case-sensitivity-interleave
+    q: In Chapter T0a, we learned that UNIX commands are strictly case-sensitive.
+      How does this rule manifest in QEMU's `-s` and `-S` flags?
+    choices:
+    - -S is an invalid deprecated flag that triggers a syntax error on modern Linux
+    - -s and -S are interchangeable aliases that perform the exact same action
+    - '-s and -S have completely distinct meanings: -s enables the network stub, while
+      -S freezes the CPU'
+    answer: 2
+    why: 'Option C is correct: in standard UNIX tool design, case indicates distinct
+      behavior: `-s` sets up the GDB stub on port 1234, while `-S` pauses the virtual
+      processor. Options B and C are incorrect.'
+- id: b10
+  title: 'Remote Kernel Attachment: Port Attachment and ELF Symbol Mapping'
+  type: algorithm
+  explain_md: "### 1. Frame the Problem\nIn remote debugging, a deep separation of\
+    \ concerns exists:\n- **QEMU** has the CPU and raw machine instructions, but has\
+    \ **zero** knowledge of C source code, function names, or variable types. It only\
+    \ sees bytes and registers.\n- **GDB** has the full DWARF symbol table, line numbers,\
+    \ and struct layouts, but does **not** execute the code.\n\nHow do you unite the\
+    \ two so you can set breakpoints on C function names like `main()` and inspect\
+    \ variables while QEMU runs the virtual silicon?\n\n### 2. The Notional Machine\n\
+    The Remote Kernel Attachment Architecture operates through a five-step handshake:\n\
+    \n```text\n+------------------------+                           +------------------------+\n\
+    | GDB CLIENT (Host)      |                           | QEMU HYPERVISOR (Host)\
+    \ |\n+------------------------+                           +------------------------+\n\
+    \            |                                                     |\n       \
+    \     | 1. file tools/system                                |\n            | \
+    \   (GDB loads DWARF symbols locally)                |\n            |        \
+    \                                             |\n            | 2. target remote\
+    \ :1234                             |\n            |----------------- TCP Connect\
+    \ ---------------------->|\n            |<---------------- Packet $T05thread:1...\
+    \ ------------|\n            |    (QEMU reports vCPU halted at 0xfff0)       \
+    \      |\n            |                                                     |\n\
+    \            | 3. break main                                       |\n       \
+    \     |    (GDB maps 'main' -> address 0x6771 via symbols)  |\n            | \
+    \                                                    |\n            | 4. continue\
+    \                                         |\n            |----------------- Packet\
+    \ $vCont;c ------------------>|\n            |                               \
+    \                      |\n            |    (QEMU runs bootloader: bootsect ->\
+    \ setup -> head)|\n            |    (QEMU vCPU hits instruction pointer 0x6771)\
+    \      |\n            |                                                     |\n\
+    \            |<---------------- Packet $T05watch/break... ---------|\n       \
+    \     |                                                     |\n            | 5.\
+    \ Trap Handoff: GDB displays:                      |\n            |    Breakpoint\
+    \ 1, main () at init/main.c:107         |\n            v                     \
+    \                                v\n```\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at the exact transcript from Evidence `E-T1A-07`:\n```text\n$ gdb -q -batch\
+    \ \\\n    -ex \"file tools/system\" \\\n    -ex \"target remote :1234\" \\\n \
+    \   -ex \"break main\" \\\n    -ex \"continue\" \\\n    -ex \"bt\" \\\n    -ex\
+    \ \"info registers eip esp eax\" \\\n    -ex \"x/8i \\$eip\"\n```\nNow follow\
+    \ the output as GDB executes this batch pipeline:\n1. `file tools/system`: GDB\
+    \ reads the unstripped 32-bit ELF kernel image from disk, populating symbol offsets.\n\
+    2. `target remote :1234`: GDB connects over TCP. Notice what QEMU reported initially:\n\
+    \   `0x0000fff0 in do_execve (...)`\n   At power-on, the x86 processor begins\
+    \ at reset vector `0x0000fff0`.\n3. `break main`: GDB uses its loaded symbols\
+    \ to resolve `main`:\n   `Breakpoint 1 at 0x6771: file init/main.c, line 107.`\n\
+    4. `continue`: QEMU unfreezes, boots through `bootsect.s`, transitions to 32-bit\
+    \ protected mode in `setup.s`, configures page tables in `head.s`, and leaps into\
+    \ `main`:\n   `Breakpoint 1, main () at init/main.c:107`\n   `eip 0x6771 <main>`\n\
+    \   `esp 0x27f70 <user_stack+4080>`\n   `eax 0x80000013 -2147483629`\n\n### 4.\
+    \ The Failure Mode & Boundary\nIf you forget to load symbols with `file tools/system`\
+    \ before setting the breakpoint, GDB has no symbol map:\n```text\n(gdb) target\
+    \ remote :1234\n(gdb) break main\nFunction \"main\" not defined.\n```\nWithout\
+    \ the unstripped ELF file on the host, you are blind to C symbols and forced to\
+    \ set breakpoints on raw hexadecimal addresses like `break *0x6771`.\n\n### 5.\
+    \ The Compressed Mental Axiom\n*In remote debugging, GDB brings the map (symbols)\
+    \ and QEMU drives the car; use continue, never run.*"
+  diagram:
+    kind: flow
+    caption: Remote Kernel Symbol Loading and Execution Handshake
+    nodes:
+    - id: gdb
+      label: Start GDB Client
+      shape: round
+    - id: file
+      label: file tools/system (Load Symbols)
+      shape: box
+    - id: attach
+      label: target remote :1234
+      shape: box
+    - id: bp
+      label: break main (Resolved to 0x6771)
+      shape: box
+    - id: cont
+      label: continue (Resume vCPU)
+      shape: box
+    - id: trap
+      label: Halted at init/main.c:107
+      shape: decision
+    edges:
+    - from: gdb
+      to: file
+      label: 1. load ELF map
+    - from: file
+      to: attach
+      label: 2. TCP connection
+    - from: attach
+      to: bp
+      label: 3. arm breakpoint
+    - from: bp
+      to: cont
+      label: 4. unfreeze vCPU
+    - from: cont
+      to: trap
+      label: 5. hit entry point
+    steps:
+    - focus:
+      - gdb
+      - file
+      note: GDB loads unstripped ELF kernel symbols on the host
+    - focus:
+      - file
+      - attach
+      - bp
+      note: GDB connects to QEMU on :1234 and resolves symbol 'main' to address 0x6771
+    - focus:
+      - bp
+      - cont
+      - trap
+      note: Continue resumes execution until QEMU reaches main at line 107
+  example:
+    lang: text
+    code: "# Connecting GDB to QEMU and verifying halted kernel entry state\n(gdb)\
+      \ file tools/system\nReading symbols from tools/system...\n(gdb) target remote\
+      \ :1234\nRemote debugging using :1234\n(gdb) break main\nBreakpoint 1 at 0x6771:\
+      \ file init/main.c, line 107.\n(gdb) continue\nContinuing.\nBreakpoint 1, main\
+      \ () at init/main.c:107\n107\t{\t\t\t/* The startup routine assumes (well, ...)\
+      \ this */"
+    explain_md: Loading symbols with file tools/system allows GDB to resolve the main
+      entry symbol to address 0x6771 and stop at line 107.
+  checks:
+  - kind: mcq
+    concept: symbol-table-loading-command
+    q: Which GDB command loads the DWARF symbol table from an unstripped kernel executable
+      file on the host filesystem?
+    choices:
+    - file <path/to/vmlinux>
+    - import symbols <path>
+    - target load <path>
+    answer: 0
+    why: 'Option A is correct: the `file` command loads symbols and execution targets
+      from the specified ELF file. Option B is incorrect because `import symbols`
+      is not a valid GDB command. Option C is incorrect because `target load` downloads
+      code to embedded targets.'
+  - kind: why-fails
+    concept: run-vs-continue-remote-target
+    q: You connect GDB to QEMU via `target remote :1234` and type `run`. GDB returns
+      an error and refuses to execute. Why must you use `continue` instead?
+    choices:
+    - The run command is disabled by the Linux kernel when memory paging is enabled
+    - The remote target is already an active running machine instance; you can only
+      resume execution, not spawn a new process
+    - QEMU's TCP socket port 1234 only accepts commands written in uppercase letters
+    answer: 1
+    why: 'Option B is correct: `run` tells GDB to fork and spawn a local process;
+      remote targets already exist in the hypervisor, so you must use `continue` to
+      resume the vCPU. Options B and C are incorrect.'
+  - kind: predict
+    concept: reset-vector-initial-address
+    q: In Evidence E-T1A-07, when GDB first attaches to QEMU at power-on before issuing
+      `continue`, what address does the instruction pointer register hold?
+    choices:
+    - 0x00100000 (1 megabyte boundary)
+    - 0x00000000 (NULL pointer address)
+    - 0x0000fff0 (the standard x86 CPU hardware reset vector)
+    answer: 2
+    why: 'Option C is correct: on 80386 and compatible CPUs, power-on reset vector
+      begins at physical address `0xffff0` (`CS:IP = 0xf000:0xfff0`). Options B and
+      C are incorrect.'
+  - kind: order
+    concept: remote-kernel-debug-pipeline
+    q: Order the 5 commands to load symbols, connect to QEMU, halt at main, and inspect
+      the instruction pointer; all displayed lines are used.
+    lines:
+    - file tools/system
+    - target remote :1234
+    - break main
+    - continue
+    - info registers eip
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+    why: First, load symbols with `file`. Second, connect with `target remote :1234`.
+      Third, set breakpoint with `break main`. Fourth, resume execution with `continue`.
+      Fifth, inspect registers with `info registers eip`.
+  - kind: fillblank
+    concept: remote-target-connect-syntax
+    q: To connect GDB to a remote GDB server running on the local machine at TCP port
+      1234, the command is `target remote :________`.
+    code: (gdb) target remote :________
+    answer_text: '1234'
+    why: The command syntax is `target remote :1234` (shorthand for `localhost:1234`).
+  - kind: mcq
+    from_chapter: T0B
+    from_block: b4
+    concept: symbol-definition-vs-elf-offset-interleave
+    q: In Chapter T0b, we found the canonical definition of functions in .c source
+      files. What artifact translates that textual C function name into the hexadecimal
+      address `0x6771` loaded into GDB?
+    choices:
+    - The DWARF debug information embedded in the compiled ELF binary (tools/system)
+    - The shell environment variable PATH configured in ~/.bashrc
+    - The ripgrep configuration file located in the user home directory
+    answer: 0
+    why: 'Option A is correct: the compiler and linker emit DWARF debug sections (`.debug_info`,
+      `.debug_line`) inside the ELF binary that map source symbols directly to concrete
+      memory offsets. Options B and C are incorrect.'
+- id: b11
+  title: 'Compiler Realities: Inlining, Dead Variables, and Hardware Breakpoints'
+  type: model
+  explain_md: "### 1. Frame the Problem\nWhen debugging optimized kernels (compiled\
+    \ with `-O2`), you will frequently encounter two deeply disorienting phenomena:\n\
+    1. You try to print a local variable, and GDB responds with `<optimized out>`.\n\
+    2. You set a normal breakpoint on an early bootloader instruction, and the entire\
+    \ virtual machine crashes with a Triple Fault reset!\n\nWhy do these happen? The\
+    \ answer lies in how compiler optimization reorganizes code and how hardware versus\
+    \ software breakpoints operate on silicon.\n\n### 2. The Notional Machine\nLet\
+    \ us break down both mechanisms:\n\n1. **Compiler Optimization Side-Effects (`-O2`)**:\n\
+    \   - **Register Allocation & Variable Lifetimes**: The compiler keeps variables\
+    \ in CPU registers rather than writing them to RAM. Once a variable's value has\
+    \ been used, the compiler immediately reuses that register for another calculation.\
+    \ When GDB inspects that slot, the variable no longer exists: GDB reports `<optimized\
+    \ out>`.\n   - **Function Inlining**: Small functions are not called with a `call`\
+    \ instruction; their machine code is pasted directly into the caller. The function\
+    \ entry disappears from the call stack!\n\n2. **Software Breakpoints (`break`)**:\n\
+    \   - GDB modifies the memory of the target program: it replaces the first byte\
+    \ of the target instruction with opcode `0xCC` (`INT 3`).\n   - When the CPU executes\
+    \ `0xCC`, it looks up vector 3 in the Interrupt Descriptor Table (IDT).\n   -\
+    \ **The Early Boot Trap**: Before the kernel initializes the IDT (in `boot/head.s`),\
+    \ the IDT is empty! If the CPU executes `0xCC` without an IDT handler, the CPU\
+    \ raises a Double Fault (`#DF`), followed immediately by a Triple Fault, resetting\
+    \ the virtual machine!\n   - Furthermore, in Read-Only Memory (ROM) or BIOS flash,\
+    \ writing `0xCC` fails because the memory is hardware write-protected.\n\n3. **Hardware\
+    \ Breakpoints (`hbreak`)**:\n   - `hbreak` does **not** write to RAM or modify\
+    \ any machine code.\n   - It programs the target address into the CPU's hardware\
+    \ debug registers (`DR0`-`DR3`).\n   - The CPU's internal hardware comparator\
+    \ raises a Debug Exception (`#DB`, vector 1) when the instruction pointer matches,\
+    \ without needing any code patch.\n   - Works flawlessly in ROM, read-only memory,\
+    \ and early boot!\n\n### 3. Source-Grounded Walkthrough\nConsider debugging Linux\
+    \ 0.11 before `head.s` sets up the IDT:\n```text\n(gdb) break *0x7c00\n```\nIf\
+    \ you set a software breakpoint at `0x7c00` (`bootsect.s`), GDB writes `0xCC`\
+    \ into guest RAM. But the BIOS has not registered an IDT handler for vector 3\
+    \ that GDB can intercept cleanly across real mode.\nInstead, using hardware breakpoints:\n\
+    ```text\n(gdb) hbreak *0x7c00\nHardware assisted breakpoint 1 at 0x7c00\n(gdb)\
+    \ continue\n```\nQEMU's vCPU comparator fires cleanly at `0x7c00` without modifying\
+    \ a single byte of memory.\n\n### 4. The Failure Mode & Boundary\nIf you attempt\
+    \ to use more than four hardware breakpoints (`hbreak`), GDB will fail:\n```text\n\
+    (gdb) hbreak *0x8000\nCannot insert hardware breakpoint: no hardware debug registers\
+    \ available.\n```\nx86 silicon provides strictly four debug address registers\
+    \ (`DR0`-`DR3`).\n\n### 5. The Compressed Mental Axiom\n*Software breakpoints\
+    \ write 0xCC to RAM; hardware breakpoints whisper the address directly to the\
+    \ silicon.*"
+  diagram:
+    kind: art
+    caption: Software Breakpoint (0xCC Patch) vs Hardware Breakpoint (DR0 Comparator)
+    art: "+-----------------------------------------------------------------------+\n\
+      | 1. SOFTWARE BREAKPOINT (break): Modifies Guest RAM                     |\n\
+      |                                                                       |\n\
+      |  Memory Before: [ 0x89 ] [ 0xe5 ] (mov %esp, %ebp)                    |\n\
+      |  Memory After:  [ 0xCC ] [ 0xe5 ] (INT 3 patched by GDB)              |\n\
+      |                                                                       |\n\
+      |  Execution: CPU executes 0xCC -> Look up IDT[3] -> TRIPLE FAULT if    |\n\
+      |             IDT is uninitialized in early boot!                       |\n\
+      +-----------------------------------------------------------------------+\n\
+      \                                   vs\n+-----------------------------------------------------------------------+\n\
+      | 2. HARDWARE BREAKPOINT (hbreak): Zero Memory Modification             |\n\
+      |                                                                       |\n\
+      |  Memory:        [ 0x89 ] [ 0xe5 ] (Unmodified pristine opcodes)       |\n\
+      |  CPU Register:  DR0 = 0x00007c00, DR7 = Local Enable                  |\n\
+      |                                                                       |\n\
+      |  Execution: CPU bus comparator detects EIP == DR0 -> Halts at native  |\n\
+      |             hardware level safely in ROM, bootloaders, and RAM!       |\n\
+      +-----------------------------------------------------------------------+"
+  viz:
+    kind: ascii-memory
+    caption: Hardware Debug Register Address Comparator State
+    steps:
+    - '[Step 1: DR0 Register Armed with Linear Address] · Regs: DR0=0x00007c00, DR7=0x00000001
+      (Local Breakpoint DR0) · State: Guest RAM 0x7c00: 0xfa (cli - untouched machine
+      code byte) | Guest RAM 0x7c01: 0x31 (xor %ax,%ax - pristine opcodes) · (RAM
+      contains original bootloader instructions without 0xCC modifications)'
+    - '[Step 2: CPU Bus Hits EIP == DR0] · Regs: eip=0x00007c00, DR6=0xffff0ff1 (B0
+      flag set) · State: Interrupt State: Debug Exception #DB raised directly by silicon
+      | GDB Client: Notified: Hardware assisted breakpoint hit at 0x7c00 · (Execution
+      halts safely before uninitialized IDT is accessed)'
+  example:
+    lang: text
+    code: '# Setting a hardware breakpoint on kernel entry point
+
+      (gdb) hbreak *0x6771
+
+      Hardware assisted breakpoint 1 at 0x6771
+
+      (gdb) continue
+
+      Continuing.
+
+      Breakpoint 1, 0x00006771 in main () at init/main.c:107'
+    explain_md: Hardware assisted breakpoints (hbreak) use CPU debug registers DR0-DR3,
+      allowing execution to halt without modifying memory bytes.
+  checks:
+  - kind: mcq
+    concept: software-breakpoint-mechanism
+    q: How does a standard software breakpoint (`break`) temporarily halt execution
+      at a target instruction in memory?
+    choices:
+    - GDB changes the CPU clock frequency to zero cycles per second
+    - GDB overwrites the first byte of the instruction in memory with opcode 0xCC
+      (INT 3)
+    - GDB injects a permanent kernel system call into the C source code file
+    answer: 1
+    why: 'Option B is correct: software breakpoints replace the instruction opcode
+      byte with `0xCC` (`INT 3`), which triggers a breakpoint trap when executed.
+      Options B and C are incorrect.'
+  - kind: why-fails
+    concept: software-breakpoint-early-boot-triple-fault
+    q: Why does setting a software breakpoint in early bootloader code before the
+      Interrupt Descriptor Table (IDT) is set up cause a CPU Triple Fault?
+    choices:
+    - QEMU restricts software breakpoints to processes that have opened an X11 display
+      window
+    - Early bootloader code runs at 64-bit privilege levels where software breakpoints
+      are illegal
+    - Executing INT 3 (0xCC) requires a valid IDT entry; without it, the unhandled
+      fault cascades into a machine reset
+    answer: 2
+    why: 'Option C is correct: opcode `0xCC` invokes interrupt vector 3. If the IDT
+      has not been populated by the bootloader, the CPU cannot dispatch the interrupt,
+      causing a Double Fault and immediate Triple Fault reboot. Options B and C are
+      incorrect.'
+  - kind: predict
+    concept: optimized-out-variable-meaning
+    q: 'When debugging an optimized kernel built with `-O2`, you execute `print buffer_head`
+      and GDB displays:
+
+      `$1 = <optimized out>`
+
+      What does this output mean?'
+    choices:
+    - The compiler eliminated or recycled the register holding the variable because
+      its value was no longer needed
+    - The variable was identified as a security vulnerability and erased from memory
+      by the kernel
+    - GDB encountered a syntax error while reading the English dictionary file
+    answer: 0
+    why: 'Option A is correct: compiler optimization (`-O2`) aggressively reuses registers
+      and eliminates dead variables once their value has been consumed, leaving no
+      storage location for GDB to inspect. Options B and C are incorrect.'
+  - kind: choose-better
+    concept: hbreak-vs-break-selection
+    q: You need to set a breakpoint inside a flash memory ROM bootloader or in the
+      real-mode reset vector before IDT initialization. Which breakpoint command must
+      you use?
+    choices:
+    - break (standard software breakpoint patching RAM with 0xCC)
+    - hbreak (hardware-assisted breakpoint using CPU debug registers)
+    - tbreak (temporary breakpoint patching RAM with 0x90 NOP)
+    answer: 1
+    why: 'Option B is correct: `hbreak` configures hardware debug registers (`DR0`-`DR3`)
+      which do not write to RAM or rely on IDT interrupt handling. Option A and C
+      modify memory with software opcodes, which fails in ROM and causes faults without
+      an IDT.'
+  - kind: fillblank
+    concept: hardware-breakpoint-command-syntax
+    q: The GDB command used to set a hardware-assisted breakpoint is ________.
+    code: (gdb) ________ *0x6771
+    answer_text: hbreak
+    why: The command `hbreak` sets a hardware-assisted breakpoint using the processor's
+      debug registers.
+  - kind: order
+    concept: software-breakpoint-trigger-sequence
+    q: Order the 4 steps of a software breakpoint execution cycle; all displayed lines
+      are used.
+    lines:
+    - GDB saves original instruction byte and writes opcode 0xCC to RAM
+    - CPU executes 0xCC and raises interrupt vector 3 (INT 3)
+    - Host kernel or hypervisor catches trap and delivers SIGTRAP to GDB
+    - GDB restores original instruction byte so developer can inspect or step
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: First, GDB patches the byte to `0xCC`. Second, the CPU executes `0xCC`. Third,
+      the trap is caught and signaled to GDB. Fourth, GDB restores the original byte
+      so the instruction can be executed.
+- id: b12
+  title: 'Kernel Entry Inspection: Halting at main() and Decoding CR0'
+  type: algorithm
+  explain_md: "### 1. Frame the Problem\nIn operating system development, the most\
+    \ critical architectural milestone is the leap from assembly bootstrap into the\
+    \ first C function (`main()` in early Linux, or `start_kernel()` in modern Linux).\
+    \ \n\nHow do you verify that the CPU successfully transitioned from 16-bit real\
+    \ mode into 32-bit protected mode and enabled virtual memory paging? You must\
+    \ inspect the silicon control registers (`CR0`, `CR3`) at the very moment execution\
+    \ enters C code.\n\n### 2. The Notional Machine\nx86 processors manage architectural\
+    \ execution modes through Control Registers:\n\n1. **Control Register 0 (`CR0`)**:\n\
+    \   - **Bit 0 (`PE` - Protection Enable)**: `0` = 16-bit Real Mode; `1` = Protected\
+    \ Mode (32-bit or 64-bit).\n   - **Bit 1 (`MP` - Monitor Coprocessor)**: Controls\
+    \ interaction of `WAIT`/`FWAIT` instructions with math coprocessors.\n   - **Bit\
+    \ 4 (`ET` - Extension Type)**: `1` = 80387 math coprocessor present.\n   - **Bit\
+    \ 31 (`PG` - Paging Enable)**: `0` = Paging disabled (linear addresses are physical\
+    \ addresses); `1` = Paging enabled (memory accesses pass through Page Directory\
+    \ & Page Tables).\n\n2. **Control Register 3 (`CR3` - Page Directory Base Register)**:\n\
+    \   - Holds the physical base address of the Page Directory (in Linux 0.11, initialized\
+    \ to `0x00000000` in `boot/head.s`).\n\n3. **Disassembling at the Entry Point\
+    \ (`x/Ni $eip`)**:\n   - Disassembles $N$ instructions starting at `$eip`, exposing\
+    \ the compiler-generated function prologue.\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at the register state captured at the entry to `main()` in Evidence `E-T1A-07`\
+    \ and `A1`:\n```text\nBreakpoint 1, main () at init/main.c:107\n107\t{\t\t\t/*\
+    \ The startup routine assumes (well, ...) this */\n#0  main () at init/main.c:107\n\
+    eip            0x6771              0x6771 <main>\nesp            0x27f70     \
+    \        0x27f70 <user_stack+4080>\neax            0x80000013          -2147483629\n\
+    => 0x6771 <main>:\tlea    0x4(%esp),%ecx\n   0x6775 <main+4>:\tand    $0xfffffff0,%esp\n\
+    \   0x6778 <main+7>:\tpush   -0x4(%ecx)\n   0x677b <main+10>:\tpush   %ebp\n \
+    \  0x677c <main+11>:\tmov    %esp,%ebp\n```\nNow perform the forensic decode of\
+    \ register `EAX`:\nNotice `eax = 0x80000013`. Why does `eax` hold this exact value?\n\
+    In `boot/head.s`, the assembly startup routine configured `CR0` right before jumping\
+    \ to `main`:\n- Bit 31: `0x80000000` (`PG` = Paging Enabled!)\n- Bit 4:  `0x00000010`\
+    \ (`ET` = 80387 Coprocessor present)\n- Bit 1:  `0x00000002` (`MP` = Monitor Coprocessor)\n\
+    - Bit 0:  `0x00000001` (`PE` = Protected Mode Enabled!)\nAdd them together: `0x80000000\
+    \ + 0x10 + 0x2 + 0x1 = 0x80000013`!\nThis value in `EAX` is the smoking gun proving\
+    \ that `head.s` initialized paging and protected mode before handing control to\
+    \ `main()`.\n\n### 4. The Failure Mode & Boundary\nIf `PG` (bit 31) was not set\
+    \ in `CR0`, any memory access above physical memory limits would fail to translate\
+    \ through page tables. Conversely, if you attempt to inspect memory at virtual\
+    \ address `0x6771` when page tables are improperly configured, the CPU will trigger\
+    \ a Page Fault (`#PF`, vector 14).\n\n### 5. The Compressed Mental Axiom\n*When\
+    \ eax equals 0x80000013, the CPU has graduated: real mode is dead, paging is alive,\
+    \ and main() is in command.*"
+  viz:
+    kind: ascii-memory
+    caption: CR0 Register Bit Breakdown and Stack State at main() Entry
+    steps:
+    - '[Step 1: CR0 Register Flags Decoded (0x80000013)] · Regs: eip=0x6771, esp=0x27f70,
+      eax=0x80000013 · State: CR0[bit 31] PG: 1 (Paging Active: Virtual Memory Enabled)
+      | CR0[bit 4]  ET: 1 (80387 Coprocessor Extension) | CR0[bit 1]  MP: 1 (Monitor
+      Coprocessor) | CR0[bit 0]  PE: 1 (Protected Mode Active: 32-bit execution) ·
+      (CPU is verified to be in 32-bit protected mode with paging active)'
+    - '[Step 2: Stack Pointer Alignment in Prologue] · Regs: eip=0x677c, esp=0x27f58,
+      ebp=0x27f58 · State: 0x27f70: Initial user_stack+4080 top of stack | 0x27f60:
+      Stack pointer aligned to 16-byte boundary via and $0xfffffff0 | 0x27f58: Saved
+      caller base pointer (%ebp) · (Standard C function stack frame established for
+      main())'
+  example:
+    lang: text
+    code: "# Disassembling the first 4 instructions of Linux 0.11 main()\n(gdb) x/4i\
+      \ $eip\n=> 0x6771 <main>:\tlea    0x4(%esp),%ecx\n   0x6775 <main+4>:\tand \
+      \   $0xfffffff0,%esp\n   0x6778 <main+7>:\tpush   -0x4(%ecx)\n   0x677b <main+10>:\t\
+      push   %ebp"
+    explain_md: Examining instructions at $eip shows the stack alignment and frame
+      pointer setup executed at the start of main().
+  checks:
+  - kind: predict
+    concept: cr0-bit-decoding
+    q: In Evidence E-T1A-07, register `eax` holds `0x80000013` at entry to `main()`.
+      What does bit 31 (`0x80000000`) indicate about the CPU memory system?
+    choices:
+    - The kernel has mounted a network filesystem over the ethernet controller
+    - The CPU is operating in 16-bit real mode with segmented memory translation
+    - Paging is enabled (PG bit is set), so memory accesses pass through page tables
+    answer: 2
+    why: 'Option C is correct: bit 31 of `CR0` is the Paging Enable (`PG`) flag. When
+      set to 1, the MMU translates virtual addresses to physical addresses via page
+      tables. Option B is incorrect because real mode is 0x0. Option A is incorrect
+      because CR0 is a CPU hardware register.'
+  - kind: mcq
+    concept: disassemble-pc-instructions
+    q: Which GDB command examines and disassembles the next 4 machine instructions
+      starting at the current instruction pointer?
+    choices:
+    - x/4i $eip (or $rip on 64-bit systems)
+    - print /4 instructions
+    - dump 4 asm
+    answer: 0
+    why: 'Option A is correct: `x/4i $eip` uses the examine command with count 4 and
+      instruction format `i` starting at the program counter. Options B and C are
+      invalid GDB syntax.'
+  - kind: why-fails
+    concept: page-fault-on-unmapped-kernel-entry
+    q: If `head.s` enabled paging (`CR0.PG = 1`) but forgot to populate the Page Directory
+      in `CR3`, what happens the moment the CPU fetches the instruction at `0x6771`?
+    choices:
+    - The CPU automatically falls back to 16-bit real mode and executes the BIOS power-on
+      self test
+    - The CPU raises a Page Fault exception (#PF, vector 14) because no valid page
+      table translates 0x6771
+    - GDB displays a warning and pauses execution on line 1 of bootsect.s
+    answer: 1
+    why: 'Option B is correct: once paging is enabled, every instruction fetch must
+      be translated by the MMU; an unmapped address triggers a Page Fault exception
+      (`#PF`). Option A is incorrect because CPUs do not auto-revert to real mode.
+      Option C is incorrect because hardware faults crash before GDB unless caught.'
+  - kind: mcq
+    concept: cr0-flags-composition-trace
+    q: 'What is the resulting sum when combining CR0 bitflags: PG (0x80000000), ET
+      (0x10), MP (0x02), and PE (0x01)?'
+    choices:
+    - '0x00000013'
+    - '0x80000000'
+    - '0x80000013'
+    answer: 2
+    why: 'Option C is correct: `0x80000000 + 0x10 + 0x02 + 0x01 = 0x80000013`. This
+      exactly matches the value observed in `eax` in Evidence E-T1A-07.'
+  - kind: fillblank
+    concept: control-register-paging-name
+    q: The x86 CPU control register that contains the Paging Enable (PG) and Protection
+      Enable (PE) bitflags is ________.
+    code: 'Register: %________'
+    answer_text: cr0
+    why: Control Register 0 (`cr0`) contains the core processor operating mode flags
+      including PE, MP, EM, TS, ET, NE, WP, AM, NW, CD, and PG.
+  - kind: mcq
+    from_chapter: T0B
+    from_block: b6
+    concept: git-object-vs-cpu-state-interleave
+    q: In Chapter T0b, we inspected immutable historical Git commits using `git cat-file
+      -p`. How does inspecting CPU registers via `info registers` contrast with inspecting
+      a Git commit object?
+    choices:
+    - info registers inspects ephemeral, mutable hardware state of a live processor,
+      while Git objects are immutable historical files on disk
+    - info registers only reads committed files from the master branch of early-history.git
+    - info registers requires compiling a new kernel module every time a register
+      changes
+    answer: 0
+    why: 'Option A is correct: CPU registers represent volatile, live silicon execution
+      state that changes with every clock cycle, whereas Git objects are static, immutable
+      historical records. Options B and C are incorrect.'
+- id: b13
+  title: 'Observation Strategy: Choosing Between Breakpoints, Watchpoints, and Tracing'
+  type: design
+  explain_md: "### 1. Frame the Problem\nEvery measurement disturbs the system it\
+    \ measures—in software, this is known as the **Probe Effect** or Heisenberg Bug.\
+    \ \n\nIf you set a software breakpoint inside a high-speed network interrupt handler\
+    \ running at 1,000,000 packets per second, the breakpoint will freeze the CPU.\
+    \ The hardware network card's ring buffers will instantly overflow, dropping packets.\
+    \ TCP connections across the network will time out, and watchdog timers will trigger\
+    \ kernel panics. The very act of observing the bug destroys the conditions needed\
+    \ to reproduce it!\n\nChoosing the right observational instrument is the hallmark\
+    \ of an expert kernel engineer.\n\n### 2. The Notional Machine\nLet us evaluate\
+    \ the four primary systems observation archetypes:\n\n```text\n+-------------------------------------------------------------------------------------------------+\n\
+    |                                 SYSTEMS OBSERVATION MATRIX                 \
+    \                     |\n+-------------------+----------------------+-----------------------------+------------------------+\n\
+    | Technique         | Execution Impact     | Hardware Scalability        | Optimal\
+    \ Use Case       |\n+-------------------+----------------------+-----------------------------+------------------------+\n\
+    | GDB Software Break| Freezes entire CPU / | Unlimited count             | Complex\
+    \ logic errors   |\n| (break)           | process; modifies RAM| (patches RAM\
+    \ with 0xCC)     | in deterministic test  |\n|                   | with 0xCC \
+    \           |                             | userspace workloads    |\n+-------------------+----------------------+-----------------------------+------------------------+\n\
+    | GDB Hardware Break| Freezes entire CPU / | Strictly limited to 4       | Early\
+    \ bootloader, ROM, |\n| (hbreak)          | process; 0 RAM patch | address registers\
+    \ (DR0-DR3) | reset vectors, and     |\n|                   |                \
+    \      |                             | pre-IDT bootstrap      |\n+-------------------+----------------------+-----------------------------+------------------------+\n\
+    | Hardware Watchpt  | Freezes CPU on data  | Strictly limited to 4       | Catching\
+    \ mystery memory|\n| (watch)           | write or read        | address registers\
+    \ (DR0-DR3) | corruption, wild stores|\n|                   |                \
+    \      |                             | and buffer overruns    |\n+-------------------+----------------------+-----------------------------+------------------------+\n\
+    | Non-Halting Trace | Zero halting; sub-   | Thousands of tracepoints;   | High-frequency\
+    \ paths,  |\n| (ftrace / eBPF /  | microsecond logging  | buffered ring buffer\
+    \ in     | timer interrupts, lock |\n| printk)           | overhead          \
+    \   | kernel memory               | contention, networking |\n+-------------------+----------------------+-----------------------------+------------------------+\n\
+    ```\n\n### 3. Source-Grounded Walkthrough\nConsider three real engineering diagnostic\
+    \ scenarios:\n\n- **Scenario A (Early Boot Verification - Evidence `E-T1A-07`)**:\n\
+    \  You need to verify that `setup.s` enters 32-bit protected mode. Execution is\
+    \ in the first few thousand cycles of machine life.\n  *Optimal Choice*: `hbreak\
+    \ main`. Halting the single-threaded vCPU is completely safe, and `hbreak` avoids\
+    \ corrupting memory before the IDT is ready.\n\n- **Scenario B (Memory Corruption\
+    \ - Evidence `E-T1A-04`)**:\n  A global variable `dev->status` flips from `1`\
+    \ to `0` intermittently once every hour. You have no idea which of 40 functions\
+    \ caused it.\n  *Optimal Choice*: `watch dev->status`. The hardware watchpoint\
+    \ monitors the bus at full silicon speed and halts the exact instruction committing\
+    \ the store.\n\n- **Scenario C (High-Throughput Packet Processing)**:\n  A 10GbE\
+    \ network driver drops 2% of packets under heavy traffic. Setting a breakpoint\
+    \ halts the CPU, overflowing hardware queues and dropping 100% of packets!\n \
+    \ *Optimal Choice*: Non-halting tracing (`ftrace` or `bpftrace`, covered in T3/T5).\
+    \ The kernel logs timestamps and buffer lengths into a ring buffer in microseconds\
+    \ without pausing execution.\n\n### 4. The Failure Mode & Boundary\nThe fatal\
+    \ error is using halting debuggers (GDB breakpoints) in timing-sensitive environments:\n\
+    1. Setting a breakpoint while holding a spinlock in SMP kernels causes other CPU\
+    \ cores to spin forever, tripping the kernel watchdog timer (`NMI watchdog: BUG:\
+    \ soft lockup - CPU#1 stuck`).\n2. Setting a breakpoint in a real-time motor controller\
+    \ causes physical hardware to overshoot because feedback loops freeze.\n\n###\
+    \ 5. The Compressed Mental Axiom\n*Freeze the world with GDB when logic is elusive;\
+    \ stream the world with tracing when timing is vital.*"
+  diagram:
+    kind: flow
+    caption: Observation Instrument Selection Decision Tree
+    nodes:
+    - id: problem
+      label: Diagnostic Problem
+      shape: round
+    - id: timing
+      label: Can CPU execution be paused?
+      shape: decision
+    - id: trace_choice
+      label: Non-Halting Tracing (ftrace / eBPF)
+      shape: box
+    - id: what
+      label: Are you trapping data or execution?
+      shape: decision
+    - id: watch_choice
+      label: Hardware Watchpoint (watch)
+      shape: box
+    - id: early
+      label: Is it early boot or ROM?
+      shape: decision
+    - id: hbreak_choice
+      label: Hardware Breakpoint (hbreak)
+      shape: box
+    - id: break_choice
+      label: Software Breakpoint (break)
+      shape: box
+    edges:
+    - from: problem
+      to: timing
+      label: evaluate constraint
+    - from: timing
+      to: trace_choice
+      label: 'NO: timing-sensitive / network / ISR'
+    - from: timing
+      to: what
+      label: 'YES: halting is safe'
+    - from: what
+      to: watch_choice
+      label: Data Mutation / Corruption
+    - from: what
+      to: early
+      label: Execution Path
+    - from: early
+      to: hbreak_choice
+      label: 'YES: early boot / pre-IDT / ROM'
+    - from: early
+      to: break_choice
+      label: 'NO: normal userspace / kernel C'
+    steps:
+    - focus:
+      - problem
+      - timing
+      - trace_choice
+      note: If halting causes timeouts or drops packets, use non-halting tracing
+    - focus:
+      - timing
+      - what
+      - watch_choice
+      note: If a variable corrupts unpredictably, use hardware watchpoints
+    - focus:
+      - what
+      - early
+      - hbreak_choice
+      - break_choice
+      note: Choose between hbreak (pre-IDT/ROM) and break (standard RAM code)
+  example:
+    lang: text
+    code: '# Diagnostic instrument selection summary
+
+      - Early boot / ROM / pre-IDT:      hbreak *0x7c00
+
+      - Unknown memory corruption:       watch *0x555555558010
+
+      - Deterministic userspace bug:     break socket_probe
+
+      - High-frequency timer interrupt:  ftrace / tracepoint (non-halting)'
+    explain_md: Choosing the appropriate instrument matches diagnostic capability
+      to hardware timing constraints.
+  checks:
+  - kind: eipe
+    concept: evaluating-halting-vs-tracing
+    q: You are diagnosing an intermittent packet drop in a high-speed network device
+      driver running under heavy traffic. Which diagnostic technique provides accurate
+      telemetry without exacerbating packet loss?
+    choices:
+    - Setting a GDB software breakpoint at the entry of the packet receive interrupt
+      handler
+    - Non-halting dynamic tracing (ftrace or eBPF) logging queue metrics into a memory
+      ring buffer
+    - Inserting sleep(1) calls inside the critical receive loop to slow down incoming
+      packets
+    answer: 1
+    why: 'Option B is correct: non-halting tracing logs events with sub-microsecond
+      latency without pausing the CPU, preserving packet processing. Option A is incorrect
+      because pausing the CPU overflows hardware FIFO rings and drops 100% of packets.
+      Option C worsens queue congestion.'
+  - kind: choose-better
+    concept: selecting-watchpoint-for-corruption
+    q: An operating system variable `current->flags` gets corrupted with random bytes
+      once every two hours. You do not know which thread or driver does it. Which
+      tool isolates the guilty code line most effectively?
+    choices:
+    - Compiler optimization set to -O3
+    - GDB software breakpoint on sys_read
+    - Hardware data watchpoint on current->flags
+    answer: 2
+    why: 'Option C is correct: a hardware watchpoint arms CPU debug registers to trap
+      the exact machine instruction performing the store, regardless of caller or
+      thread. Option B is incorrect because sys_read may not be involved. Option A
+      does not diagnose memory bugs.'
+  - kind: why-fails
+    concept: breakpoint-inside-spinlock-failure
+    q: A kernel developer sets a GDB breakpoint inside a spinlock critical section
+      on an SMP system. Why does this cause other CPU cores to panic or report soft
+      lockups?
+    choices:
+    - The halted core holds the spinlock while paused, causing all other cores to
+      spin indefinitely waiting for release
+    - GDB automatically sends power-off signals to all other CPU cores upon hitting
+      a breakpoint
+    - Spinlocks cannot be executed on processors that have hardware debug registers
+      enabled
+    answer: 0
+    why: 'Option A is correct: spinlocks disable preemption and expect locks to be
+      released in nanoseconds. Halting the lock holder under GDB leaves the lock acquired,
+      deadlocking other cores that spin until the watchdog timer panics. Options B
+      and C are incorrect.'
+  - kind: spot-bug
+    concept: halting-debugger-in-realtime-control
+    q: Examine the diagnostic plan and observed failure log. What is the catastrophic
+      flaw in using a breakpoint here?
+    code: "/* PID velocity control loop */\nwhile (motor_active) {\n    speed = read_tachometer();\n\
+      \    update_pwm(target - speed);\n}"
+    diagnostic_log: 'Breakpoint 1 hit at update_pwm()
+
+      [EMERGENCY STOP]: Physical arm exceeded hard stop limit by 42 degrees during
+      debugger pause.'
+    choices:
+    - GDB breakpoints are ignored by C programs that control physical motors
+    - Freezing the CPU halts the feedback control loop while physical motors continue
+      moving, causing physical crashes
+    - Real-time controllers are required by law to run only on bare-metal 8086 processors
+    answer: 1
+    why: 'Option B is correct: halting the processor stops software control while
+      hardware inertia continues, leading to physical collisions or damage. Tracing
+      or hardware logging must be used instead. Options B and C are incorrect.'
+  - kind: mcq
+    concept: tracepoint-ring-buffer-advantage
+    q: What is the primary architectural advantage of Linux ftrace ring buffers over
+      interactive GDB breakpoints?
+    choices:
+    - They recompile the kernel source code into Python scripts at runtime
+    - They permit modifying CPU registers interactively while interrupts are disabled
+    - They record high-frequency timestamped events in microseconds without freezing
+      execution or dropping network packets
+    answer: 2
+    why: 'Option C is correct: ftrace logs events into a lockless per-CPU ring buffer
+      in memory with minimal overhead, avoiding execution pauses. Options B and C
+      are incorrect.'
+  - kind: order
+    concept: rank-instrument-intrusiveness
+    q: Order the 4 observation techniques from least intrusive (lowest execution latency)
+      to most intrusive (completely freezes CPU); all displayed lines are used.
+    lines:
+    - Static tracepoints / ftrace (sub-microsecond memory log)
+    - printk logging to kernel ring buffer (I/O formatting overhead)
+    - Hardware watchpoint / breakpoint (halts CPU on trigger)
+    - Software watchpoint (single-steps every machine instruction)
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: Ftrace is fastest (sub-microsecond). Printk introduces string formatting.
+      Hardware watchpoints pause execution upon trigger. Software watchpoints are
+      slowest because they single-step every instruction (1000x slowdown).

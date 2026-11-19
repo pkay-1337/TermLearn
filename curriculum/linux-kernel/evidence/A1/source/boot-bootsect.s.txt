@@ -1,0 +1,84 @@
+source: 0.11:boot/bootsect.s
+sha256: b7b307f1fb5c982c15d842b2470616e73d1675a1907958dc0f018cad9eb9c769
+command: git show 0.11:boot/bootsect.s | nl -ba | sed -n '1,80p'
+
+     1	!
+     2	! SYS_SIZE is the number of clicks (16 bytes) to be loaded.
+     3	! 0x3000 is 0x30000 bytes = 196kB, more than enough for current
+     4	! versions of linux
+     5	!
+     6	SYSSIZE = 0x3000
+     7	!
+     8	!	bootsect.s		(C) 1991 Linus Torvalds
+     9	!
+    10	! bootsect.s is loaded at 0x7c00 by the bios-startup routines, and moves
+    11	! iself out of the way to address 0x90000, and jumps there.
+    12	!
+    13	! It then loads 'setup' directly after itself (0x90200), and the system
+    14	! at 0x10000, using BIOS interrupts. 
+    15	!
+    16	! NOTE! currently system is at most 8*65536 bytes long. This should be no
+    17	! problem, even in the future. I want to keep it simple. This 512 kB
+    18	! kernel size should be enough, especially as this doesn't contain the
+    19	! buffer cache as in minix
+    20	!
+    21	! The loader has been made as simple as possible, and continuos
+    22	! read errors will result in a unbreakable loop. Reboot by hand. It
+    23	! loads pretty fast by getting whole sectors at a time whenever possible.
+    24	
+    25	.globl begtext, begdata, begbss, endtext, enddata, endbss
+    26	.text
+    27	begtext:
+    28	.data
+    29	begdata:
+    30	.bss
+    31	begbss:
+    32	.text
+    33	
+    34	SETUPLEN = 4				! nr of setup-sectors
+    35	BOOTSEG  = 0x07c0			! original address of boot-sector
+    36	INITSEG  = 0x9000			! we move boot here - out of the way
+    37	SETUPSEG = 0x9020			! setup starts here
+    38	SYSSEG   = 0x1000			! system loaded at 0x10000 (65536).
+    39	ENDSEG   = SYSSEG + SYSSIZE		! where to stop loading
+    40	
+    41	! ROOT_DEV:	0x000 - same type of floppy as boot.
+    42	!		0x301 - first partition on first drive etc
+    43	ROOT_DEV = 0x306
+    44	
+    45	entry start
+    46	start:
+    47		mov	ax,#BOOTSEG
+    48		mov	ds,ax
+    49		mov	ax,#INITSEG
+    50		mov	es,ax
+    51		mov	cx,#256
+    52		sub	si,si
+    53		sub	di,di
+    54		rep
+    55		movw
+    56		jmpi	go,INITSEG
+    57	go:	mov	ax,cs
+    58		mov	ds,ax
+    59		mov	es,ax
+    60	! put stack at 0x9ff00.
+    61		mov	ss,ax
+    62		mov	sp,#0xFF00		! arbitrary value >>512
+    63	
+    64	! load the setup-sectors directly after the bootblock.
+    65	! Note that 'es' is already set up.
+    66	
+    67	load_setup:
+    68		mov	dx,#0x0000		! drive 0, head 0
+    69		mov	cx,#0x0002		! sector 2, track 0
+    70		mov	bx,#0x0200		! address = 512, in INITSEG
+    71		mov	ax,#0x0200+SETUPLEN	! service 2, nr of sectors
+    72		int	0x13			! read it
+    73		jnc	ok_load_setup		! ok - continue
+    74		mov	dx,#0x0000
+    75		mov	ax,#0x0000		! reset the diskette
+    76		int	0x13
+    77		j	load_setup
+    78	
+    79	ok_load_setup:
+    80	

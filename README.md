@@ -36,6 +36,7 @@ python main.py export --book extreme-c --format md
 - **`order` (with `faded: true`)**: Faded Parsons problems (order scrambled logic + fill in masked syntax tokens).
 - **`spot-bug`**: Authentic diagnostic debugging (inspect compiler/sanitizer logs, highlight the faulty line, select the fix).
 - **`subgoals`**: Worked examples labeled with cognitive subgoal banners to reduce split-attention effect.
+- **`tinker`**: Optional interactive experiment command (`commands.tinker`, key `x`) that opens in a separate terminal (alacritty/tmux) or suspends the TUI for shells, debuggers, QEMU, and tracing tools.
 - **Pluggable Runner Verbs**: AI-authored per-book runners supporting `run check`, `run exec`, and optional `run inspect` (live symbols/disassembly/AST via `i` hotkey).
 
 ## Layout (SRS §2.5)

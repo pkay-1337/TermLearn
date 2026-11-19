@@ -1,0 +1,17 @@
+meta:
+  book: linux-kernel
+  chapter_id: A1
+  title: "Boot & First C: From BIOS Reset to main()"
+  source_ref: "curriculum/linux-kernel/evidence/A1/transcript.md; E-A1-01..E-A1-09; early-history.git@0.11"
+  level: core
+  prereqs:
+  - T0A
+  - T0B
+  - T1A
+objectives:
+- Navigate the 100-file, 8-directory Linux 0.11 source tree and contrast the pristine git repository with the modern runnable build harness.
+- Articulate the 4-stage custody pipeline from 80386 real-mode CPU power-on reset (0xFFFF0) down to Ring 0 C kernel execution.
+- Trace real-mode segmented address arithmetic (Base * 16 + Offset) and explain why the 1MB addressing ceiling required the A20 gate.
+- Deconstruct the floppy disk sector layout and the self-relocation algorithm of bootsect.s from 0x7C00 to 0x90000.
+- Analyze setup.s as it queries BIOS telemetry, moves the system image to 0x00000, loads temporary GDT/IDT descriptors, and sets CR0.PE.
+- Follow head.s as it constructs 16MB identity paging, enables CR0.PG, and uses ret to enter main() at 0x6771 in QEMU.

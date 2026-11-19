@@ -380,8 +380,10 @@ def run(book: str, chapter: str, save_solution_on_test: bool = True):
         c.print(f"[yellow]No pack for {book}/{chapter} yet: run gen-prompt, then validate.[/yellow]")
         return
     lab = data.get("lab")
+    lab_def: dict = lab if isinstance(lab, dict) else {}
     if not lab and data.get("labs"):
         first_lab = data["labs"][0]
+        lab_def = first_lab
         starter = ""
         for f in first_lab.get("files", []):
             if f.get("content"):
@@ -392,13 +394,14 @@ def run(book: str, chapter: str, save_solution_on_test: bool = True):
             "prompt_md": first_lab.get("instruction_md", ""),
             "starter_c": starter,
             "hints": first_lab.get("hints", []),
+            "commands": first_lab.get("commands", {}),
         }
     if not lab:
         c.print("[yellow]No lab in this chapter pack.[/yellow]")
         return
     c.print(f"[bold]{lab.get('title', 'Lab')}[/bold]\n{lab.get('prompt_md', '')}")
     code = lab.get("starter_c", "")
-    c.print("[dim]Commands: e=edit($EDITOR) r=run t=hidden-tests d=last diff h=hint ?=help q=quit[/dim]")
+    c.print("[dim]Commands: e=edit($EDITOR) r=run t=hidden-tests x=tinker d=last diff h=hint ?=help q=quit[/dim]")
     import os
     from lib import keys as _k
     last: dict | None = None
@@ -446,6 +449,19 @@ def run(book: str, chapter: str, save_solution_on_test: bool = True):
                             f"({'pass' if verdict else 'fail'})[/dim]")
                 else:
                     c.print("[dim]--no-save-solution: verdict logged, code not retained.[/dim]")
+        elif cmd == "x":
+            tcmd = (lab.get("commands") or {}).get("tinker", "").strip()
+            if not tcmd:
+                c.print("[yellow]No 'tinker' command declared in this lab.[/yellow]")
+            else:
+                from lib import lab_workspace as lw
+                wdir = lw.provision_lab_workspace(book, chapter, lab_def or {"id": "lab1", "files": []})
+                c.print(f"[dim]tinker: {tcmd}[/dim]")
+                res = lw.run_tinker_command(wdir, tcmd)
+                if res.get("denied") or res.get("timed_out") or res.get("error"):
+                    c.print(f"[red]{res['error']}[/red]")
+                else:
+                    c.print(f"[green]tinker finished[/green] (exit {res['returncode']}, {res['elapsed_ms']}ms)")
         elif cmd == "d":
             if not last:
                 c.print("[yellow]nothing run yet — press r first.[/yellow]")
@@ -461,7 +477,7 @@ def run(book: str, chapter: str, save_solution_on_test: bool = True):
             hints = lab.get("hints", [])
             c.print(hints[0] if hints else "No hints in pack.")
         else:
-            c.print("keys: e r t d h ? q")
+            c.print("keys: e r t x d h ? q")
 
 
 def check_lab(book: str, chapter: str, non_interactive=True, packs_root=None):

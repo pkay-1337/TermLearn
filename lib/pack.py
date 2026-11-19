@@ -16,6 +16,8 @@ CHECK_KINDS = {"predict", "why-fails", "mcq", "fillblank", "order",
                "trace", "spot-bug"}
 CHOICE_KINDS = {"predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug"}
 DENYLIST = ["rm -rf", "curl", "wget", "ssh", "mkfs", ":(){", "dd if=", "chmod 777"]
+MISSION_LAB_TIERS = {"core", "stretch"}
+MISSION_ENV_STRING_KEYS = ("name", "boundary", "privilege", "network")
 
 #: Network-capable constructs (FR-TEST-004, D-18). Regexes, case-sensitive;
 #: kept blunt on purpose — a hit means human review, and strict FAILS.
@@ -45,6 +47,55 @@ def scan_gui(text: str) -> list[str]:
         if m:
             hits.append(m.group(0).strip())
     return hits
+
+
+def _mission_string(value: object, loc: str, code: str, errors: list[str]) -> None:
+    if not isinstance(value, str):
+        errors.append(_err(code, f"{loc} must be a string"))
+
+
+def _mission_string_list(value: object, loc: str, code: str, errors: list[str]) -> None:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        errors.append(_err(code, f"{loc} must be a list of strings"))
+
+
+def _mission_lab(lab: object, loc: str, errors: list[str]) -> None:
+    if not isinstance(lab, dict):
+        return
+    for key in ("family", "difficulty", "expected_observation"):
+        if key in lab:
+            _mission_string(lab.get(key), f"{loc}.{key}", "LAB-META", errors)
+    if "tier" in lab and lab.get("tier") not in MISSION_LAB_TIERS:
+        errors.append(_err("LAB-TIER", f"{loc}.tier must be core|stretch"))
+    if "artifacts" in lab:
+        _mission_string_list(lab.get("artifacts"), f"{loc}.artifacts", "LAB-META", errors)
+    if "environment" in lab:
+        env = lab.get("environment")
+        if not isinstance(env, dict):
+            errors.append(_err("LAB-ENV", f"{loc}.environment must be a mapping"))
+            return
+        for key in MISSION_ENV_STRING_KEYS:
+            if key in env:
+                _mission_string(env.get(key), f"{loc}.environment.{key}", "LAB-ENV", errors)
+        if "timeout_s" in env and not (
+            isinstance(env.get("timeout_s"), (int, float))
+            and not isinstance(env.get("timeout_s"), bool)
+        ):
+            errors.append(_err("LAB-ENV", f"{loc}.environment.timeout_s must be numeric"))
+
+
+def validate_mission_metadata(ch: dict, errors: list[str]) -> None:
+    meta = ch.get("meta")
+    if isinstance(meta, dict):
+        for key in ("track", "phase"):
+            if key in meta:
+                _mission_string(meta.get(key), f"meta.{key}", "MISSION-META", errors)
+    labs = ch.get("labs")
+    if isinstance(labs, list):
+        for li, lab in enumerate(labs):
+            _mission_lab(lab, f"labs[{li}]", errors)
+    elif isinstance(ch.get("lab"), dict):
+        _mission_lab(ch.get("lab"), "lab", errors)
 
 
 def suggest_fixes(data: dict) -> list[str]:
@@ -409,6 +460,7 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
             errors.append(_err("META-MISSING", f"{fname}: meta missing '{k}'"))
     if meta.get("level") not in ("intro", "core", "advanced"):
         errors.append(_err("META-LEVEL", f"{fname}: level must be intro|core|advanced"))
+    validate_mission_metadata(ch, errors)
     if known_chapters is not None:
         for p in meta.get("prereqs", []):
             if p not in known_chapters:
@@ -488,9 +540,13 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
 
     # MAP-005 / FR-AI-005 quality gates -> warnings (errors in --strict)
     interleaved = sum(1 for b in blocks if isinstance(b, dict)
-                      for ck in (b.get("checks") or []) if isinstance(ck, dict) and "from_chapter" in ck)
+                      for ck in (b.get("checks") or []) if isinstance(ck, dict)
+                      and ("from_chapter" in ck or "from_block" in ck))
     if interleaved < 2:
-        warnings.append(_err("INTERLEAVE-COUNT", f"{fname}: only {interleaved} interleaved checks; SHOULD have >=2 (MAP-005)"))
+        warnings.append(_err(
+            "INTERLEAVE-COUNT",
+            f"{fname}: only {interleaved} interleaved checks; SHOULD have >=2 across blocks/chapters (MAP-005)",
+        ))
     if why_total and why_conceptual < (why_total + 1) // 2:
         warnings.append(_err("WHY-RATIO", f"{fname}: only {why_conceptual}/{why_total} conceptual (predict/why-fails/eipe/choose-better); SHOULD be >=half (FR-AI-005)"))
 
@@ -520,12 +576,14 @@ def validate_chapter_data(ch: dict, fname: str = "chXX.yaml", strict: bool = Fal
                     elif not is_safe_path(f["path"]):
                         errors.append(_err("LAB-FILE-UNSAFE", f"{loc} files[{fi}] contains unsafe relative path {f['path']!r}"))
             cmds = lb.get("commands")
-            if not isinstance(cmds, dict) or (not cmds.get("run") and not cmds.get("test")):
-                errors.append(_err("LAB-COMMANDS", f"{loc} commands must specify 'run' and/or 'test'"))
+            if not isinstance(cmds, dict) or not (cmds.get("run") or cmds.get("test") or cmds.get("tinker")):
+                errors.append(_err("LAB-COMMANDS", f"{loc} commands must specify 'run', 'test', and/or 'tinker'"))
             else:
-                for ckey in ("run", "test"):
+                for ckey in ("run", "test", "tinker"):
                     cval = cmds.get(ckey, "")
-                    if cval:
+                    if cval and not isinstance(cval, str):
+                        errors.append(_err("LAB-COMMAND-SHAPE", f"{loc} command '{ckey}' must be a string"))
+                    elif cval:
                         for bad in scan_denylist(cval):
                             errors.append(_err("LAB-DENY", f"{loc} command '{ckey}' contains denylisted {bad!r}"))
             tcases = lb.get("test_cases")

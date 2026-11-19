@@ -76,7 +76,22 @@ def run(book: str, chapter: str):
             if steps:
                 console.print(f"[dim]visualization ({viz.get('kind', 'steps')}): n step · s skip · ? help[/dim]")
                 for s in steps:
-                    k = _k.ask(console, f"  {s} [n/s/q/?]: ", "study").lower()
+                    if isinstance(s, dict):
+                        parts = []
+                        if "label" in s:
+                            parts.append(f"[{s['label']}]")
+                        if "registers" in s and isinstance(s["registers"], dict):
+                            regs = ", ".join(f"{k}={v}" for k, v in s["registers"].items())
+                            parts.append(f"Regs: {regs}")
+                        if "memory" in s and isinstance(s["memory"], dict):
+                            mem = " | ".join(f"{k}: {v}" for k, v in s["memory"].items())
+                            parts.append(f"State: {mem}")
+                        if "note" in s:
+                            parts.append(f"({s['note']})")
+                        s_text = " · ".join(parts) if parts else str(s)
+                    else:
+                        s_text = str(s)
+                    k = _k.ask(console, f"  {s_text} [n/s/q/?]: ", "study").lower()
                     if k == "q":
                         con.close()
                         return

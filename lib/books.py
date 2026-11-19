@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-_CH_ID = re.compile(r"ch\d{2}$")
+_CH_ID = re.compile(r"^(?:ch\d{2}|[A-Z][a-zA-Z0-9_-]*)$")
 
 
 def _read_json(p: Path) -> dict | None:

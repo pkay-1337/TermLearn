@@ -57,14 +57,14 @@ The key words **"MUST"**, **"MUST NOT"**, **"REQUIRED"**, **"SHALL"**, **"SHALL 
 
 ### 3.2 Pack Schema (`labs: [...]`)
 
-- `REQ-LAB-SCH-001`: In the chapter pack YAML specification, the chapter definition **MAY** contain a top-level `labs` array holding 1 to `N` lab objects. The legacy top-level `lab` mapping **SHALL NOT** be required (no backward compatibility).
+- `REQ-LAB-SCH-001`: In the chapter pack YAML specification, the chapter definition **MAY** contain a top-level `labs` array holding 1 to `N` lab objects. There is no fixed upper bound: authors **SHOULD** include as many labs and lab families as the chapter needs to teach the material and the tools. The legacy top-level `lab` mapping **SHALL NOT** be required (no backward compatibility).
 
 - `REQ-LAB-SCH-002`: Each lab object within `labs` **MUST** specify the following mandatory attributes:
   1. `id` (`string`): Unique ASCII identifier within the chapter (e.g., `lab1`, `lab2`).
   2. `title` (`string`): Human-readable descriptive title.
   3. `instruction_md` (`string`): Comprehensive Markdown instructions detailing the problem context, tasks, invariants, and expected outcomes.
   4. `files` (`array` of objects): List of files participating in the lab.
-  5. `commands` (`object`): Language-agnostic execution commands containing at least `run` and/or `test`.
+  5. `commands` (`object`): Language-agnostic execution commands containing at least one of `run`, `test`, or `tinker`.
 
 - `REQ-LAB-SCH-003`: Each file entry in `files` **MUST** declare:
   1. `path` (`string`): Path relative to the lab directory (e.g., `engine.h`, `src/utils.c`).
@@ -79,6 +79,8 @@ The key words **"MUST"**, **"MUST NOT"**, **"REQUIRED"**, **"SHALL"**, **"SHALL 
   6. `expect_exit` (`integer`, optional): Expected process exit code (default: `0`).
 
 - `REQ-LAB-SCH-005`: A lab definition **MAY** specify an optional `hints` array containing progressive textual hints revealed sequentially.
+
+- `REQ-LAB-SCH-006`: Tool-centric chapters **SHALL** include labs that teach the tool, not labs that merely run it. Such labs **SHOULD** cover the tool's mental model, output reading, filters, failure modes, composition with a second tool, diagnosis, and teach-back. There is no fixed upper bound on the number of labs.
 
 ---
 
@@ -111,6 +113,10 @@ The key words **"MUST"**, **"MUST NOT"**, **"REQUIRED"**, **"SHALL"**, **"SHALL 
 
 - `REQ-LAB-EXE-007`: The system **SHALL** sanitize all commands against a dangerous command denylist (including `rm -rf /`, `curl`, `wget`, `ssh`, `:(){ :|:& };:`) before launching processes.
 
+- `REQ-LAB-EXE-008`: When the student triggers a **Tinker** action and `commands.tinker` is defined, the system **SHALL** run that command with `cwd` set to the lab workspace and with inherited standard input, output, and error. Tinker commands **MAY** run without a timeout (`timeout_s` defaults to `0` for tinker), because debuggers, shells, and QEMU sessions are intentionally interactive.
+
+- `REQ-LAB-EXE-009`: The system **SHALL** attempt to open a tinker command in a separate terminal when one is configured, so the TUI remains visible. The terminal prefix **SHALL** be read from `TERMLEARN_TINKER_TERMINAL` (for example `alacritty -e`, `xterm -e`, `kitty`, `gnome-terminal --`, or `tmux new-window`). When `TMUX` is set, `tmux new-window` **SHALL** be used as the fallback. When `alacritty` is installed and a graphical display is available, `alacritty -e` **SHALL** be used as the fallback. If no separate terminal is available, the TUI **SHALL** suspend, run the command in the current terminal, and resume afterwards.
+
 ---
 
 ### 3.4 Terminal User Interface (TUI) Interaction Model
@@ -134,6 +140,8 @@ The key words **"MUST"**, **"MUST NOT"**, **"REQUIRED"**, **"SHALL"**, **"SHALL 
 - `REQ-LAB-UI-006`: The TUI **SHALL** provide a dedicated console output drawer displaying compiler output, test execution logs, unified diffs, and execution timing.
 
 - `REQ-LAB-UI-007`: The TUI **SHALL** support progressive hints via `h`: each press reveals the next available hint in `hints` without scrolling or disrupting workspace layout.
+
+- `REQ-LAB-UI-008`: The TUI **SHALL** expose the tinker command via the `x` key and a **Tinker** button. Pressing it **SHALL** save the active file first, then launch `commands.tinker` per `REQ-LAB-EXE-008`/`009`. When the command returns, the TUI **SHALL** reload the active file from disk and report the exit status and elapsed time in the console drawer.
 
 ---
 
@@ -183,12 +191,16 @@ The key words **"MUST"**, **"MUST NOT"**, **"REQUIRED"**, **"SHALL"**, **"SHALL 
 | `REQ-LAB-DIR-001` | Workspace directory topology | Test | `labs/<book>/<chapter>/<lab_id>/` exists upon provisioning. |
 | `REQ-LAB-DIR-004` | Non-destructive student edits | Test | Modifying a file, re-opening lab, and running retains modifications. |
 | `REQ-LAB-SCH-002` | Mandatory attributes validation | Inspection | `main.py validate --strict` verifies `id`, `title`, `instruction_md`, `files`, `commands`. |
+| `REQ-LAB-SCH-006` | Tool-teaching labs | Inspection | Tool chapters include guided tour, filter, compose, diagnose, and teach-back labs; no lab cap. |
 | `REQ-LAB-EXE-001` | Subprocess working directory | Test | Subprocess prints `cwd` matching lab workspace path. |
 | `REQ-LAB-EXE-004` | Test execution & verdict | Test | Returncode 0 yields pass; non-zero yields failure with diagnostics. |
 | `REQ-LAB-EXE-005` | Input/Output diff verification | Test | Mismatched stdout produces clean unified diff with `-` and `+` markers. |
 | `REQ-LAB-EXE-006` | Process timeout safety | Test | Infinite loop process terminates within 5 seconds with `TIMEOUT`. |
+| `REQ-LAB-EXE-008` | Interactive tinker execution | Test | `commands.tinker` runs with workspace cwd and inherited stdio. |
+| `REQ-LAB-EXE-009` | Separate-terminal handoff | Demonstration | `TERMLEARN_TINKER_TERMINAL="alacritty -e"` opens a new window; otherwise tmux/alacritty is used when available, else the TUI suspends. |
 | `REQ-LAB-UI-002` | Multi-lab switcher | Demonstration | Pressing `n` and `p` switches active lab and loads corresponding files. |
 | `REQ-LAB-UI-004` | External `$EDITOR` suspend | Demonstration | Pressing `e` suspends TUI, opens editor, and reloads file upon return. |
+| `REQ-LAB-UI-008` | Tinker key and button | Demonstration | Pressing `x` saves the active file and launches the tinker command. |
 | `REQ-LAB-PRG-001` | Persistence in SQLite | Test | `lab_runs` row inserted with timestamp and correct pass status. |
 
 ---

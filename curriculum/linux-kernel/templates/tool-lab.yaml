@@ -1,0 +1,139 @@
+labs:
+  - id: lab-strace-tour
+    title: "strace guided tour: read a syscall trace"
+    instruction_md: |
+      ## What this tool answers
+
+      `strace` shows the system calls a process makes and where it blocks at the
+      userspace/kernel boundary.
+
+      ## Mental model
+
+      It observes syscalls, signals, and some ioctls. It does not show kernel
+      functions, scheduler decisions, or packet paths inside the kernel.
+
+      ## Guided commands
+
+      Run `sh workload.sh`. Then inspect `trace.log`:
+
+      - `strace -f -e trace=openat -o trace.log cat seed.txt`
+      - `cat trace.log`
+      - `strace -c -f cat seed.txt`
+
+      ## What to notice
+
+      - the syscall name (`openat`)
+      - the file descriptor and path
+      - the return value (`3`, `-1`, or `ENOENT`)
+      - the difference between the detailed trace and the `-c` summary
+
+      ## Change one thing
+
+      Add `-tt -T` and compare timestamps and durations.
+
+      ## Second signal
+
+      Compare the detailed trace with the `-c` summary. Do they agree on which
+      syscall dominated?
+
+      ## Explain
+
+      1. Which syscall opened `seed.txt`?
+      2. What does the return value mean?
+      3. Why does `strace` not show the VFS function that handled the open?
+
+      ## Cleanup
+
+      Remove `trace.log`.
+    files:
+      - path: "seed.txt"
+        content: |
+          termlearn strace lab
+      - path: "workload.sh"
+        content: |
+          #!/bin/sh
+          set -eu
+          strace -f -e trace=openat -o trace.log cat seed.txt >/dev/null
+          grep -q 'openat' trace.log
+          printf 'traced\n'
+      - path: "check.sh"
+        content: |
+          #!/bin/sh
+          set -eu
+          grep -q 'openat' trace.log
+          grep -q 'seed.txt' trace.log
+          printf 'ok\n'
+    commands:
+      run: "sh workload.sh"
+      test: "sh check.sh"
+      tinker: "strace -f -tt -T -o trace.log sh"
+      timeout_s: 10
+    test_cases:
+      - name: "trace contains an openat for seed.txt"
+        stdin: ""
+        expect: "traced\n"
+        expect_exit: 0
+    hints:
+      - "Run the command once, then read trace.log from the top."
+      - "The first column is the syscall; the return value is after the closing parenthesis."
+      - "Use `-e trace=openat` to remove noise before adding `-tt -T`."
+
+  - id: lab-strace-diagnose
+    title: "strace diagnose: find ENOENT"
+    instruction_md: |
+      ## Symptom
+
+      A command fails because a file is missing, but the error message does not
+      name the exact path the process tried.
+
+      ## Diagnose
+
+      Use `strace` to find the failing `openat` and the path. Then answer:
+
+      1. Which path was tried?
+      2. What was the return value?
+      3. Which userspace code path issued the syscall?
+
+      ## Guided commands
+
+      - `strace -f -e trace=openat cat missing.txt`
+      - `strace -f -e trace=openat -o trace.log cat missing.txt`
+      - `grep -n 'ENOENT' trace.log`
+
+      ## Second signal
+
+      Re-run with `-yy` to decode file descriptors and paths. Compare the two
+      traces.
+
+      ## Teach-back
+
+      Write three invocations you will remember, one pitfall, and one question
+      `strace` cannot answer.
+    files:
+      - path: "workload.sh"
+        content: |
+          #!/bin/sh
+          set -eu
+          strace -f -e trace=openat -o trace.log cat missing.txt 2>/dev/null || true
+          grep -q 'ENOENT' trace.log
+          printf 'ENOENT\n'
+      - path: "check.sh"
+        content: |
+          #!/bin/sh
+          set -eu
+          grep -q 'ENOENT' trace.log
+          printf 'ok\n'
+    commands:
+      run: "sh workload.sh"
+      test: "sh check.sh"
+      tinker: "strace -f -tt -T -yy -o trace.log sh"
+      timeout_s: 10
+    test_cases:
+      - name: "trace contains ENOENT"
+        stdin: ""
+        expect: "ENOENT\n"
+        expect_exit: 0
+    hints:
+      - "Filter to `openat` first; the noise hides the failing call."
+      - "Look for a negative return value and the decoded error name."
+      - "Add `-yy` to see the file descriptor and path mapping."

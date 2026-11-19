@@ -1,0 +1,240 @@
+labs:
+  - id: lab1
+    title: "Compiler Diagnostics & Three-Minimal-Fix Repair"
+    family: compiler-diagnostics
+    tier: core
+    difficulty: intro
+    expected_observation: >-
+      Repairing all three missing semicolons clears the diagnostics and the program
+      prints 1.
+    artifacts: ["bad.c", "app"]
+    environment:
+      name: host-user
+      boundary: host
+      privilege: user
+      network: none
+      timeout_s: 10
+    instruction_md: |
+      ## What You Are Building
+
+      You are repairing the exact broken C source file from the captured compile failure.
+      When all three missing statement terminators are restored, the program compiles
+      cleanly, prints `1`, and exits 0.
+
+      ## Captured Diagnostic
+
+      ```text
+      bad.c: In function ‘main’:
+      bad.c:6:5: error: expected ‘,’ or ‘;’ before ‘printf’
+          6 |     printf("%d\n", x)
+            |     ^~~~~~
+      bad.c:8:1: error: expected declaration or statement at end of input
+          8 | }
+            | ^
+      bad.c:5:9: warning: unused variable ‘x’ [-Wunused-variable]
+          5 |     int x = 1
+            |         ^
+      ```
+
+      ## Specification & Contract
+
+      1. Open `bad.c`.
+      2. Compile once with `make -s` and confirm the first diagnostic points at line 6.
+      3. Add the missing semicolon to line 5: `int x = 1;`.
+      4. Recompile. The next diagnostic is `bad.c:6:22: error: expected ';' before 'return'`
+         because line 6 still lacks a terminator.
+      5. Add the missing semicolon to line 6: `printf("%d\n", x);`.
+      6. Recompile. The next diagnostic is `bad.c:7:13: error: expected ';' before '}' token`
+         because line 7 still lacks a terminator.
+      7. Add the missing semicolon to line 7: `return 0;`.
+      8. Do not modify any other line.
+      9. Run tests with `t`. The build must print `1` and exit 0.
+    files:
+      - path: bad.c
+        content: |
+          #include <stdio.h>
+
+          int main(void)
+          {
+              int x = 1
+              printf("%d\n", x)
+              return 0
+          }
+      - path: Makefile
+        content: |
+          CC = gcc
+          CFLAGS = -std=c99 -Wall -Wextra -g
+
+          app: bad.c
+          	$(CC) $(CFLAGS) bad.c -o app
+
+          clean:
+          	rm -f app
+    commands:
+      run: "make -s && ./app"
+      test: "make -s && ./app"
+      tinker: "sh"
+    test_cases:
+      - name: "builds app and prints 1 with exit 0"
+        stdin: ""
+        expect: "1\n"
+        expect_exit: 0
+    hints:
+      - >-
+        The first diagnostic names line 6 because the parser reaches printf before
+        discovering that line 5 never ended.
+      - >-
+        After fixing line 5, GCC reports line 6 column 22: it expected a semicolon
+        before return.
+      - >-
+        After fixing line 6, GCC reports line 7 column 13: return also needs a
+        semicolon.
+
+  - id: lab2
+    title: "Make Dependency Graph & Incremental Build"
+    family: build-system
+    tier: core
+    difficulty: intro
+    expected_observation: "Make builds app from main.c, then reports up to date until a prerequisite is newer."
+    artifacts: ["Makefile", "main.c", "app"]
+    environment:
+      name: host-user
+      boundary: host
+      privilege: user
+      network: none
+      timeout_s: 10
+    instruction_md: |
+      ## What You Are Building
+
+      You are completing a Make rule that compiles `main.c` into an executable named `app`
+      using the compiler and flags in `$(CC)` and `$(CFLAGS)`.
+
+      ## Specification & Contract
+
+      1. Open `Makefile`.
+      2. Define target `app` with prerequisite `main.c`.
+      3. On the next line, indented with a literal TAB, write the recipe
+         `$(CC) $(CFLAGS) main.c -o app`.
+      4. Running `make -s clean && make -s && ./app` must print `5` and exit 0.
+         The clean step removes any stale `app` from an earlier attempt.
+      5. Press `x` to open the tinker shell. Run `make -s clean && make -s`,
+         then run `make -s` again: the second plain run must report that `app`
+         is up to date.
+      6. Touch `main.c` and run `make -s` again: the compile recipe must run once more.
+    files:
+      - path: main.c
+        content: |
+          #include <stdio.h>
+
+          int add(int a, int b)
+          {
+              return a + b;
+          }
+
+          int main(void)
+          {
+              int x = 2;
+              int y = 3;
+
+              printf("%d\n", add(x, y));
+              return 0;
+          }
+      - path: Makefile
+        content: |
+          CC = gcc
+          CFLAGS = -std=c99 -Wall -Wextra -g
+
+          # TODO: Complete the rule for target 'app' depending on 'main.c'
+          app:
+          	@echo "TODO: add compile recipe for app"
+
+          clean:
+          	rm -f app
+    commands:
+      run: "make -s clean && make -s && ./app"
+      test: "make -s clean && make -s && ./app"
+      tinker: "sh"
+    test_cases:
+      - name: "make builds app and prints 5 with exit 0"
+        stdin: ""
+        expect: "5\n"
+        expect_exit: 0
+    hints:
+      - "A rule has the form target: prerequisites followed by a TAB-indented recipe."
+      - "Write app: main.c, then a TAB, then $(CC) $(CFLAGS) main.c -o app."
+      - "Run and Test start with make clean so an old app cannot hide a missing recipe."
+
+  - id: lab3
+    title: "Git Staging & Unified Diff Verification"
+    family: version-control
+    tier: core
+    difficulty: intro
+    expected_observation: >-
+      After staging and committing, an unstaged edit shows as M in the second
+      status column and produces a diff.
+    artifacts: ["hello.c", ".git"]
+    environment:
+      name: host-user
+      boundary: host
+      privilege: user
+      network: none
+      timeout_s: 15
+    instruction_md: |
+      ## What You Are Building
+
+      You are creating a local Git repository, committing an initial version of `hello.c`,
+      and introducing an unstaged modification that produces a short status of ` M hello.c`
+      and a valid unified diff.
+
+      ## Specification & Contract
+
+      1. Open the tinker shell with `x`.
+      2. Initialize the repository with `git init -q`.
+      3. Stage the starter file with `git add hello.c`.
+      4. Commit it with:
+         `git -c user.name=Learner -c user.email=learner@example.invalid commit -m "initial commit"`
+      5. Modify `hello.c`: change `return 0;` to `return 1;`.
+      6. Verify that `git status --short` shows ` M hello.c`.
+      7. Run `sh verify.sh`; it must print `ALL TESTS PASSED`.
+    files:
+      - path: hello.c
+        content: |
+          int main(void)
+          {
+              return 0;
+          }
+      - path: verify.sh
+        content: |
+          #!/bin/sh
+          set -e
+          if [ ! -d .git ]; then
+              echo "FAIL: repository not initialized"
+              exit 1
+          fi
+          if [ -z "$(git log -1 --oneline 2>/dev/null)" ]; then
+              echo "FAIL: no commits found"
+              exit 1
+          fi
+          STATUS=$(git status --short -- hello.c)
+          if [ "$STATUS" != " M hello.c" ]; then
+              echo "FAIL: expected unstaged modification ' M hello.c', got '$STATUS'"
+              exit 1
+          fi
+          DIFF=$(git diff hello.c)
+          if [ -z "$DIFF" ]; then
+              echo "FAIL: no unstaged diff in hello.c"
+              exit 1
+          fi
+          echo "ALL TESTS PASSED"
+    commands:
+      run: "sh verify.sh"
+      test: "sh verify.sh"
+      tinker: "sh"
+    test_cases:
+      - name: "git verification script passes"
+        stdin: ""
+        expect: "ALL TESTS PASSED\n"
+        expect_exit: 0
+    hints:
+      - "The left status column is the index; the right column is the working tree."
+      - "The leading space in ' M hello.c' means the modification is unstaged."

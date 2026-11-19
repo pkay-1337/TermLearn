@@ -11,6 +11,7 @@ from textual.screen import Screen
 from textual.widgets import Button, DataTable, Label, Markdown, OptionList, Static
 from textual.widgets._option_list import Option
 
+from lib import mission_meta as mission
 from tui.widgets import VimScrollMixin
 
 
@@ -302,24 +303,43 @@ class ChaptersScreen(_Base):
     def on_mount(self) -> None:
         super().on_mount()
         from lib.books import discover_chapters
+        from lib.pack import load_chapter_mode
         from lib.progress import chapter_due_count, chapter_lab_state, chapter_status
         lst = self.query_one("#ch-list", OptionList)
         dossier = self.query_one("#ch-details", Vertical)
         dossier.can_focus = True
         chapters = discover_chapters(self.book)
+        chapters_data = []
         for ch in chapters:
+            c_info = dict(ch)
+            if ch["has_pack"]:
+                c_info["status"] = chapter_status(self.book, ch['id'])
+                c_info["due"] = chapter_due_count(self.book, ch['id'])
+            chapters_data.append(c_info)
+        next_ch = mission.suggest_next(chapters_data)
+        self._next_ch_id = next_ch.get("id") if next_ch else None
+
+        for ch in chapters_data:
             self._ch_ids.append(ch["id"])
             if ch["has_pack"]:
-                status = chapter_status(self.book, ch['id'])
-                due = chapter_due_count(self.book, ch['id'])
+                status = ch.get("status", "ready")
+                due = ch.get("due", 0)
                 lab = chapter_lab_state(self.book, ch['id'], ch.get('has_lab', False))
                 badge = "[bold green]✔ READY[/]"
                 meta = f"[cyan]{status}[/] · due: [yellow]{due}[/] · lab: [magenta]{lab}[/]"
+                try:
+                    pdata = load_chapter_mode(self.book, ch['id'], "meta")
+                    cb = mission.format_chapter_badges(pdata)
+                    if cb:
+                        meta = f"{meta} · [dim cyan]{cb}[/]"
+                except Exception:
+                    pass
             else:
                 badge = "[dim]○ NO PACK[/]"
                 meta = "[dim]run gen-prompt to generate pack[/]"
+            next_tag = "[bold yellow]★ NEXT[/] " if ch["id"] == self._next_ch_id else ""
             opt_text = (
-                f"[bold white]{ch['id']}[/] • {ch['title']}\n"
+                f"{next_tag}[bold white]{ch['id']}[/] • {ch['title']}\n"
                 f"  {badge}  {meta}"
             )
             lst.add_option(Option(opt_text, id=ch["id"]))
@@ -471,10 +491,19 @@ class ChaptersScreen(_Base):
             objs = pack.get("objectives", [])
             objs_list = "\n".join(f"- {o}" for o in objs) if objs else "- No explicit objectives stated."
             title = pack.get('meta', {}).get('title', ch['title'])
+            badges_line = ""
+            cb = mission.format_chapter_badges(pack)
+            if cb:
+                badges_line = f"- **Roadmap:** **{cb}**\n"
+            next_line = ""
+            if getattr(self, "_next_ch_id", None) == cid:
+                next_line = "- **Next Action:** **★ Recommended Next Chapter**\n"
             md_text = (
                 f"## {cid}: {title}\n\n"
                 f"- **Chapter ID:** `{cid}`\n"
                 f"- **Title:** **{title}**\n"
+                f"{badges_line}"
+                f"{next_line}"
                 f"- **Source Reference:** `{pack.get('meta', {}).get('source_ref', 'N/A')}`\n"
                 f"- **Status:** **{status.upper()}**\n"
                 f"- **SRS Flashcards Due:** **{due}**\n"
@@ -920,11 +949,19 @@ class ChapterMenu(_Base):
         from lib.books import discover_chapters
         ch_title = next((c["title"] for c in discover_chapters(self.book) if c["id"] == self.chapter), self.chapter)
         w = self.size.width or 80
+        cb = None
+        try:
+            from lib.pack import load_chapter_mode
+            pdata = load_chapter_mode(self.book, self.chapter, "meta")
+            cb = mission.format_chapter_badges(pdata)
+        except Exception:
+            pass
+        suffix = f" [{cb}]" if cb else ""
         if w < 50:
-            return f"🎯 {self.book}/{self.chapter}"
+            return f"🎯 {self.book}/{self.chapter}{suffix}"
         elif w < 75:
-            return f"🎯 {self.book}/{self.chapter} — {ch_title}"
-        return f"🎯  {self.book} / {self.chapter} — {ch_title}"
+            return f"🎯 {self.book}/{self.chapter} — {ch_title}{suffix}"
+        return f"🎯  {self.book} / {self.chapter} — {ch_title}{suffix}"
 
     def compose(self) -> ComposeResult:
         with Vertical(classes="menu-container"):
@@ -1264,7 +1301,8 @@ class StatsScreen(VimScrollMixin, _Base):
 class TestScreen(VimScrollMixin, _Base):
     HELP_TITLE = "chapter test"
     HELP_LINES = [("1-N", "answer final check"), ("n", "start / next"),
-                  ("j/k", "scroll"), ("d/u", "half page"), ("q/h", "back")]
+                  ("j/k", "scroll"), ("d/u", "half page"),
+                  ("q/h", "back")]
     BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 10)] +
                 [Binding("n", "next", "Next"),
                  Binding("q", "back", "Back"),
@@ -1286,6 +1324,7 @@ class TestScreen(VimScrollMixin, _Base):
         self._quiz: dict | None = None
         self._lab_result: dict | None = None
         self._ok = False
+        self.data: dict = {}
 
     def _title_text(self) -> str:
         w = self.size.width or 80
@@ -1297,6 +1336,7 @@ class TestScreen(VimScrollMixin, _Base):
         from lib.pack import load_chapter_mode
         from lib.quiz import collect_final_checks
         data = load_chapter_mode(self.book, self.chapter, "test")
+        self.data = data
         self.checks = collect_final_checks(data)
         with ScrollableContainer(classes="study-container"):
             yield Label(self._title_text(), id="test-screen-title", classes="screen-title")
@@ -1366,6 +1406,8 @@ class TestScreen(VimScrollMixin, _Base):
             body.mount(Vertical(*parts, classes="details-card"))
             return
         if self.state == "intro":
+            if body.children:
+                return
             body.mount(Label("FINAL CHECKS", classes="study-header-bar"))
             body.mount(Static(
                 f"{self._detail_text()}\n\n"
@@ -1377,6 +1419,9 @@ class TestScreen(VimScrollMixin, _Base):
         ck = self.checks[self.idx][2]
         body.mount(Label(f"FINAL CHECK {self.idx + 1} OF {len(self.checks)}",
                          classes="study-header-bar"))
+        review = mission.interleaved_label(ck)
+        if review:
+            body.mount(Static(review, classes="study-nav-box"))
         from tui.widgets import QuestionWidget
         body.mount(QuestionWidget(ck, self._checked, shuffle=True))
 

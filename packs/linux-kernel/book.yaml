@@ -1,0 +1,81 @@
+book:
+  slug: linux-kernel
+  title: "Linux Kernel: From First Contact to Architecture"
+  authors:
+    - "Linux Kernel Curriculum Authors"
+  source: curriculum/linux-kernel/PLAN.md
+
+toolchain:
+  lang: c
+  compile: [gcc, -std=c99, -Wall, -Wextra, -g]
+  run: ["./app"]
+  timeout_s: 10
+
+order:
+  - T0A
+  - T0B
+  - T1A
+  - A1
+  - A2
+  - A3
+  - A4
+  - A5
+  - T0C
+  - T0D
+  - T0E
+  - T0F
+  - T2
+
+chapters:
+  - id: T0A
+    title: "T0a — First contact: compile, run, diagnose"
+    source_ref: "curriculum/linux-kernel/evidence/T0A/transcript.md; E-T0A-01..E-T0A-11"
+    prereqs: []
+  - id: T0B
+    title: "T0b — Source navigation: definitions, callers, and commits"
+    source_ref: "curriculum/linux-kernel/evidence/T0B/transcript.md; E-T0B-01..E-T0B-16"
+    prereqs: [T0A]
+  - id: T1A
+    title: "T1a — QEMU, gdb, and architecture vocabulary"
+    source_ref: "curriculum/linux-kernel/evidence/T1A/transcript.md; E-T1A-01..E-T1A-07"
+    prereqs: [T0A]
+  - id: A1
+    title: "A1 — Early kernels: boot and first C"
+    source_ref: "sources/early-history.git@0.11; curriculum/linux-kernel/evidence/A1/transcript.md"
+    prereqs: [T0B, T1A]
+  - id: A2
+    title: "A2 — Early kernels: processes and scheduling"
+    source_ref: "sources/early-history.git@0.11:kernel/sched.c; curriculum/linux-kernel/evidence/A2/transcript.md"
+    prereqs: [A1]
+  - id: A3
+    title: "A3 — Early kernels: memory and paging"
+    source_ref: "sources/early-history.git@0.11:mm/memory.c; curriculum/linux-kernel/evidence/A3/transcript.md"
+    prereqs: [A2]
+  - id: A4
+    title: "A4 — Early kernels: filesystem, buffer cache, and syscalls"
+    source_ref: "sources/early-history.git@0.11:fs/; curriculum/linux-kernel/evidence/A4/transcript.md"
+    prereqs: [A3]
+  - id: A5
+    title: "A5 — Early kernels: build, run, and trace"
+    source_ref: "sources/Linux-0.11-fork; curriculum/linux-kernel/evidence/A5/transcript.md"
+    prereqs: [A4]
+  - id: T0C
+    title: "T0c — Build and patch: Kconfig, Kbuild, and modules"
+    source_ref: "curriculum/linux-kernel/evidence/T0C/transcript.md"
+    prereqs: [T0B]
+  - id: T0D
+    title: "T0d — Binary and type inspection: nm, readelf, objdump, size, pahole"
+    source_ref: "curriculum/linux-kernel/evidence/T0D/transcript.md"
+    prereqs: [T0C]
+  - id: T0E
+    title: "T0e — Static analysis: sparse, smatch, coccinelle"
+    source_ref: "curriculum/linux-kernel/evidence/T0E/transcript.md"
+    prereqs: [T0C]
+  - id: T0F
+    title: "T0f — Tooling capstone: symptom to verified patch"
+    source_ref: "curriculum/linux-kernel/evidence/T0F/transcript.md"
+    prereqs: [T0D, T0E, A5]
+  - id: T2
+    title: "T2 — strace: syscalls and boundaries"
+    source_ref: "curriculum/linux-kernel/evidence/T2/transcript.md"
+    prereqs: [T0A]

@@ -107,8 +107,10 @@ labs:
     commands:
       run: "gcc -Wall -Wextra -std=c99 descriptor.c main.c -o app && ./app"
       test: "gcc -Wall -Wextra -std=c99 descriptor.c test_runner.c -o test_runner && ./test_runner"
+      tinker: "gcc -g -O0 -Wall -Wextra -std=c99 descriptor.c main.c -o app && gdb -q -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'break socket_probe' -ex run -ex 'bt' ./app"
     test_cases:
       - name: "unit runner: probe succeeds and yields a nonnegative descriptor"
+        command: "gcc -Wall -Wextra -std=c99 descriptor.c test_runner.c -o test_runner && ./test_runner"
         stdin: ""
         expect: "PASS: socket_probe returns success\nPASS: acquired descriptor is nonnegative\nALL TESTS PASSED\n"
         expect_exit: 0
@@ -249,6 +251,7 @@ labs:
       test: "gcc -Wall -Wextra -std=c99 descriptor2.c test_runner.c -o test_runner && ./test_runner"
     test_cases:
       - name: "unit runner: both flavors acquired, distinct descriptors"
+        command: "gcc -Wall -Wextra -std=c99 descriptor2.c test_runner.c -o test_runner && ./test_runner"
         stdin: ""
         expect: "PASS: stream descriptor acquired\nPASS: stream descriptor is nonnegative\nPASS: datagram descriptor acquired\nPASS: datagram descriptor is nonnegative\nPASS: the two flavors got distinct descriptors\nALL TESTS PASSED\n"
         expect_exit: 0

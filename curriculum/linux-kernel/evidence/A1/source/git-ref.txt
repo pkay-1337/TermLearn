@@ -1,0 +1,17 @@
+ref: 0.11
+commit: b65b60f4acd7efbbccd3d2411e9e5bca520a7574
+tree: d4303c76a830525f6aa6152569b3e3ee83b8c47d
+repo: /home/pk/Apps/termlearn/curriculum/linux-kernel/sources/early-history.git
+tarball_sha256: 660997a6b1f03ee5aadce0ac806ffa653dedf1dea6d82c6731f9c9ddf0092673  ../linux-0.11.tar.gz
+
+$ git rev-parse 0.11
+b65b60f4acd7efbbccd3d2411e9e5bca520a7574
+$ git rev-parse 0.11^{tree}
+d4303c76a830525f6aa6152569b3e3ee83b8c47d
+$ git ls-tree -r --name-only 0.11 -- boot init | sort
+boot/bootsect.s
+boot/head.s
+boot/setup.s
+init/main.c
+$ sha256sum ../linux-0.11.tar.gz
+660997a6b1f03ee5aadce0ac806ffa653dedf1dea6d82c6731f9c9ddf0092673  ../linux-0.11.tar.gz

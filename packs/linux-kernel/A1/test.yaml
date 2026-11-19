@@ -1,0 +1,88 @@
+test:
+  gates:
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    min_quiz: 60
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    - b10
+    min_quiz: 75
+  - needs:
+    - b1
+    - b2
+    - b3
+    - b4
+    - b5
+    - b6
+    - b7
+    - b8
+    - b9
+    - b10
+    - b11
+    - b12
+    - b13
+    - b14
+    min_quiz: 80
+    min_final: 100
+  final_checks:
+  - kind: choose-better
+    concept: final-bootstrap-pipeline-synthesis
+    q: Trace the execution journey of Linux 0.11 from power-on reset to main(). Which
+      sequence accurately describes the hardware mode and location progression?
+    choices:
+    - 0xFFFF0 (16-bit Real Mode in BIOS ROM) -> 0x7C00 (bootsect loads) -> 0x90000
+      (relocated bootsect) -> 0x90200 (setup.s enables A20 and CR0.PE) -> 0x00000
+      (head.s enables CR0.PG and 16MB paging) -> 0x6771 (main() in Ring 0 with paging)
+    - 0x00000 (Paging on) -> 0x7C00 (main() begins) -> 0xFFFF0 (userspace init forks)
+    - 0x7C00 (bootsect.s runs in 64-bit Long Mode) -> 0x10000 (BIOS loads bash)
+    answer: 0
+    why: 'Option A is correct: This captures the exact unbroken custody chain across
+      real mode, protected mode, identity paging, and Ring 0 C entry.'
+  - kind: choose-better
+    concept: final-cr0-verification
+    q: When GDB halts at `init/main.c:107`, register EAX holds `0x80000013`. What
+      does this prove about the operating system execution environment?
+    choices:
+    - Both Virtual Memory Paging (bit 31 PG=1) and 32-bit Protected Mode (bit 0 PE=1)
+      are active on the processor
+    - The system is executing in 16-bit real mode with interrupts enabled
+    - The hard disk controller has failed to mount the root filesystem
+    answer: 0
+    why: 'Option A is correct: In CR0, bit 31 is PG and bit 0 is PE. 0x80000013 has
+      both bits set, confirming 32-bit protected mode with paging active.'
+  - kind: choose-better
+    concept: final-toolchain-dialect-pinning
+    q: Why is `-std=gnu89` mandatory when compiling Linux 0.11 under modern GCC 16?
+    choices:
+    - Modern C standards (C99/C23) ban implicit int return types and empty parameter
+      lists, which pristine 1991 code relies upon
+    - Modern GCC does not support the x86 instruction set without this flag
+    - '`-std=gnu89` enables hyper-threading on modern processors'
+    answer: 0
+    why: 'Option A is correct: Dialect pinning to GNU89 instructs modern GCC to accept
+      historical C constructs without breaking build compilation.'
+  - kind: choose-better
+    concept: final-paging-identity-necessity
+    q: Why did Linus Torvalds identity-map the first 16MB of physical RAM in `boot/head.s`?
+    choices:
+    - Because `head.s` was actively executing at physical 0x00000; if linear 0x00000
+      did not map to physical 0x00000, enabling paging would cause the next instruction
+      fetch to fault immediately
+    - Because 16MB is the maximum physical memory an x86 processor can support
+    - To reserve 16MB exclusively for video framebuffers
+    answer: 0
+    why: 'Option A is correct: The CPU''s instruction pointer was at 0x00000. Turning
+      on paging without identity-mapping the executing code causes an instantaneous
+      instruction fetch crash.'

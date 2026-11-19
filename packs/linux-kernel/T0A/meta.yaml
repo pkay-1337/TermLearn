@@ -1,0 +1,27 @@
+meta:
+  book: linux-kernel
+  chapter_id: T0A
+  title: "First contact: compile, run, diagnose"
+  source_ref: "curriculum/linux-kernel/evidence/T0A/transcript.md; E-T0A-01..E-T0A-11"
+  level: intro
+  prereqs: []
+
+objectives:
+  - >-
+    Given a command transcript, identify the working directory, executable path form,
+    printed output, and recorded exit status for that invocation.
+  - >-
+    Given captured stdout, diagnostics, and an exit code, distinguish program output
+    from compiler diagnostics and explain why the exit code is separate.
+  - >-
+    Given the captured build invocation, construct the same GCC command and explain
+    what each flag changes in the build.
+  - >-
+    Given the captured compiler diagnostic, identify the first failing file and line
+    and choose the minimal source repairs that make the next build succeed.
+  - >-
+    Given the captured make transcript, predict when make rebuilds the target and
+    when it reports the target is up to date.
+  - >-
+    Given captured size and git output, interpret section columns, short status
+    fields, and unified diff headers as evidence about the current artifact.

@@ -1,0 +1,96 @@
+{
+  "chapter": "A1",
+  "captured_at": "2026-11-19",
+  "status": "source_and_runtime_captured",
+  "source_of_truth": "early-history.git tag 0.11 for source; Linux-0.11-fork only for runtime harness",
+  "environment": "environment.json",
+  "transcript": "transcript.md",
+  "artifacts": [
+    "artifacts/runtime-harness/notes.txt"
+  ],
+  "source": [
+    "source/git-ref.txt",
+    "source/boot-bootsect.s.txt",
+    "source/boot-setup.s.txt",
+    "source/boot-head.s.txt",
+    "source/init-main.c.txt"
+  ],
+  "evidence": [
+    {
+      "id": "E-A1-01",
+      "claim": "pinned source is early-history.git tag 0.11 at commit b65b60f4 with tree d4303c76 and matching tarball hash",
+      "command": "git rev-parse 0.11; git rev-parse 0.11^{tree}; git ls-tree -r --name-only 0.11 -- boot init | sort; sha256sum ../linux-0.11.tar.gz",
+      "cwd": "sources/early-history.git",
+      "exit_code": 0,
+      "artifacts": ["source/git-ref.txt", "transcript.md"]
+    },
+    {
+      "id": "E-A1-02",
+      "claim": "bootsect.s comments and constants state load addresses and BIOS setup-sector loading",
+      "command": "git show 0.11:boot/bootsect.s | sha256sum; git show 0.11:boot/bootsect.s | nl -ba | sed -n '1,80p'",
+      "cwd": "sources/early-history.git",
+      "exit_code": 0,
+      "artifacts": ["source/boot-bootsect.s.txt", "transcript.md"]
+    },
+    {
+      "id": "E-A1-03",
+      "claim": "setup.s reads BIOS data, moves system, enables A20, reloads descriptors, sets PE and jumps to absolute 0x00000",
+      "command": "git show 0.11:boot/setup.s | sha256sum; git show 0.11:boot/setup.s | nl -ba | sed -n '1,80p'; git show 0.11:boot/setup.s | nl -ba | sed -n '100,200p'",
+      "cwd": "sources/early-history.git",
+      "exit_code": 0,
+      "artifacts": ["source/boot-setup.s.txt", "transcript.md"]
+    },
+    {
+      "id": "E-A1-04",
+      "claim": "head.s starts 32-bit code at startup_32 and pushes main before setup_paging returns into it",
+      "command": "git show 0.11:boot/head.s | sha256sum; git show 0.11:boot/head.s | nl -ba | sed -n '1,80p'; git show 0.11:boot/head.s | nl -ba | sed -n '130,145p'; git show 0.11:boot/head.s | nl -ba | sed -n '198,225p'",
+      "cwd": "sources/early-history.git",
+      "exit_code": 0,
+      "artifacts": ["source/boot-head.s.txt", "transcript.md"]
+    },
+    {
+      "id": "E-A1-05",
+      "claim": "main reads boot-time values, initializes subsystems, enables interrupts, moves to user mode and forks init",
+      "command": "git show 0.11:init/main.c | sha256sum; git show 0.11:init/main.c | nl -ba | sed -n '1,100p'; git show 0.11:init/main.c | nl -ba | sed -n '104,160p'",
+      "cwd": "sources/early-history.git",
+      "exit_code": 0,
+      "artifacts": ["source/init-main.c.txt", "transcript.md"]
+    },
+    {
+      "id": "E-A1-06",
+      "claim": "default fork build fails under GCC 16 with implicit-int and vsprintf prototype errors",
+      "command": "make -j1",
+      "cwd": "sources/Linux-0.11-fork",
+      "exit_code": 2,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-A1-07",
+      "claim": "fork builds successfully with gnu89 and explicit include paths under GCC 16",
+      "command": "make -j1 CFLAGS=\"-g -m32 -fno-builtin -fno-stack-protector -fomit-frame-pointer -std=gnu89 -Iinclude -I../include -I../../include\"",
+      "cwd": "sources/Linux-0.11-fork",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-A1-08",
+      "claim": "build produced a DOS/MBR Image and a 32-bit i386 ELF system with pinned hashes",
+      "command": "ls -l Image tools/system System.map hdc-0.11.img; file Image tools/system; sha256sum Image tools/system System.map",
+      "cwd": "sources/Linux-0.11-fork",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-A1-09",
+      "claim": "QEMU with -s -S reaches main; gdb shows breakpoint at init/main.c:107, eip=0x6771, esp in user_stack and first instructions of main",
+      "command": "qemu-system-i386 -m 16M -boot a -fda Image -hda hdc-0.11.img -s -S -display none & gdb -q -batch -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'file tools/system' -ex 'target remote :1234' -ex 'break main' -ex 'continue' -ex 'bt' -ex 'info registers eip esp eax' -ex 'x/8i $eip' -ex 'info breakpoints'",
+      "cwd": "sources/Linux-0.11-fork",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    }
+  ],
+  "open_questions": [
+    "No serial console transcript was captured; QEMU was run with -display none.",
+    "Runtime uses the modernized fork at c2e45a7f; source claims remain pinned to tag 0.11 in early-history.git."
+  ]
+}

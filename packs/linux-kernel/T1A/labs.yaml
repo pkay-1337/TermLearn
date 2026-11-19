@@ -1,0 +1,188 @@
+labs:
+- id: lab1
+  title: Userspace Stepwise State Inspection with GDB Batch Mode
+  family: instrument
+  tier: core
+  difficulty: intro
+  expected_observation: GDB pauses on the doorstep of socket_probe, executes next
+    across the multiplication, and prints the verified value $1 = 14.
+  artifacts:
+  - debugme.c
+  - debug_probe.sh
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\n\nYou will author an automated debugging\
+    \ script `debug_probe.sh` that compiles `debugme.c` with full DWARF debug symbols\
+    \ and executes GDB in non-interactive batch mode. The script sets a breakpoint\
+    \ at `socket_probe`, steps across the assignment statement using `next`, prints\
+    \ the verified local variable `doubled`, and outputs `$1 = 14`.\n\n## Problem\
+    \ Statement\n\nWhen debugging automated test suites or regression pipelines, you\
+    \ cannot sit in front of an interactive terminal prompt. You must drive GDB programmatically\
+    \ via command-line flags. If you inspect a variable before stepping past its initialization,\
+    \ you observe uninitialized memory. Your script must prove that the variable is\
+    \ initialized after `next`.\n\n## Specification & Contract\n\n1. In `debug_probe.sh`,\
+    \ compile `debugme.c`:\n   `gcc -std=c99 -Wall -Wextra -g -O0 debugme.c -o debugme`\n\
+    2. Run GDB in batch mode:\n   `gdb -q -batch -ex \"set debuginfod enabled off\"\
+    \ -ex \"set pagination off\" -ex \"break socket_probe\" -ex \"run\" -ex \"next\"\
+    \ -ex \"print doubled\" -ex \"continue\" ./debugme`\n3. Filter stdout with `grep`\
+    \ to extract only the evaluated print line:\n   `grep '^\\$1 = 14'`\n4. Make `debug_probe.sh`\
+    \ executable.\n5. Running `bash debug_probe.sh` must output exactly:\n   `$1 =\
+    \ 14`"
+  files:
+  - path: debugme.c
+    content: "#include <stdio.h>\n\nstatic int socket_probe(int fd)\n{\n    int doubled\
+      \ = fd * 2;\n    printf(\"probe fd=%d doubled=%d\\n\", fd, doubled);\n    return\
+      \ doubled;\n}\n\nint main(void)\n{\n    int fd = 7;\n    int result = socket_probe(fd);\n\
+      \    printf(\"result=%d\\n\", result);\n    return 0;\n}\n"
+  - path: debug_probe.sh
+    content: '#!/bin/bash
+
+      # TODO: Compile debugme.c with -g -O0 and run GDB batch mode to print doubled
+      after next
+
+      # Output must match: $1 = 14
+
+      '
+  commands:
+    run: bash debug_probe.sh
+    test: test "$(bash debug_probe.sh)" = "$1 = 14"
+    tinker: bash -i
+  test_cases:
+  - name: Verifies variable doubled after stepping
+    stdin: ''
+    expect: $1 = 14
+    expect_exit: 0
+  hints:
+  - 'Compile debugme.c first: gcc -std=c99 -Wall -Wextra -g -O0 debugme.c -o debugme'
+  - 'Run GDB with -q -batch: gdb -q -batch -ex ''set debuginfod enabled off'' -ex
+    ''set pagination off'' -ex ''break socket_probe'' -ex ''run'' -ex ''next'' -ex
+    ''print doubled'' -ex ''continue'' ./debugme'
+  - 'Filter the output: pipe GDB output into grep ''^\$1 = 14'''
+- id: lab2
+  title: Catching Memory Corruption with Hardware Watchpoints
+  family: break-it
+  tier: core
+  difficulty: core
+  expected_observation: Hardware watchpoint traps the second write to cfg.status caused
+    by buffer overrun, and backtrace exposes update_label at corrupt.c:10.
+  artifacts:
+  - corrupt.c
+  - find_culprit.sh
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\n\nYou will author a forensic investigation\
+    \ script `find_culprit.sh` that uses a GDB hardware watchpoint to catch a memory\
+    \ corruption bug. A struct `cfg` has its `status` field overwritten with garbage.\
+    \ Your script will arm a watchpoint on `cfg.status`, continue execution until\
+    \ the rogue store triggers a `#DB` trap, and extract the guilty function and line\
+    \ from the backtrace.\n\n## Problem Statement\n\nIn `corrupt.c`, an array `char\
+    \ label[8]` is allocated adjacent to `int status`. A helper function `update_label`\
+    \ writes past the 8-byte boundary of `label`, silently corrupting `status`. Static\
+    \ code search does not reveal the bug because `update_label` never mentions `status`!\
+    \ Only a hardware watchpoint can catch the write in the act.\n\n## Specification\
+    \ & Contract\n\n1. In `find_culprit.sh`, compile `corrupt.c`:\n   `gcc -std=c99\
+    \ -Wall -Wextra -g -O0 corrupt.c -o corrupt`\n2. Run GDB in batch mode:\n   -\
+    \ Break on `main` and run to entry: `-ex \"break main\" -ex \"run\"`\n   - Arm\
+    \ hardware watchpoint: `-ex \"watch cfg.status\"`\n   - Continue past initialization\
+    \ (old=0 -> new=1): `-ex \"continue\"`\n   - Continue until the corruption write\
+    \ fires: `-ex \"continue\"`\n   - Print the call stack frame: `-ex \"bt\"`\n3.\
+    \ Filter GDB's output to emit the exact guilty frame line:\n   The output must\
+    \ be formatted as:\n   `culprit: update_label at corrupt.c:10`\n4. Run `bash find_culprit.sh`\
+    \ to verify the diagnostic contract."
+  files:
+  - path: corrupt.c
+    content: "#include <stdio.h>\n#include <string.h>\n\nstruct sensor_config {\n\
+      \    char label[8];\n    int status;\n};\n\nvoid update_label(struct sensor_config\
+      \ *cfg, const char *new_label)\n{\n    strcpy(cfg->label, new_label);\n}\n\n\
+      int main(void)\n{\n    struct sensor_config cfg;\n    memset(&cfg, 0, sizeof(cfg));\n\
+      \    cfg.status = 1;\n\n    update_label(&cfg, \"OVERFLOW_LABEL_BYTES\");\n\n\
+      \    printf(\"final status=0x%x\\n\", cfg.status);\n    return 0;\n}\n"
+  - path: find_culprit.sh
+    content: '#!/bin/bash
+
+      # TODO: Compile corrupt.c with -g -O0, run GDB with watchpoint on cfg.status,
+
+      # and extract the guilty caller function and line from bt.
+
+      # Output must match: culprit: update_label at corrupt.c:10
+
+      '
+  commands:
+    run: bash find_culprit.sh
+    test: 'test "$(bash find_culprit.sh)" = "culprit: update_label at corrupt.c:10"'
+    tinker: bash -i
+  test_cases:
+  - name: Identifies guilty function and line from watchpoint trap
+    stdin: ''
+    expect: 'culprit: update_label at corrupt.c:10'
+    expect_exit: 0
+  hints:
+  - 'Compile corrupt.c with -g -O0: gcc -std=c99 -Wall -Wextra -g -O0 corrupt.c -o
+    corrupt'
+  - 'Arm watchpoint on cfg.status and continue twice: first continue stops at cfg.status
+    = 1; second continue stops inside the strcpy overrun'
+  - 'Run bt to see the caller frame, then format the output with awk/sed: echo ''culprit:
+    update_label at corrupt.c:10'''
+- id: lab3
+  title: Headless QEMU GDB Stub Launch and Port Verification
+  family: instrument
+  tier: stretch
+  difficulty: advanced
+  expected_observation: QEMU launches headlessly with -s -S, opens TCP port 1234,
+    and is cleanly terminated after verification.
+  artifacts:
+  - test_stub.sh
+  environment:
+    name: host-user
+    boundary: host
+    privilege: user
+    network: none
+    timeout_s: 10
+  instruction_md: "## What You Are Building\n\nYou will author a verification script\
+    \ `test_stub.sh` that launches QEMU in headless background mode with GDB remote\
+    \ debugging enabled (`-s -S -display none`), verifies that TCP port 1234 is actively\
+    \ listening, and terminates the background process cleanly.\n\n## Problem Statement\n\
+    \nAutomated OS testing frameworks must be able to boot virtual machines without\
+    \ interactive GUI popups, verify that the hypervisor GDB stub is ready to accept\
+    \ connections on port 1234, and ensure background processes are cleaned up without\
+    \ leaking zombie instances.\n\n## Specification & Contract\n\n1. In `test_stub.sh`,\
+    \ launch `qemu-system-i386` in the background:\n   - Allocate 16MB RAM: `-m 16M`\n\
+    \   - Open GDB stub and freeze vCPU: `-s -S`\n   - Run headless: `-display none`\n\
+    \   - Capture background PID using `$!`\n2. Allow QEMU 0.2 seconds to bind the\
+    \ socket: `sleep 0.2`\n3. Check if TCP port 1234 is listening (using `ss -tlpn`\
+    \ or checking if port 1234 is open).\n4. Terminate the QEMU process cleanly with\
+    \ `kill -15 $PID` and wait for it to exit.\n5. If port 1234 was listening, print:\n\
+    \   `QEMU RSP port 1234 verified listening`"
+  files:
+  - path: test_stub.sh
+    content: '#!/bin/bash
+
+      # TODO: Launch qemu-system-i386 with -m 16M -s -S -display none in background,
+
+      # verify port 1234 is listening, terminate QEMU, and output:
+
+      # QEMU RSP port 1234 verified listening
+
+      '
+  commands:
+    run: bash test_stub.sh
+    test: test "$(bash test_stub.sh)" = "QEMU RSP port 1234 verified listening"
+    tinker: bash -i
+  test_cases:
+  - name: Verifies QEMU -s -S stub binds port 1234
+    stdin: ''
+    expect: QEMU RSP port 1234 verified listening
+    expect_exit: 0
+  hints:
+  - 'Launch QEMU with: qemu-system-i386 -m 16M -s -S -display none & QPID=$!'
+  - Sleep briefly (sleep 0.2) to let QEMU initialize the TCP listener
+  - Check port 1234 using ss -tlpn | grep -q 1234, kill $QPID, and print 'QEMU RSP
+    port 1234 verified listening'

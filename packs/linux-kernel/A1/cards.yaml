@@ -1,0 +1,59 @@
+cards:
+- front: How many total files and lines of code make up pristine Linux 0.11?
+  back: Exactly 100 files containing 13,839 lines of code across 8 directories.
+  concept: source-tree-scope
+- front: What are the 8 subsystem directories of Linux 0.11?
+  back: boot, fs, include, init, kernel, lib, mm, tools.
+  concept: directory-topology
+- front: What physical address does the x86 CPU execute at power-on reset?
+  back: 0xFFFF0 (CS:IP = 0xF000:0xFFF0), mapped to BIOS ROM.
+  concept: reset-vector-0xffff0
+- front: How is a physical address calculated in 16-bit real mode?
+  back: Physical Address = (Segment << 4) + Offset.
+  concept: real-mode-segment-formula
+- front: What magic bytes must be present at offsets 510-511 of a bootsector?
+  back: 0x55, 0xAA (little-endian word 0xAA55).
+  concept: mbr-magic-0xaa55
+- front: Where does the BIOS load bootsect.s, and where does bootsect relocate itself?
+  back: BIOS loads to 0x07C00; bootsect relocates itself to 0x90000.
+  concept: bootsect-relocation
+- front: Why does bootsect.s relocate itself to 0x90000?
+  back: To avoid being overwritten when the kernel image system is moved down to 0x00000.
+  concept: why-relocate
+- front: What is the function of the A20 Gate?
+  back: Enables the 21st address wire, preventing memory above 1MB from wrapping around
+    to 0MB.
+  concept: a20-gate-function
+- front: Which bit of control register CR0 enables 32-bit Protected Mode?
+  back: Bit 0 (PE - Protection Enable).
+  concept: cr0-pe-bit0
+- front: Which bit of control register CR0 enables Virtual Memory Paging?
+  back: Bit 31 (PG - Paging Enable, 0x80000000).
+  concept: cr0-pg-bit31
+- front: How much memory does head.s identity-map, and how many page tables are used?
+  back: 16 Megabytes, mapped using 1 Page Directory and 4 Page Tables.
+  concept: identity-paging-16mb
+- front: How does head.s transfer execution to init/main.c?
+  back: Pushes $_main onto the stack; ret at the end of setup_paging pops $_main into
+    EIP.
+  concept: head-ret-into-main
+- front: What physical address does CR3 point to in Linux 0.11?
+  back: 0x00000000 (the base of the Page Directory _pg_dir).
+  concept: cr3-page-directory-base
+- front: Where is the initial stack pointer ESP located when main() begins?
+  back: 0x00027f70 (user_stack+4080 in kernel/sched.c).
+  concept: initial-stack-esp
+- front: What are the CS and DS selector values at main() entry?
+  back: CS = 0x0008 (Kernel Code), DS = 0x0010 (Kernel Data), both Ring 0.
+  concept: segment-selectors-cs-ds
+- front: Why is volatile mandatory in hardware inline assembly macros like inb()?
+  back: Prevents the compiler from caching port reads or optimizing away repeated
+    reads in spinloops.
+  concept: asm-volatile-necessity
+- front: Why must -std=gnu89 be passed when compiling Linux 0.11 with GCC 16?
+  back: Allows 1989 K&R idioms (implicit int return types and unprototyped functions)
+    that C23 rejects.
+  concept: cflags-std-gnu89
+- front: What does the kernel do after forking process 1 (init)?
+  back: Task 0 becomes the kernel idle loop, executing for(;;) pause();.
+  concept: task0-idle-loop

@@ -39,6 +39,25 @@ def test_provision_and_preserve_student_work(temp_labs_dir):
     assert "init(void)" in (wdir / "engine.c").read_text()
 
 
+def test_reset_removes_undeclared_artifacts(temp_labs_dir):
+    lab_def = {
+        "id": "lab1",
+        "files": [
+            {"path": "main.c", "content": "int main(void) { return 1; }\n"}
+        ]
+    }
+    wdir = lw.provision_lab_workspace("test-book", "ch01", lab_def)
+    (wdir / "app").write_text("stale binary\n")
+    (wdir / ".git").mkdir()
+    (wdir / ".git" / "HEAD").write_text("ref: refs/heads/master\n")
+
+    lw.provision_lab_workspace("test-book", "ch01", lab_def, reset=True)
+
+    assert not (wdir / "app").exists()
+    assert not (wdir / ".git").exists()
+    assert (wdir / "main.c").read_text() == "int main(void) { return 1; }\n"
+
+
 def test_list_and_read_write_files(temp_labs_dir):
     lab_def = {
         "id": "lab1",
@@ -129,3 +148,58 @@ def test_input_vs_expected_output_verification_diff_on_failure(temp_labs_dir):
     assert report["cases_passed"] == 0
     assert "-Expected Output" in report["diff"]
     assert "+Wrong Output" in report["diff"]
+
+
+def test_tinker_command_runs_with_workspace_cwd(temp_labs_dir):
+    lab_def = {"id": "lab1", "files": [{"path": "seed.txt", "content": "seed\n"}]}
+    wdir = lw.provision_lab_workspace("book", "ch01", lab_def)
+    res = lw.run_tinker_command(wdir, "cat seed.txt > observed.txt")
+    assert res["returncode"] == 0
+    assert not res["denied"]
+    assert (wdir / "observed.txt").read_text() == "seed\n"
+
+
+def test_tinker_command_denylist(temp_labs_dir):
+    wdir = temp_labs_dir / "test"
+    wdir.mkdir(parents=True)
+    res = lw.run_tinker_command(wdir, "rm -rf /")
+    assert res["denied"] is True
+    assert "prohibited pattern" in res["error"]
+
+
+def test_build_tinker_terminal_command_alacritty(temp_labs_dir):
+    wdir = temp_labs_dir / "lab"
+    argv = lw.build_tinker_terminal_command(wdir, "ip link show", terminal="alacritty -e")
+    assert argv is not None
+    assert argv[:3] == ["alacritty", "-e", "sh"]
+    assert argv[3] == "-c"
+    assert "cd " in argv[4]
+    assert "ip link show" in argv[4]
+
+
+def test_build_tinker_terminal_command_without_terminal(monkeypatch, temp_labs_dir):
+    monkeypatch.delenv(lw.TINKER_TERMINAL_ENV, raising=False)
+    monkeypatch.delenv("TMUX", raising=False)
+    monkeypatch.setattr(lw.shutil, "which", lambda _name: None)
+    assert lw.build_tinker_terminal_command(temp_labs_dir, "true") is None
+
+
+def test_spawn_tinker_in_terminal_denylist(temp_labs_dir):
+    res = lw.spawn_tinker_in_terminal(temp_labs_dir, "shutdown -h now", terminal="alacritty -e")
+    assert res["spawned"] is False
+    assert res["denied"] is True
+
+
+def test_spawn_tinker_in_terminal_runs_command(temp_labs_dir, tmp_path):
+    import time
+    wdir = lw.provision_lab_workspace("book", "ch01", {"id": "lab1", "files": []})
+    fake = tmp_path / "fake-term"
+    fake.write_text("#!/bin/sh\nexec \"$@\"\n")
+    fake.chmod(0o755)
+    res = lw.spawn_tinker_in_terminal(wdir, "printf spawned > spawned.txt", terminal=str(fake))
+    assert res["spawned"] is True
+    for _ in range(50):
+        if (wdir / "spawned.txt").exists():
+            break
+        time.sleep(0.05)
+    assert (wdir / "spawned.txt").read_text() == "spawned"

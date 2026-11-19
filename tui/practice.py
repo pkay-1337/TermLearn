@@ -16,6 +16,7 @@ from textual.containers import Horizontal, ScrollableContainer, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import Button, DataTable, Input, Label, Markdown, Static
 
+from lib import mission_meta as mission
 from tui.widgets import QuestionWidget, VimScrollMixin
 
 CHOICE_KINDS = ("predict", "why-fails", "mcq", "eipe", "choose-better", "spot-bug")
@@ -156,6 +157,25 @@ class StudyScreen(VimScrollMixin, _Base):
         return Static(f"[dim]🔗 {label} — the code reference stays above[/dim]",
                       classes="study-link-note")
 
+    @staticmethod
+    def _format_viz_step(step) -> str:
+        if isinstance(step, str):
+            return step
+        if isinstance(step, dict):
+            parts = []
+            if "label" in step:
+                parts.append(f"[{step['label']}]")
+            if "registers" in step and isinstance(step["registers"], dict):
+                regs = ", ".join(f"{k}={v}" for k, v in step["registers"].items())
+                parts.append(f"Regs: {regs}")
+            if "memory" in step and isinstance(step["memory"], dict):
+                mem = " | ".join(f"{k}: {v}" for k, v in step["memory"].items())
+                parts.append(f"State: {mem}")
+            if "note" in step:
+                parts.append(f"({step['note']})")
+            return " · ".join(parts) if parts else str(step)
+        return str(step)
+
     def _viz_text(self, steps: list):
         """Current step is highlighted; earlier steps stay dimmed for context."""
         from rich.text import Text
@@ -163,12 +183,13 @@ class StudyScreen(VimScrollMixin, _Base):
         for idx, step in enumerate(steps[:self.vi + 1]):
             if idx:
                 out.append("\n")
+            text = self._format_viz_step(step)
             if idx == self.vi:
                 out.append("▶ ", style="bold cyan")
-                out.append(str(step), style="bold white")
+                out.append(text, style="bold white")
             else:
                 out.append("  ", style="dim")
-                out.append(str(step), style="dim")
+                out.append(text, style="dim")
         return out
 
     def _show_body(self) -> None:
@@ -232,6 +253,9 @@ class StudyScreen(VimScrollMixin, _Base):
             self._check_answered = False
             i = int(self.stage.split("-")[1])
             ck = (b.get("checks") or [])[i]
+            review = mission.interleaved_label(ck)
+            if review:
+                body.mount(Static(review, classes="study-nav-box"))
             body.mount(QuestionWidget(ck, self._checked))
         elif self.stage == "done":
             body.mount(Static("🎉  Block complete! Press [bold cyan]n[/]: next block · [bold cyan]p[/]: previous · [bold cyan]q[/]: back.", classes="feedback-msg-success"))
@@ -474,7 +498,8 @@ class QuizScreen(VimScrollMixin, _Base):
     HELP_TITLE = "quiz"
     HELP_LINES = [("1-4", "answer choice"), ("n", "next / trace step"),
                   ("p", "previous trace step"), ("j/k", "scroll / nav"),
-                  ("d/u", "half page"), ("esc", "leave answer field"),
+                  ("d/u", "half page"),
+                  ("esc", "leave answer field"),
                   ("q", "back")]
     BINDINGS = ([Binding(str(i), f"ans{i}", "", show=False) for i in range(1, 10)] +
                 [Binding("n", "next", "Next"),
@@ -494,13 +519,19 @@ class QuizScreen(VimScrollMixin, _Base):
         self.results: list[tuple[str, bool]] = []
         self._answered = False
         self.checks: list[tuple[str, int, dict]] = []
+        self.data: dict = {}
 
     def compose(self) -> ComposeResult:
         from lib.pack import load_chapter
         from lib.quiz import collect_quiz_questions
         from lib.srs import init_db
+        if not self.data:
+            try:
+                self.data = load_chapter(self.book, self.chapter)
+            except Exception:
+                self.data = {}
         if not self.checks:
-            data = load_chapter(self.book, self.chapter)
+            data = self.data
             raw_checks = collect_quiz_questions(data)
             has_dedicated_quiz = bool(isinstance(data.get("quiz"), list) and data.get("quiz"))
             if self.kind is None:
@@ -563,6 +594,9 @@ class QuizScreen(VimScrollMixin, _Base):
         else:
             hdr = f"QUESTION {self.idx + 1} OF {len(self.checks)}  ·  CURRENT SCORE: {self.score}"
         body.mount(Label(hdr, classes="study-header-bar"))
+        review = mission.interleaved_label(ck)
+        if review:
+            body.mount(Static(review, classes="study-nav-box"))
         body.mount(QuestionWidget(ck, self._checked, shuffle=True))
 
     def _checked(self, ok: bool) -> None:
@@ -904,11 +938,39 @@ class CardsScreen(_Base):
         self.app.pop_screen()
 
 
+class ObservationModal(ModalScreen[str | None]):
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="help-box"):
+            yield Label("📝 Tinker Observation Note", id="help-title")
+            yield Label("Record what you observed during the experiment (saved to observations.md):", classes="details-header")
+            yield Input(placeholder="e.g. Breakpoint hit at main(), register rax was 0", id="obs-input", classes="question-input")
+            yield Button("Save Observation", id="obs-save", classes="btn-grade-4")
+            yield Button("Skip / Close", id="obs-cancel", classes="btn-grade-1")
+
+    @on(Button.Pressed, "#obs-save")
+    def _save(self) -> None:
+        val = self.query_one("#obs-input", Input).value.strip()
+        self.dismiss(val or None)
+
+    @on(Button.Pressed, "#obs-cancel")
+    def _cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
 class LabScreen(_Base):
     HELP_TITLE = "lab"
     HELP_LINES = [
         ("r", "run project"),
         ("t", "test suite / verify"),
+        ("x", "tinker (interactive)"),
+        ("o", "observation note"),
         ("e", "open in $EDITOR"),
         ("R", "reset files to starter"),
         ("h", "hint"),
@@ -921,6 +983,8 @@ class LabScreen(_Base):
     BINDINGS = [
         Binding("r", "run_code", "Run"),
         Binding("t", "run_tests", "Test"),
+        Binding("x", "tinker", "Tinker"),
+        Binding("o", "add_observation", "Note"),
         Binding("e", "open_editor", "Edit ($EDITOR)"),
         Binding("R", "reset_workspace", "Reset", show=False),
         Binding("h", "hint", "Hint"),
@@ -945,11 +1009,13 @@ class LabScreen(_Base):
         self.files: list[str] = []
         self.active_file_idx = 0
         self.console_output = "Press 'r' to Run or 't' to Test."
+        self.data: dict = {}
         self._load_labs_data()
 
     def _load_labs_data(self) -> None:
         from lib.pack import load_chapter
         data = load_chapter(self.book, self.chapter)
+        self.data = data
         raw_labs = data.get("labs")
         if isinstance(raw_labs, list) and raw_labs:
             self.labs = raw_labs
@@ -1093,6 +1159,9 @@ class LabScreen(_Base):
             with Horizontal(classes="lab-split-top"):
                 with Vertical(classes="lab-info-pane"):
                     yield Label("Task Instructions", classes="details-header")
+                    badges = mission.format_lab_badges(cur)
+                    if badges:
+                        yield Label(badges, id="lab-badges-label", classes="lab-badges-label")
                     inst = cur.get("instruction_md") or cur.get("prompt_md", "No instructions.")
                     yield Markdown(str(inst), id="lab-instructions")
                     yield Static("", id="lab-hint-out", classes="feedback-msg")
@@ -1107,6 +1176,8 @@ class LabScreen(_Base):
             with Horizontal(classes="lab-actions-bar"):
                 yield Button("▶ Run (r)", id="lab-run", variant="primary")
                 yield Button("🧪 Test Suite (t)", id="lab-tests", variant="success")
+                yield Button("Tinker (x)", id="lab-tinker")
+                yield Button("📝 Note (o)", id="lab-obs")
                 yield Button("📝 Open in $EDITOR (e)", id="lab-editor")
                 yield Button("🔄 Reset (R)", id="lab-reset", variant="error")
                 yield Button("💡 Hint (h)", id="lab-hint")
@@ -1180,6 +1251,13 @@ class LabScreen(_Base):
         try:
             self.query_one("#lab-title-label", Label).update(self._title_text())
             self.query_one("#lab-status-badge", Label).update(self._status_badge_text())
+            badges = mission.format_lab_badges(cur)
+            try:
+                b_lbl = self.query_one("#lab-badges-label", Label)
+                b_lbl.update(badges or "")
+                b_lbl.display = bool(badges)
+            except Exception:
+                pass
             inst = cur.get("instruction_md") or cur.get("prompt_md", "No instructions.")
             self.query_one("#lab-instructions", Markdown).update(str(inst))
             self.query_one("#lab-hint-out", Static).update("")
@@ -1276,6 +1354,77 @@ class LabScreen(_Base):
         self._show_output("\n".join(out))
         self._update_status_badge(report["passed"])
 
+    def action_tinker(self) -> None:
+        self._save_active_file()
+        cur = self._current_lab()
+        cmd = (cur.get("commands") or {}).get("tinker", "").strip()
+        if not cmd:
+            self._show_output("No 'tinker' command declared in this lab.")
+            return
+        if not self.workspace_dir:
+            self._show_output("No lab workspace is available.")
+            return
+        from lib import lab_workspace as lw
+        preview = mission.tinker_preview(cur, self.workspace_dir)
+        try:
+            spawned = lw.spawn_tinker_in_terminal(self.workspace_dir, cmd)
+        except Exception as e:
+            spawned = {"spawned": False, "error": str(e)}
+        if spawned.get("spawned"):
+            self._show_output(
+                f"{preview}\n\n"
+                f"Tinker launched in a separate terminal ({spawned.get('terminal', '')}).\n"
+                f"Command: {cmd}\nReturn here when the experiment is done."
+            )
+            self.app.notify("Tinker launched in a separate terminal")
+            return
+        if spawned.get("denied"):
+            self._show_output(f"{preview}\n\nTinker command rejected: {spawned.get('error', '')}")
+            return
+        try:
+            with self.app.suspend():
+                res = lw.run_tinker_command(self.workspace_dir, cmd)
+        except Exception as e:
+            self._show_output(f"{preview}\n\nError running tinker command: {e}")
+            return
+        self._load_active_file_into_editor()
+        if res.get("denied") or res.get("timed_out") or res.get("error"):
+            self._show_output(f"{preview}\n\nTinker command failed: {res.get('error', '')}\nCommand: {cmd}")
+        else:
+            self._show_output(
+                f"{preview}\n\n"
+                f"Tinker finished: exit {res.get('returncode')} ({res.get('elapsed_ms')}ms)\n"
+                f"Command: {cmd}\n\nPress 'o' or click 'Note' to save an observation note."
+            )
+        self.app.notify("Returned from tinker")
+
+    def action_add_observation(self) -> None:
+        if not self.workspace_dir:
+            self._show_output("No lab workspace available for observations.")
+            return
+
+        def _on_obs(note: str | None) -> None:
+            if not note or not self.workspace_dir:
+                return
+            obs_file = self.workspace_dir / "observations.md"
+            header = f"# Lab Observations: {self._current_lab().get('title', 'Lab')}\n\n"
+            content = f"- {note}\n"
+            if obs_file.exists():
+                try:
+                    prev = obs_file.read_text(encoding="utf-8")
+                except Exception:
+                    prev = ""
+                obs_file.write_text(prev + content, encoding="utf-8")
+            else:
+                obs_file.write_text(header + content, encoding="utf-8")
+            if "observations.md" not in self.files:
+                self.files.append("observations.md")
+                self._rebuild_file_tabs()
+            self._show_output(f"Observation recorded in observations.md:\n{note}")
+            self.app.notify("Observation note saved")
+
+        self.app.push_screen(ObservationModal(), _on_obs)
+
     def action_open_editor(self) -> None:
         self._save_active_file()
         if not self.workspace_dir:
@@ -1336,6 +1485,14 @@ class LabScreen(_Base):
     @on(Button.Pressed, "#lab-tests")
     def _tests_btn(self) -> None:
         self.action_run_tests()
+
+    @on(Button.Pressed, "#lab-tinker")
+    def _tinker_btn(self) -> None:
+        self.action_tinker()
+
+    @on(Button.Pressed, "#lab-obs")
+    def _obs_btn(self) -> None:
+        self.action_add_observation()
 
     @on(Button.Pressed, "#lab-editor")
     def _editor_btn(self) -> None:

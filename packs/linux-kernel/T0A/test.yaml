@@ -1,0 +1,65 @@
+test:
+  gates:
+    - needs: [b1, b2, b3]
+      min_quiz: 60
+    - needs: [b1, b2, b3, b4, b5, b6]
+      min_quiz: 75
+    - needs: [b1, b2, b3, b4, b5, b6, b7, b8, b9, b10]
+      min_quiz: 80
+  final_checks:
+    - kind: choose-better
+      q: >-
+        A build succeeds but the harness records exit 1 and no program output.
+        What is the strongest first diagnostic action?
+      choices:
+        - "add -O3 and rebuild, because optimized code exposes more bugs"
+        - "rewrite main.c from memory to remove hidden state"
+        - "run chmod 777 on the workspace to remove permission problems"
+        - "read the recorded exit code and any diagnostic channel before changing source or flags"
+      answer: 3
+      why: >-
+        The transcript separates output, diagnostic text, and exit status. Read those
+        observations first, then choose a repair that matches the lifecycle stage.
+      concept: evidence-first-triage
+
+    - kind: spot-bug
+      q: "Examine the Makefile rule and failure message. What is the root cause?"
+      code: |
+        app: main.c
+            gcc -Wall -g main.c -o app
+      diagnostic_log: |
+        Makefile:2: *** missing separator.  Stop.
+      choices:
+        - "the target name app is reserved by GNU Make"
+        - "-g cannot be used with -Wall"
+        - "the recipe line was indented with spaces instead of a literal TAB"
+      answer: 2
+      why: >-
+        Make requires recipe lines to begin with a TAB. Spaces in that position
+        produce the missing-separator error.
+      concept: make-missing-separator
+
+    - kind: predict
+      q: |-
+        A developer stages a new file, then edits it again without staging the second edit.
+        What does git status --short show?
+      choices:
+        - "?? test.c"
+        - "A  test.c"
+        - " M test.c"
+        - "AM test.c"
+      answer: 3
+      why: "Column 1 records the staged addition; column 2 records the newer unstaged modification."
+      concept: git-short-status-am
+
+    - kind: why-fails
+      q: "Why does touching main.c make the next make invocation rebuild app?"
+      choices:
+        - "touch renames the source file"
+        - "the prerequisite mtime becomes newer than the target mtime"
+        - "touch adds the -g flag to the Makefile"
+      answer: 1
+      why: >-
+        Make compares mtimes. A newer prerequisite means the existing target may be
+        stale, so the recipe runs.
+      concept: make-mtime-rationale

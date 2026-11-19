@@ -1,0 +1,1883 @@
+blocks:
+- id: b1
+  type: model
+  title: Command Execution, Working Directory, and Exit Status
+  explain_md: "### 1. Frame the Problem\nWhen you type `./app` in the shell and hit\
+    \ enter, what actually happens? Many developers assume the terminal directly executes\
+    \ the binary and that printed output indicates success. This misconception causes\
+    \ severe automation bugs. In systems programming, you must understand how the\
+    \ operating system executes programs, resolves paths, and reports status.\n\n\
+    ### 2. The Notional Machine\nEvery Unix process executes within an isolated operating\
+    \ system context managed by the kernel:\n\n1. **Current Working Directory (CWD)**:\
+    \ The base filesystem path used by the kernel to resolve relative paths.\n2. **Execution\
+    \ Path Resolution**:\n   - Commands prefixed with `./` or `/` tell the shell to\
+    \ execute a specific file at that filesystem path.\n   - Bare commands (like `gcc`\
+    \ or `make`) tell the shell to search through the colon-separated directory list\
+    \ in the `$PATH` environment variable.\n3. **Process Creation (`fork` + `execve`)**:\
+    \ The shell duplicates itself with `fork()`, and the child replaces its address\
+    \ space with the executable binary via `execve()`.\n4. **Exit Status (`$?`)**:\
+    \ An 8-bit unsigned integer (0–255) returned by `main()` or `exit()`. By universal\
+    \ Unix convention, **zero strictly indicates success**; non-zero values signal\
+    \ specific error conditions. The shell harvests this byte via `waitpid()` and\
+    \ stores it in `$?`.\n\n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0A-03`\
+    \ and `E-T0A-04`:\n```text\n$ pwd\n/home/user/workload\n$ gcc -std=c99 -Wall -Wextra\
+    \ -g main.c -o app\n$ echo $?\n0\n$ ./app\n5\n$ echo $?\n0\n```\nNotice the separation:\n\
+    1. `pwd` verified the process working directory.\n2. `gcc` compiled `main.c` into\
+    \ `app` silently, emitting zero stdout text and returning exit status `0`.\n3.\
+    \ `./app` executed from the local directory, wrote string `5\\n` to file descriptor\
+    \ 1 (stdout), and exited with code `0`.\n\n### 4. The Failure Mode & Boundary\n\
+    The most common beginner failure is omitting the `./` prefix when running a local\
+    \ binary:\n```text\n$ app\nbash: app: command not found\n```\nBecause the current\
+    \ working directory is intentionally not in `$PATH` for security reasons, the\
+    \ shell searches `/usr/bin` and fails. Furthermore, confusing printed text (`5`)\
+    \ with the exit code (`0`) breaks shell automation scripts that rely on `if ./app;\
+    \ then ...`.\n\n### 5. The Compressed Mental Axiom\n*Printed text is application\
+    \ payload; exit status is the kernel's verdict byte in $?.*"
+  diagram:
+    kind: flow
+    caption: Shell Command Execution and Telemetry Lifecycle
+    nodes:
+    - id: input
+      label: 'Prompt: ./app'
+      shape: round
+    - id: parse
+      label: 'Path Resolution (Leading ./) '
+      shape: decision
+    - id: fork
+      label: Kernel fork() + execve()
+      shape: box
+    - id: run
+      label: Child Process Executes (PID 4120)
+      shape: box
+    - id: stdout
+      label: Write '5\n' to stdout (FD 1)
+      shape: io
+    - id: exit
+      label: main() returns 0 (Exit Status)
+      shape: box
+    - id: reap
+      label: Shell waitpid() -> $? = 0
+      shape: decision
+    edges:
+    - from: input
+      to: parse
+      label: parses command
+    - from: parse
+      to: fork
+      label: resolves path
+    - from: fork
+      to: run
+      label: creates child
+    - from: run
+      to: stdout
+      label: emits payload
+    - from: run
+      to: exit
+      label: terminates
+    - from: exit
+      to: reap
+      label: kernel status
+    steps:
+    - focus:
+      - input
+      - parse
+      - fork
+      note: Shell parses ./app and forks child process via execve
+    - focus:
+      - fork
+      - run
+      - stdout
+      note: Child runs in isolated memory map and writes '5' to stdout
+    - focus:
+      - run
+      - exit
+      - reap
+      note: Process terminates; kernel delivers exit code 0 to shell $?
+  viz:
+    kind: ascii-memory
+    caption: Process Context and Telemetry Harvesting
+    steps:
+    - '[Step 1: Child Process Spawned via execve] · Regs: CWD=/home/user/workload,
+      PID=4120 · State: File Descriptor 1: Connected to Terminal stdout | Exit Code
+      Slot: UNSET (Process Active) · (Process executes within private address space)'
+    - '[Step 2: Process Termination and waitpid Harvest] · Regs: $?=0, Terminated
+      PID=4120 · State: Terminal stdout: Received ''5\n'' | Kernel waitpid(): Harvested
+      exit status byte 0 · (Payload is printed; exit status 0 captured into shell
+      variable $?)'
+  example:
+    lang: text
+    code: '$ pwd
+
+      /home/user/workload
+
+      $ gcc -std=c99 -Wall -Wextra -g main.c -o app
+
+      $ echo $?
+
+      0
+
+      $ ./app
+
+      5
+
+      $ echo $?
+
+      0'
+    run_expected: '5
+
+      '
+    explain_md: The compiler builds app and exits 0 silently. The binary ./app executes
+      from CWD, emits 5 on stdout, and yields exit code 0.
+  checks:
+  - id: b1-c1
+    kind: predict
+    concept: process-observation-boundary
+    q: A terminal session shows `$ pwd` returning `/home/user`, followed by `$ ./app`
+      printing `5` and terminating with exit code 0. Which conclusion is strictly
+      supported by this observation?
+    choices:
+    - The application source code computed 2 + 3 inside main and printed the result.
+    - The shell resolved the binary location by scanning directories in the PATH list.
+    - The binary ran from /home/user, emitted 5 on stdout, and returned exit status
+      0.
+    - The printed value 5 guaranteed that the process exit status was set to zero.
+    answer: 2
+    why: Option C is correct because the transcript proves the working directory,
+      the emitted stream data, and the kernel exit code. Option A is an unverified
+      assumption about internal source logic. Option B is false because leading './'
+      bypasses PATH search. Option D is false because stdout text and exit codes are
+      separate.
+  - id: b1-c2
+    kind: why-fails
+    concept: working-directory-resolution
+    q: A developer runs `cd /tmp/project && gcc -std=c99 main.c -o app` in a directory
+      containing only `helper.c`. Why does compilation fail?
+    choices:
+    - The compiler cannot find the named input file in the working directory.
+    - The GCC compiler requires all source files to use absolute file paths.
+    - The -std=c99 dialect switch forbids compiling single-file applications.
+    - The shell refuses to launch executables outside of standard system paths.
+    answer: 0
+    why: 'Option A is correct: relative filenames are resolved against the current
+      working directory, so missing main.c triggers a fatal open() error. Option B
+      is false because relative paths are standard. Option C is false because -std=c99
+      has no file-count restriction. Option D is false because GCC is found in PATH.'
+  - id: b1-c3
+    kind: predict
+    concept: exit-status-inspection
+    q: After running `gcc -std=c99 -Wall -Wextra -g main.c -o app` on valid C code,
+      the command produces no terminal output. What will running `echo $?` immediately
+      display?
+    choices:
+    - 1, indicating that no output text was written to standard output.
+    - app, showing the name of the newly generated binary executable file.
+    - main.c, echoing the input translation unit that compiled successfully.
+    - 0, confirming the compiler process completed without fatal errors.
+    answer: 3
+    why: 'Option D is correct: Unix processes return exit status 0 upon successful
+      completion, which $? captures. Option A is false because quiet compiles are
+      successful. Options B and C confuse exit status with command arguments.'
+  - id: b1-c4
+    kind: fillblank
+    concept: shell-status-variable
+    q: 'Fill in the shell special parameter that expands to the exit status of the
+      most recently executed foreground pipeline:'
+    code: '$ gcc -std=c99 main.c -o app
+
+      $ echo ____
+
+      0'
+    answer_text: $?
+    why: In Bourne-compatible shells, '$?' holds the numeric exit code of the last
+      completed foreground command. Using other variables like '$!' yields background
+      process PIDs, while '$$' yields the shell's own PID.
+  - id: b1-c5
+    kind: choose-better
+    concept: telemetry-channel-design
+    q: Why do build automation scripts branch on the numeric exit status `$?` rather
+      than parsing stdout for success messages?
+    choices:
+    - Parsing stdout is slower because stdout is buffered by the C library.
+    - The exit code is an unambiguous numeric contract unaffected by output text.
+    - The shell cannot redirect stdout when running inside an automated script.
+    - Standard output text is automatically discarded whenever a program exits.
+    answer: 1
+    why: 'Option B is correct: exit codes provide a fixed 0 vs non-zero binary machine
+      contract that does not break when human-readable prose changes or languages
+      are localized. Option A is secondary. Option C is false because stdout can always
+      be redirected. Option D is false because stdout persists in pipes or files.'
+- id: b2
+  type: model
+  title: Standard Streams (stdout, stderr) and Exit Status Separation
+  explain_md: "### 1. Frame the Problem\nWhy does every Unix operating system provide\
+    \ two independent output channels—stdout and stderr—when both print to the exact\
+    \ same terminal window by default? If an automated script pipes output to a file\
+    \ or processing tool, how do you prevent error messages from contaminating clean\
+    \ data pipelines?\n\n### 2. The Notional Machine\nWhen the kernel spawns a process,\
+    \ it opens three standard file descriptors:\n\n```text\n+-------------------------------------------------------------------------+\n\
+    | PROCESS FILE DESCRIPTOR TABLE (task_struct->files)                      |\n\
+    |                                                                         |\n\
+    |  [0] stdin  (Read-Only):  Standard input (keyboard / pipe)              |\n\
+    |  [1] stdout (Write-Only): Standard output payload (block-buffered)      |\n\
+    |  [2] stderr (Write-Only): Diagnostics & errors (UNBUFFERED by default!) |\n\
+    +-------------------------------------------------------------------------+\n\
+    ```\n\nCrucial architectural differences:\n1. **Buffering Semantics**: `stdout`\
+    \ is typically block-buffered when redirected to files or pipes to maximize throughput.\
+    \ `stderr` is **unbuffered**, ensuring diagnostic messages appear immediately\
+    \ even if the program crashes a microsecond later.\n2. **Redirection Operators**:\n\
+    \   - `command > out.txt`: Redirects file descriptor 1 (stdout) only.\n   - `command\
+    \ 2> err.txt`: Redirects file descriptor 2 (stderr) only.\n   - `command &> all.txt`\
+    \ (or `> out.txt 2>&1`): Combines both streams.\n3. **Exit Status Independence**:\
+    \ A program can print error text to stderr yet exit with `0`, or print nothing\
+    \ and exit with `1`. Streams and exit codes are completely independent channels.\n\
+    \n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0A-05`:\n```text\n\
+    $ gcc -std=c99 -Wall -Wextra -g bad.c -o bad\nbad.c: In function 'main':\nbad.c:6:5:\
+    \ error: expected ';' before 'return'\n$ echo $?\n1\n```\nNotice what happened:\n\
+    1. GCC detected a syntax error and wrote diagnostic lines to **stderr (descriptor\
+    \ 2)**.\n2. Descriptor 1 (stdout) received zero bytes.\n3. GCC terminated by returning\
+    \ exit code **`1`** to signal compilation failure.\n\n### 4. The Failure Mode\
+    \ & Boundary\nIf you run `./app > output.log` and the application fails, your\
+    \ terminal screen will still show the error text! Why? Because only descriptor\
+    \ 1 was redirected to `output.log`; descriptor 2 remained attached to the terminal.\
+    \ Discarding error output with `2> /dev/null` hides failures and blinds diagnostic\
+    \ scripts.\n\n### 5. The Compressed Mental Axiom\n*Stdout carries your data, stderr\
+    \ sounds the alarm, and $? delivers the verdict.*"
+  diagram:
+    kind: flow
+    caption: Standard Stream Routing and Redirection Architecture
+    nodes:
+    - id: proc
+      label: Running Process (app)
+      shape: box
+    - id: fd1
+      label: 'FD 1: stdout (Data)'
+      shape: io
+    - id: fd2
+      label: 'FD 2: stderr (Diagnostics)'
+      shape: io
+    - id: red1
+      label: '> data.txt (Block Buffered)'
+      shape: box
+    - id: red2
+      label: 2> errors.log (Unbuffered)
+      shape: box
+    - id: status
+      label: Kernel Exit Status ($?)
+      shape: decision
+    edges:
+    - from: proc
+      to: fd1
+      label: printf()
+    - from: proc
+      to: fd2
+      label: fprintf(stderr)
+    - from: fd1
+      to: red1
+      label: '> redirection'
+    - from: fd2
+      to: red2
+      label: 2> redirection
+    - from: proc
+      to: status
+      label: exit(code)
+    steps:
+    - focus:
+      - proc
+      - fd1
+      - red1
+      note: Standard data output flows through FD 1 into data.txt
+    - focus:
+      - proc
+      - fd2
+      - red2
+      note: Error alerts flow unbuffered through FD 2 into errors.log
+    - focus:
+      - proc
+      - status
+      note: Exit code is harvested independently of stream channels
+  viz:
+    kind: ascii-memory
+    caption: Process File Descriptor Table Layout
+    steps:
+    - '[Step 1: Normal Standard Stream Attachment] · Regs: FD 0=/dev/pts/1 (stdin),
+      FD 1=/dev/pts/1 (stdout), FD 2=/dev/pts/1 (stderr) · State: stdout buffer: Active
+      block buffer | stderr buffer: Unbuffered (flushed immediately) · (Both streams
+      render to terminal screen by default)'
+    - '[Step 2: Stream Redirection (app > out.txt 2> err.txt)] · Regs: FD 0=/dev/pts/1,
+      FD 1=inode 84210 (out.txt), FD 2=inode 84211 (err.txt) · State: out.txt: Receives
+      data payload | err.txt: Receives diagnostic errors · (Kernel file table decouples
+      data from error logging)'
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nint main(void)\n{\n    fprintf(stdout, \"normal data\
+      \ payload\\n\");\n    fprintf(stderr, \"diagnostic alert message\\n\");\n  \
+      \  return 0;\n}"
+    run_expected: 'normal data payload
+
+      diagnostic alert message
+
+      '
+    explain_md: Writing to stdout and stderr simultaneously. Running with > out.txt
+      routes normal payload to out.txt while alert message remains on terminal.
+  checks:
+  - id: b2-c1
+    kind: predict
+    concept: compiler-failure-exit-code
+    q: A compilation command `gcc -std=c99 bad.c -o bad` encounters syntax errors
+      and terminates with exit code 1. What value does the shell variable `$?` contain
+      immediately following execution?
+    choices:
+    - 1, the non-zero integer returned by the compiler to signal compilation failure.
+    - 0, because the GCC executable started up and executed its initialization steps.
+    - The line and column coordinates of the first syntax error reported on stderr.
+    - The total count of diagnostic warning messages emitted during the failed build.
+    answer: 0
+    why: 'Option A is correct: GCC exits with code 1 when syntax errors prevent compilation.
+      Option B is false because exit code reflects process outcome, not startup. Options
+      C and D confuse numeric exit status codes with stderr diagnostic text.'
+  - id: b2-c2
+    kind: why-fails
+    concept: stream-redirection-separation
+    q: A developer executes `gcc bad.c -o bad > build.log`, but compiler error messages
+      still appear directly on the terminal screen. What explains this behavior?
+    choices:
+    - The compiler driver directs diagnostic messages back into the source file.
+    - The -o option forces all compiler diagnostic output to bypass redirection.
+    - The > operator redirects stdout (fd 1), while compiler errors go to stderr (fd
+      2).
+    - Compiler error messages are automatically duplicated to both stdout and stderr.
+    answer: 2
+    why: 'Option C is correct: bare ''>'' redirects only file descriptor 1 (stdout).
+      GCC writes diagnostics to file descriptor 2 (stderr), which remains connected
+      to the terminal. Options A, B, and D describe fictitious compiler and shell
+      behaviors.'
+  - id: b2-c3
+    kind: trace
+    from_chapter: T0A
+    from_block: b1
+    concept: stream-telemetry-routing
+    q: Trace how the shell routes streams and exit telemetry for this command pipeline.
+      Which row represents the channel inspected by `$?`?
+    trace:
+      headers:
+      - Channel
+      - File Descriptor
+      - Observed Value
+      - Role
+      rows:
+      - - exit status
+        - N/A
+        - '1'
+        - Process termination status code
+      - - stdout
+        - '1'
+        - <empty>
+        - Normal program data stream
+      - - stderr
+        - '2'
+        - 'error: expected '';'''
+        - Compiler diagnostic output
+    target:
+      row: 0
+      col: 0
+    choices:
+    - The exit status row, which records the kernel process termination code.
+    - The stdout row, which captures standard stream data from file descriptor 1.
+    - The stderr row, which holds diagnostic error text from file descriptor 2.
+    - None of the rows, because the shell discards telemetry from failed commands.
+    answer: 0
+    why: 'Option A is correct: ''$?'' inspects the exit status byte harvested by waitpid(),
+      not stream descriptors. Option B is stdout data. Option C is stderr diagnostic
+      text. Option D is false because shell records status.'
+  - id: b2-c4
+    kind: predict
+    concept: stdout-data-channel
+    q: An executable executes `printf("5\n");` and then terminates with `return 0;`.
+      Which output channel carries the character data `'5'` to the terminal?
+    choices:
+    - The stderr channel (file descriptor 2), which handles terminal text.
+    - The exit status byte, which transfers numerical return values to the kernel.
+    - The Makefile recipe buffer, which captures output from executed commands.
+    - The stdout stream (file descriptor 1), which carries normal program output.
+    answer: 3
+    why: 'Option D is correct: printf() formats and transmits output to standard output
+      (stdout / fd 1). Option A is false because stderr is reserved for diagnostics.
+      Option B confuses stream text with status codes. Option C is irrelevant when
+      executing directly from the shell prompt.'
+  - id: b2-c5
+    kind: choose-better
+    concept: stderr-isolation-redirection
+    q: Which command redirection syntax discards standard output while leaving compiler
+      diagnostics and warnings visible on the terminal screen?
+    choices:
+    - gcc -std=c99 main.c -o app 2> /dev/null
+    - gcc -std=c99 main.c -o app > /dev/null
+    - gcc -std=c99 main.c -o app &> /dev/null
+    - gcc -std=c99 main.c -o app > errors.log
+    answer: 1
+    why: 'Option B is correct: ''> /dev/null'' silences stdout (fd 1) while leaving
+      stderr (fd 2) untouched. Option A silences diagnostics and keeps stdout. Option
+      C silences both streams. Option D redirects stdout to a file.'
+- id: b3
+  type: syntax
+  title: Deconstructing the C99 Toolchain Invocation
+  explain_md: '### 1. Frame the Problem
+
+    Compiling a systems program with a bare `gcc main.c` invocation is reckless: it
+    defaults to an unspecified C dialect, suppresses vital compiler warnings, and
+    omits debug symbols. In kernel and systems engineering, every compiler flag serves
+    an exact architectural purpose.
+
+
+    ### 2. The Notional Machine
+
+    Deconstructing the standard systems compilation recipe:
+
+    ```text
+
+    $ gcc -std=c99 -Wall -Wextra -g main.c -o app
+
+    ```
+
+
+    1. **`-std=c99` (Language Standard)**: Instructs GCC to adhere strictly to the
+    ISO C99 standard, enabling modern features (such as `//` comments, mixed declarations,
+    and designated initializers) while rejecting obsolete K&R C idioms.
+
+    2. **`-Wall -Wextra` (Diagnostic Rigor)**: Enables comprehensive warning diagnostics.
+    `-Wall` catches common logic flaws (unused variables, uninitialized reads, missing
+    return statements). `-Wextra` enables additional checks (signed/unsigned comparisons,
+    empty bodies).
+
+    3. **`-g` (Debug Information)**: Emits DWARF debugging sections (`.debug_info`,
+    `.debug_line`) inside the ELF binary. Without `-g`, GDB cannot map machine instructions
+    back to C source lines!
+
+    4. **`-o app` (Output Artifact)**: Specifies the name of the final executable
+    binary. If omitted, GCC writes to the historical default `a.out`.
+
+
+    ### 3. Source-Grounded Walkthrough
+
+    Look at Evidence `E-T0A-01` and `E-T0A-03`:
+
+    ```text
+
+    $ gcc --version
+
+    gcc (GCC) 16.2.1 20260810
+
+    $ gcc -std=c99 -Wall -Wextra -g main.c -o app
+
+    $ echo $?
+
+    0
+
+    $ ls -l app
+
+    -rwxr-xr-x 1 user user 16128 Nov 19 13:46 app
+
+    ```
+
+    The command completed cleanly with exit code `0`, producing an executable binary
+    named `app` with full DWARF debugging symbols embedded.
+
+
+    ### 4. The Failure Mode & Boundary
+
+    If you compile with `-O3` without `-g`, the compiler optimizes aggressively (inlining
+    functions and recycling registers) and strips source coordinates. When a crash
+    occurs, GDB displays raw hexadecimal memory addresses and `<optimized out>`, leaving
+    you blind.
+
+
+    ### 5. The Compressed Mental Axiom
+
+    *Explicit flags make compilation deterministic: c99 sets the grammar, Wall guards
+    the gates, and -g preserves the map.*'
+  diagram:
+    kind: flow
+    caption: GCC Compilation Pipeline Translation Stages
+    nodes:
+    - id: src
+      label: main.c (C99 Source)
+      shape: round
+    - id: cpp
+      label: 'Preprocessor (cpp): Expand #include & macros'
+      shape: box
+    - id: cc1
+      label: 'Compiler (cc1): -Wall -Wextra AST & DWARF'
+      shape: decision
+    - id: as
+      label: 'Assembler (as): Emit main.o machine code'
+      shape: box
+    - id: ld
+      label: 'Linker (ld): Link libc into ELF binary ''app'''
+      shape: box
+    edges:
+    - from: src
+      to: cpp
+      label: raw text
+    - from: cpp
+      to: cc1
+      label: preprocessed source
+    - from: cc1
+      to: as
+      label: assembly code (.s)
+    - from: as
+      to: ld
+      label: relocatable object (.o)
+    - from: ld
+      to: src
+      label: executable 'app'
+    steps:
+    - focus:
+      - src
+      - cpp
+      note: Preprocessor handles header file inclusion and macro token expansion
+    - focus:
+      - cpp
+      - cc1
+      note: Compiler verifies C99 syntax and emits DWARF debug symbols (-g)
+    - focus:
+      - cc1
+      - as
+      - ld
+      note: Assembler and Linker resolve symbols and emit the ELF executable
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nint add(int a, int b)\n{\n    return a + b;\n}\n\n\
+      int main(void)\n{\n    printf(\"%d\\n\", add(2, 3));\n    return 0;\n}"
+    run_expected: '5
+
+      '
+    explain_md: This clean C99 program compiles without warnings under gcc -std=c99
+      -Wall -Wextra -g and prints 5.
+  checks:
+  - id: b3-c1
+    kind: order
+    concept: compilation-command-order
+    q: 'Order the 4 components of this standard compilation command from left to right
+      as typed at the shell prompt:'
+    lines:
+    - main.c (input source file)
+    - -o app (output binary target)
+    - gcc (compiler driver command)
+    - -std=c99 -Wall -Wextra -g (compiler flags)
+    answer_order:
+    - 2
+    - 3
+    - 0
+    - 1
+    why: Standard command line syntax places the driver executable first ('gcc'),
+      followed by compiler options ('-std=c99 -Wall -Wextra -g'), then the input translation
+      unit ('main.c'), and finally the output target ('-o app').
+  - id: b3-c2
+    kind: why-fails
+    concept: debug-symbol-omission
+    q: A developer builds an executable using `gcc -std=c99 -Wall -Wextra main.c -o
+      app`, omitting the `-g` flag. Why does GDB fail to show source code lines during
+      debugging?
+    choices:
+    - The -Wall warning flag suppresses debugger symbol emission.
+    - Omitting -g leaves out the DWARF tables that map addresses to source lines.
+    - Executables named 'app' cannot be analyzed by modern debuggers.
+    - The C99 language standard prohibits generating debugging information.
+    answer: 1
+    why: 'Option B is correct: the -g flag instructs GCC to generate DWARF debugging
+      sections in the ELF binary. Without -g, the debugger only sees raw machine instructions
+      and symbol addresses. Options A, C, and D are false claims.'
+  - id: b3-c3
+    kind: fillblank
+    concept: output-flag-specification
+    q: 'Fill in the compiler option that specifies the output binary filename in a
+      GCC invocation:'
+    code: $ gcc -std=c99 -Wall -Wextra -g main.c ____ app
+    answer_text: -o
+    why: The '-o <file>' flag directs the linker to write the final output to the
+      specified filename. If omitted, GCC defaults to writing an executable named
+      'a.out'.
+  - id: b3-c4
+    kind: predict
+    concept: default-executable-name
+    q: When a developer compiles a C program using `gcc main.c` without providing
+      the `-o` option, what default binary name does the compiler produce?
+    choices:
+    - a.out, the historical default executable name generated by the compiler.
+    - main, using the base name of the input source file without an extension.
+    - main.o, generating an intermediate object file instead of an executable.
+    - app.out, appending a standard executable suffix to generic application files.
+    answer: 0
+    why: 'Option A is correct: Unix GCC defaults to creating ''a.out'' (assembler
+      output) when -o is omitted. Option B is how Go works, but not C. Option C requires
+      the ''-c'' flag. Option D is fictitious.'
+  - id: b3-c5
+    kind: mcq
+    concept: compiler-warning-flags
+    q: What is the primary operational effect of adding the flags `-Wall -Wextra`
+      to a GCC compilation command line?
+    choices:
+    - They force the compiler to produce fully optimized release machine code.
+    - They link additional standard math and threading libraries automatically.
+    - They enable strict static diagnostic checks that warn on suspicious code patterns.
+    - They cause the compiler to treat all warnings as fatal build-breaking errors.
+    answer: 2
+    why: 'Option C is correct: -Wall and -Wextra activate a broad suite of diagnostic
+      warnings for common code defects. Option A requires optimization flags like
+      -O2. Option B requires linker flags like -lm. Option D requires -Werror.'
+- id: b4
+  type: algorithm
+  title: Compiler Diagnostics and Diagnostic Triage
+  explain_md: "### 1. Frame the Problem\nWhen you make a syntax mistake in a systems\
+    \ codebase, GCC can spew 80 lines of terrifying red error text across your terminal.\
+    \ Beginners panic and try to read every single line, or jump to the bottom of\
+    \ the log. In reality, 90% of those messages are cascading parser delusions.\n\
+    \n### 2. The Notional Machine\nUnderstanding GCC's diagnostic grammar:\n```text\n\
+    bad.c:6:5: error: expected ';' before 'return'\n  ^    ^ ^   ^      ^\n  |   \
+    \ | |   |      +-- Explanatory diagnosis & expected token\n  |    | |   +---------\
+    \ Severity (error = halts build; warning = advisory)\n  |    | +-------------\
+    \ Column index (1-based cursor position)\n  |    +--------------- Line index (1-based\
+    \ line number)\n  +-------------------- File path where parser lost synchronization\n\
+    ```\n\n**The First-Error Rule (Invariant)**:\nA compiler's parser is a state machine.\
+    \ When it encounters an unexpected token (such as a missing semicolon on line\
+    \ 5), its internal grammar state breaks. It attempts to recover by guessing, but\
+    \ subsequent statements are parsed in an invalid state, generating cascading phantom\
+    \ errors. **You must always triage and fix the very first error in the compiler\
+    \ log.**\n\n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0A-05`:\n\
+    ```text\n$ gcc -std=c99 -Wall -Wextra -g bad.c -o bad\nbad.c: In function 'main':\n\
+    bad.c:6:5: error: expected ';' before 'return'\n    6 |     return 0;\n      |\
+    \     ^~~~~~\n```\nTrace the failure:\n1. GCC flagged `bad.c:6:5`.\n2. Notice\
+    \ the token on line 6 is `return 0;`. Why is GCC complaining about `return`?\n\
+    3. Because line 5 (`int x = 42`) was missing its terminating semicolon! The parser\
+    \ only realized the statement was broken when it collided with the `return` keyword\
+    \ on line 6.\n4. Fixing line 5 resolves the entire error cascade instantly.\n\n\
+    ### 4. The Failure Mode & Boundary\nAttempting to fix errors from the bottom of\
+    \ the log up. Developers often spend hours modifying lines 40–80 when the real\
+    \ bug was a missing bracket or semicolon on line 12.\n\n### 5. The Compressed\
+    \ Mental Axiom\n*Always hunt the first error: the compiler loses its mind after\
+    \ the first broken invariant.*"
+  diagram:
+    kind: flow
+    caption: Compiler Diagnostic Parsing and First-Error Triage Rule
+    nodes:
+    - id: parse
+      label: Parser scans tokens line-by-line
+      shape: round
+    - id: syntax_err
+      label: 'Line 5: Missing '';'' Invariant Broken'
+      shape: decision
+    - id: first_err
+      label: 'Emit bad.c:6:5: error: expected '';'''
+      shape: box
+    - id: cascade
+      label: Parser Desynchronization Cascade (Phantoms)
+      shape: box
+    - id: triage
+      label: 'Golden Rule: Jump to First Diagnostic Only'
+      shape: box
+    edges:
+    - from: parse
+      to: syntax_err
+      label: encounters token
+    - from: syntax_err
+      to: first_err
+      label: ROOT CAUSE
+    - from: first_err
+      to: cascade
+      label: parser guesses
+    - from: first_err
+      to: triage
+      label: developer action
+    steps:
+    - focus:
+      - parse
+      - syntax_err
+      - first_err
+      note: Root cause occurs on line 5; compiler reports error at line 6 column 5
+    - focus:
+      - first_err
+      - cascade
+      note: Subsequent errors are cascading delusions caused by desynchronization
+    - focus:
+      - first_err
+      - triage
+      note: Fixing the first diagnostic restores parser synchronization
+  example:
+    lang: text
+    code: "$ gcc -std=c99 -Wall -Wextra -g bad.c -o bad\nbad.c: In function 'main':\n\
+      bad.c:6:5: error: expected ';' before 'return'\n    6 |     return 0;\n    \
+      \  |     ^~~~~~"
+    explain_md: Missing semicolon on line 5 causes GCC to report expected ';' before
+      return on line 6.
+  checks:
+  - id: b4-c1
+    kind: spot-bug
+    concept: syntax-error-source-location
+    target_line: 5
+    q: Examine this C source file and the compiler diagnostic below. Which source
+      line contains the syntactic defect that caused the error?
+    code: "/* bad.c */\n1: #include <stdio.h>\n2: \n3: int main(void)\n4: {\n5:  \
+      \   int x = 1\n6:     printf(\"%d\\n\", x)\n7:     return 0\n8: }\n"
+    diagnostic_log: 'bad.c: In function ''main'':
+
+      bad.c:6:5: error: expected '';'' before ''printf'''
+    choices:
+    - Line 1, because the stdio.h header must be enclosed in quotes rather than angle
+      brackets.
+    - Line 3, because the main function signature must declare argc and argv parameters.
+    - Line 6, because the printf function call must specify an explicit format string
+      variable.
+    - Line 5, because the variable declaration lacks a terminating semicolon before
+      line 6 starts.
+    answer: 3
+    why: 'Option D is correct: line 5 ends with ''int x = 1'' without a semicolon.
+      The C parser only detects the syntax violation when it encounters ''printf''
+      on line 6, column 5. Line 1 is standard C. Line 3 is valid C99. Line 6 is valid
+      syntax.'
+  - id: b4-c2
+    kind: predict
+    concept: diagnostic-coordinate-interpretation
+    q: What exact location in source code does the diagnostic coordinate prefix `bad.c:6:5:`
+      identify?
+    choices:
+    - Byte offset 6 and character column 5 inside the compiled executable binary file.
+    - File bad.c, line number 6 in the source, and horizontal character column number
+      5.
+    - The sixth function in bad.c and the fifth local variable declared within that
+      function.
+    - Diagnostic rule number 6 and warning severity category 5 in GCC's error dictionary.
+    answer: 1
+    why: 'Option B is correct: GCC coordinates strictly follow ''filename:line:column:''.
+      Option A confuses source code coordinates with binary offsets. Options C and
+      D are completely incorrect interpretations.'
+  - id: b4-c3
+    kind: why-fails
+    concept: cascading-syntax-errors
+    q: 'In `bad.c`, why does the compiler emit `error: expected declaration or statement
+      at end of input` on line 8 (`}`), even though the closing brace is physically
+      present?'
+    choices:
+    - The closing brace is indented incorrectly relative to the opening function brace.
+    - The C language requires two closing braces when main contains local variable
+      declarations.
+    - The preceding statement was never terminated, so the parser reached EOF while
+      still expecting tokens.
+    - The compiler expects a second function definition to follow main before reaching
+      end of input.
+    answer: 2
+    why: 'Option C is correct: because preceding statements lacked semicolons, the
+      grammar state never closed. Encountering ''}'' or EOF while inside an unclosed
+      expression produces cascading end-of-input errors. Options A, B, and D are false
+      grammar rules.'
+  - id: b4-c4
+    kind: order
+    concept: diagnostic-repair-workflow
+    q: 'Order the 4 steps of the recommended compiler diagnostic repair loop:'
+    lines:
+    - Examine the first reported compiler diagnostic and identify the referenced file,
+      line, and column.
+    - Trace backward to find the unfinished statement token and apply the minimal
+      targeted syntax fix.
+    - Save the modified source file to disk.
+    - Re-run the compilation command and observe the updated diagnostic output.
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: Effective triage always begins by isolating the first diagnostic, tracing
+      to the root token defect, saving a minimal correction, and immediately recompiling
+      to refresh compiler parser state.
+  - id: b4-c5
+    kind: fillblank
+    concept: c-statement-terminator
+    q: 'Complete the statement termination on line 7 so the return statement conforms
+      to C99 syntax:'
+    code: "    int x = 1;\n    printf(\"%d\\n\", x);\n    return 0____\n}"
+    answer_text: ;
+    why: In C, simple statements including return statements require a terminating
+      semicolon (';') to delimit the end of the grammar production.
+- id: b5
+  type: model
+  title: Make Dependency Graphs and Timestamp Comparisons
+  explain_md: "### 1. Frame the Problem\nIn the Linux kernel, there are over 70,000\
+    \ source files. If recompiling required rebuilding every single file after changing\
+    \ one line in a driver, a single build would take three hours. How does the `make`\
+    \ build tool determine exactly which files need to be recompiled and which can\
+    \ be safely skipped?\n\n### 2. The Notional Machine\nMake models software compilation\
+    \ as a Directed Acyclic Graph (DAG) of targets and prerequisites:\n```text\ntarget:\
+    \ prerequisites ...\n\trecipe (command executed to build target)\n```\n\nThe decision\
+    \ algorithm is governed strictly by filesystem inode modification timestamps (`mtime`):\n\
+    1. For every target, Make inspects `mtime(target)` and compares it against `mtime(prerequisite)`.\n\
+    2. **If `mtime(target) < mtime(prerequisite)`**: The prerequisite was modified\
+    \ *after* the target was built. The target is stale; Make executes the recipe.\n\
+    3. **If `mtime(target) >= mtime(prerequisite)`**: The target is newer than all\
+    \ prerequisites. The target is up to date; Make skips the recipe!\n\n### 3. Source-Grounded\
+    \ Walkthrough\nLook at Evidence `E-T0A-06` and `E-T0A-07`:\nIn `Makefile`:\n```makefile\n\
+    app: main.c\n\tgcc -std=c99 -Wall -Wextra -g main.c -o app\n```\nNow observe the\
+    \ shell transcript:\n```text\n$ make\ngcc -std=c99 -Wall -Wextra -g main.c -o\
+    \ app\n$ make\nmake: 'app' is up to date.\n```\nTrace the logic:\n1. In the first\
+    \ run, `app` did not exist. Make executed the recipe.\n2. In the second run, `mtime(app)`\
+    \ was newer than `mtime(main.c)`.\n3. Make safely printed `make: 'app' is up to\
+    \ date.` and exited in 2 milliseconds without touching the compiler.\n\n### 4.\
+    \ The Failure Mode & Boundary\nClock skew on network filesystems (NFS) or virtual\
+    \ machine folder shares: if the host clock is ahead of the VM clock, an edited\
+    \ file might have a timestamp in the future, causing Make to recompile indefinitely\
+    \ or skip modified files.\n\n### 5. The Compressed Mental Axiom\n*Make rebuilds\
+    \ when the prerequisite is younger than the target.*"
+  diagram:
+    kind: flow
+    caption: Make Timestamp Comparison and Dependency DAG
+    nodes:
+    - id: req
+      label: 'Prerequisite: main.c (mtime T1)'
+      shape: round
+    - id: tgt
+      label: 'Target: app (mtime T2)'
+      shape: box
+    - id: cmp
+      label: Is T1 > T2? (Prereq newer than target)
+      shape: decision
+    - id: exec_recipe
+      label: 'Execute Recipe: gcc ... -o app'
+      shape: box
+    - id: skip
+      label: 'Skip Recipe: ''app is up to date'''
+      shape: box
+    edges:
+    - from: req
+      to: cmp
+      label: stat() mtime
+    - from: tgt
+      to: cmp
+      label: stat() mtime
+    - from: cmp
+      to: exec_recipe
+      label: YES (Stale Target)
+    - from: cmp
+      to: skip
+      label: NO (Up to Date)
+    steps:
+    - focus:
+      - req
+      - tgt
+      - cmp
+      note: Make queries filesystem stat() timestamps for target and prerequisites
+    - focus:
+      - cmp
+      - exec_recipe
+      note: If prerequisite was modified after target, Make executes compile recipe
+    - focus:
+      - cmp
+      - skip
+      note: If target is newer than all prerequisites, compilation is skipped
+  viz:
+    kind: ascii-memory
+    caption: Filesystem Timestamp State Evaluation
+    steps:
+    - '[Step 1: First Build (app missing)] · Regs: mtime(main.c)=1700000010, mtime(app)=DOES
+      NOT EXIST · State: Target state: Missing artifact | Action: Execute gcc recipe
+      to build app · (Make runs compiler and creates binary app)'
+    - '[Step 2: Second Build (target up to date)] · Regs: mtime(main.c)=1700000010,
+      mtime(app)=1700000015 · State: Target state: app is 5 seconds newer than main.c
+      | Action: Skip compilation: ''app'' is up to date · (Zero compiler CPU cycles
+      consumed)'
+  example:
+    lang: text
+    code: '$ ls -l --time-style=+%s main.c app
+
+      -rw-r--r-- 1 user user   176 1700000010 main.c
+
+      -rwxr-xr-x 1 user user 16128 1700000015 app
+
+      $ make
+
+      make: ''app'' is up to date.'
+    explain_md: Because app has a higher mtime timestamp than main.c, Make proves
+      the binary is current and skips the recipe.
+  checks:
+  - id: b5-c1
+    kind: predict
+    concept: make-up-to-date-behavior
+    q: A developer builds `app` with `make`. Both `app` and `main.c` exist on disk.
+      Without modifying any files, they immediately run `make` again. What does Make
+      do?
+    choices:
+    - It recompiles main.c from scratch to verify binary integrity.
+    - It deletes the existing app binary and prompts the user for confirmation.
+    - It reports that app is up to date and executes no compiler recipes.
+    - It invokes the clean target automatically before regenerating the binary.
+    answer: 2
+    why: 'Option C is correct: because mtime(app) >= mtime(main.c), Make recognizes
+      that no prerequisites changed and skips execution. Options A, B, and D describe
+      behaviors not found in Make''s timestamp algorithm.'
+  - id: b5-c2
+    kind: why-fails
+    concept: makefile-tab-requirement
+    q: A developer writes a Makefile rule where the recipe is indented with 4 spaces
+      instead of a TAB character. What error does running `make` trigger?
+    choices:
+    - 'Makefile:4: *** missing separator.  Stop.'
+    - 'Makefile:4: *** illegal whitespace.  Stop.'
+    - 'Makefile:4: *** unknown directive.  Stop.'
+    - 'Makefile:4: *** syntax violation.  Stop.'
+    answer: 0
+    why: 'Option A is correct: GNU Make requires recipe lines to begin with a TAB
+      character (ASCII 9). Indenting with spaces causes the parser to fail with ''***
+      missing separator''. Options B, C, and D are fictitious error messages.'
+  - id: b5-c3
+    kind: mcq
+    concept: mtime-dependency-check
+    q: What fundamental filesystem check does GNU Make perform to decide whether a
+      target must be rebuilt from its prerequisites?
+    choices:
+    - It compares the total byte count of the target against the prerequisite.
+    - It computes and compares SHA-256 cryptographic checksums of all declared files.
+    - It compares the filesystem modification timestamps (mtime) of targets and prerequisites.
+    - It parses the git commit history to determine which source files changed recently.
+    answer: 2
+    why: 'Option C is correct: Make compares filesystem mtime timestamps. If any prerequisite
+      has a newer mtime than the target, the target is considered stale. Option A
+      is false because file sizes are not compared. Option B is how Bazel works, not
+      Make. Option D is false because Make operates independently of Git.'
+  - id: b5-c4
+    kind: order
+    concept: make-algorithm-sequence
+    q: 'Order the 4 steps that GNU Make follows when evaluating whether to rebuild
+      a target:'
+    lines:
+    - Identify the target rule to build (e.g. 'app') and its declared prerequisites
+      (e.g. 'main.c').
+    - Query filesystem metadata for the existence and modification timestamp (mtime)
+      of each file.
+    - 'Evaluate condition: if target is missing or any prerequisite has a newer mtime
+      than target.'
+    - Execute the rule's recipe commands in a child shell to generate the updated
+      target file.
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: Make first identifies the rule and dependencies, queries filesystem timestamps,
+      evaluates whether any dependency is newer than the target, and finally launches
+      a subshell to run the recipe if stale.
+  - id: b5-c5
+    kind: predict
+    concept: stale-target-rebuild
+    q: 'In a Makefile containing `app: main.c`, the developer edits `main.c` and saves
+      it. What happens when they subsequently invoke `make`?'
+    choices:
+    - Make prints the contents of main.c to standard output without compiling.
+    - Make executes the recipe because main.c has a newer modification timestamp than
+      app.
+    - Make renames main.c to a backup file and halts with an error message.
+    - Make executes the clean target twice before attempting to recompile.
+    answer: 1
+    why: 'Option B is correct: editing main.c updates its filesystem mtime. Because
+      mtime(main.c) > mtime(app), Make detects that the prerequisite is newer and
+      executes the compilation recipe. Options A, C, and D are false.'
+- id: b6
+  type: algorithm
+  title: Phony Targets and the Clean-Rebuild Lifecycle
+  explain_md: "### 1. Frame the Problem\nWhat happens when you run `make clean`, but\
+    \ somebody created a file named `clean` in your repository?\nMake looks at the\
+    \ filesystem, sees a file named `clean`, checks its dependencies (there are none),\
+    \ and decides: `'clean' is up to date!` The cleanup recipe never runs, stale object\
+    \ files remain on disk, and you spend days debugging build artifacts from last\
+    \ week.\n\n### 2. The Notional Machine\nBy default, Make treats every target name\
+    \ as a filename on disk. To fix this, Make provides the special `.PHONY` directive:\n\
+    ```makefile\n.PHONY: clean all\n\nclean:\n\trm -f app *.o\n```\n\nWhen a target\
+    \ is declared in `.PHONY`:\n1. Make bypasses the filesystem check entirely.\n\
+    2. Make never checks whether a file named `clean` exists.\n3. Make executes the\
+    \ recipe unconditionally every single time the target is invoked.\n\nThe Clean-Rebuild\
+    \ Invariant: Running `make clean && make` guarantees a clean-room compilation,\
+    \ eliminating stale object files and verifying that the build graph is self-contained.\n\
+    \n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0A-06` and `E-T0A-07`:\n\
+    In `Makefile`:\n```makefile\n.PHONY: clean\n\nclean:\n\trm -f app\n```\nNow look\
+    \ at the execution transcript:\n```text\n$ make clean\nrm -f app\n$ ls -l app\n\
+    ls: cannot access 'app': No such file or directory\n$ make\ngcc -std=c99 -Wall\
+    \ -Wextra -g main.c -o app\n```\nEven if a file named `clean` is created with\
+    \ `touch clean`, `make clean` executes `rm -f app` without hesitation.\n\n###\
+    \ 4. The Failure Mode & Boundary\nOmitting `.PHONY`: if an automated script or\
+    \ git checkout creates a folder named `test` or a file named `clean`, targets\
+    \ named `test:` or `clean:` will permanently stop executing.\n\n### 5. The Compressed\
+    \ Mental Axiom\n*.PHONY decouples action recipes from file existence.*"
+  diagram:
+    kind: flow
+    caption: Phony Target Decision Logic vs File Target
+    nodes:
+    - id: inv
+      label: 'Invoked: make clean'
+      shape: round
+    - id: check_phony
+      label: Is 'clean' listed in .PHONY?
+      shape: decision
+    - id: check_disk
+      label: 'Check disk: Does file ''clean'' exist?'
+      shape: decision
+    - id: run_recipe
+      label: 'Execute Recipe: rm -f app'
+      shape: box
+    - id: skip_recipe
+      label: 'Skip: ''clean'' is up to date (BUG)'
+      shape: box
+    edges:
+    - from: inv
+      to: check_phony
+      label: query target
+    - from: check_phony
+      to: run_recipe
+      label: 'YES: unconditional run'
+    - from: check_phony
+      to: check_disk
+      label: 'NO: check filesystem'
+    - from: check_disk
+      to: skip_recipe
+      label: File exists on disk
+    - from: check_disk
+      to: run_recipe
+      label: File missing on disk
+    steps:
+    - focus:
+      - inv
+      - check_phony
+      - run_recipe
+      note: .PHONY forces recipe to execute unconditionally without checking disk
+    - focus:
+      - check_phony
+      - check_disk
+      - skip_recipe
+      note: Without .PHONY, an accidental file named 'clean' blocks cleanup
+  example:
+    lang: text
+    code: '$ touch clean
+
+      $ make clean
+
+      rm -f app
+
+      $ ls app
+
+      ls: cannot access ''app'': No such file or directory'
+    explain_md: Because clean is declared .PHONY in the Makefile, the cleanup recipe
+      executes even though a file named clean exists on disk.
+  checks:
+  - id: b6-c1
+    kind: why-fails
+    concept: phony-target-file-collision
+    q: "A directory contains a file literally named `clean`. The Makefile has a rule\
+      \ `clean:\n\trm -f app` without `.PHONY: clean`. What happens when running `make\
+      \ clean`?"
+    choices:
+    - Make sees that file clean exists with no prerequisites, considers it up to date,
+      and does nothing.
+    - Make deletes the clean file from the directory and then terminates execution
+      with code 0.
+    - Make ignores the file named clean and always runs the recipe commands specified
+      in the Makefile.
+    - Make reports a fatal file collision error and halts without touching any filesystem
+      files.
+    answer: 0
+    why: 'Option A is correct: without .PHONY, Make treats ''clean'' as a file target.
+      Since a file named clean exists and has no prerequisites, Make considers it
+      up to date and skips the recipe. Options B, C, and D are false.'
+  - id: b6-c2
+    kind: predict
+    concept: phony-override-behavior
+    q: 'When `.PHONY: clean` is added to the Makefile, how does `make clean` behave
+      when a file named `clean` exists on disk?'
+    choices:
+    - Make refuses to run the rule until the file named clean is manually deleted.
+    - Make ignores the filesystem file and unconditionally executes the rule recipe
+      commands.
+    - Make renames the file named clean to clean.bak before running the recipe.
+    - Make displays a warning message on stderr and skips the deletion recipe.
+    answer: 1
+    why: 'Option B is correct: .PHONY explicitly instructs Make to bypass filesystem
+      existence and timestamp checks, unconditionally executing the recipe. Options
+      A, C, and D describe incorrect behavior.'
+  - id: b6-c3
+    kind: fillblank
+    concept: phony-declaration-syntax
+    q: 'Fill in the special Make target declaration that designates ''clean'' as a
+      symbolic action target rather than a physical file:'
+    code: "____: clean\nclean:\n\trm -f app"
+    answer_text: .PHONY
+    why: The special built-in target '.PHONY:' informs GNU Make that the listed targets
+      are actions rather than real files.
+  - id: b6-c4
+    kind: choose-better
+    concept: pristine-rebuild-sequence
+    q: Which compound command sequence properly forces a clean rebuild of an application
+      by first removing existing build products and then recompiling?
+    choices:
+    - make && make clean, which compiles the application and then deletes the generated
+      binary.
+    - touch main.c && make clean, which updates file timestamps before removing generated
+      files.
+    - make clean; gcc --version, which removes the binary and prints the compiler
+      driver release.
+    - make clean && make, which removes the binary and then compiles a fresh target
+      from source.
+    answer: 3
+    why: 'Option D is correct: ''make clean && make'' executes the clean target to
+      wipe existing outputs, then runs ''make'' to recompile everything from scratch.
+      Option A deletes the binary after building. Option B deletes after touching.
+      Option C only prints compiler version.'
+  - id: b6-c5
+    kind: mcq
+    concept: default-make-target
+    q: 'When a developer runs `make` with no target arguments on a Makefile defining
+      `app: main.c` followed by `clean:`, which rule does Make execute?'
+    choices:
+    - The app rule, because the first non-pattern rule in a Makefile serves as the
+      default goal.
+    - The clean rule, because Make prioritizes maintenance targets before running
+      builds.
+    - Both rules in order, executing every recipe defined sequentially in the Makefile.
+    - Neither rule, because Make requires an explicit target name on the command line.
+    answer: 0
+    why: 'Option A is correct: by default, GNU Make selects the first rule encountered
+      in the file as the default goal. Options B, C, and D are false.'
+- id: b7
+  type: syntax
+  title: ELF Binary Anatomy and the size Utility
+  explain_md: "### 1. Frame the Problem\nAn executable binary on disk is not a flat\
+    \ sequence of instructions. When the kernel loads an application, how does it\
+    \ know which bytes are read-only machine code, which bytes are writable global\
+    \ variables, and how much zeroed RAM to allocate for uninitialized buffers?\n\n\
+    If you misplace a large buffer into initialized data, your compiled binary can\
+    \ swell from 15 kilobytes to 50 megabytes on your disk!\n\n### 2. The Notional\
+    \ Machine\nStandard Executable and Linkable Format (ELF) binaries partition memory\
+    \ into distinct segments:\n\n1. **`.text` (Code Segment)**: Contains executable\
+    \ machine instructions compiled from C statements. Mapped into memory as **Read-Only\
+    \ / Executable (`RX`)**.\n2. **`.data` (Initialized Data Segment)**: Contains\
+    \ global and static variables explicitly initialized to non-zero values (e.g.\
+    \ `int count = 42;`). Mapped as **Read/Write (`RW`)**. **Occupies bytes on physical\
+    \ storage disk!**\n3. **`.bss` (Block Started by Symbol)**: Contains global and\
+    \ static variables that are uninitialized or initialized to zero (e.g. `char buffer[1024*1024];`).\
+    \ **Occupies almost zero bytes on disk!** The ELF header simply records an IOU\
+    \ specifying the size; the kernel allocates zero-filled pages of RAM at load time.\n\
+    4. **`dec` / `hex`**: Total virtual memory footprint (`text + data + bss`).\n\n\
+    ### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0A-08`:\n```text\n$ size\
+    \ app\n   text\t   data\t    bss\t    dec\t    hex\tfilename\n   1502\t    584\t\
+    \      8\t   2094\t    82e\tapp\n```\nPerform the mathematical verification:\n\
+    - `text`: 1,502 bytes\n- `data`: 584 bytes\n- `bss`: 8 bytes\n- Sum: `1502 + 584\
+    \ + 8 = 2094` decimal (`0x82e` hex).\nNotice how compact `.bss` is: it requires\
+    \ zero storage disk payload.\n\n### 4. The Failure Mode & Boundary\nIf a programmer\
+    \ writes `int big_buffer[1000000] = {1};`, that array lands in `.data`, causing\
+    \ the binary file on disk to inflate by 4 megabytes. If written as `int big_buffer[1000000];`,\
+    \ it lands in `.bss`, and the binary file on disk remains 16 kilobytes!\n\n###\
+    \ 5. The Compressed Mental Axiom\n*Text holds the code, data pays on disk, and\
+    \ bss promises zeroed RAM at runtime.*"
+  diagram:
+    kind: art
+    caption: ELF Binary Disk Format vs Runtime Memory Layout
+    art: '+-----------------------------------------------------------------------+
+
+      |                    ELF BINARY LAYOUT ON DISK (file: app)              |
+
+      +-------------------+---------------------------------------------------+
+
+      | Section           | Storage & Memory Permissions                      |
+
+      +-------------------+---------------------------------------------------+
+
+      | .text             | Executable Machine Code (Read-Only, RX)           |
+
+      | .rodata           | String literals and const data (Read-Only, R)     |
+
+      | .data             | Initialized non-zero globals (Read/Write, RW)     |
+
+      | .bss              | Header IOU only: ZERO BYTES ON DISK! (RW in RAM)  |
+
+      | .debug_info       | DWARF Debug symbols (Non-allocatable, strip-able) |
+
+      +-------------------+---------------------------------------------------+'
+  example:
+    lang: c
+    code: "#include <stdio.h>\n\nint initialized_var = 100;     /* Lands in .data\
+      \ */\nint uninitialized_arr[1024];    /* Lands in .bss */\n\nint main(void)\n\
+      {\n    printf(\"init=%d\\n\", initialized_var);\n    return 0;\n}"
+    run_expected: 'init=100
+
+      '
+    explain_md: initialized_var occupies 4 bytes in .data; uninitialized_arr occupies
+      4096 bytes in .bss without increasing file size on disk.
+  checks:
+  - id: b7-c1
+    kind: predict
+    concept: bss-allocation-growth
+    q: A C source file adds a large global buffer defined as `static char cache[1048576]
+      = {0};`. Which column in the `size` report expands directly as a result?
+    choices:
+    - The text column, which stores CPU executable instructions in the binary.
+    - The bss column, which tracks zero-initialized and uninitialized static storage.
+    - The data column, which stores non-zero initialized global variables.
+    - The filename column, which records the path to the compiled binary on disk.
+    answer: 1
+    why: 'Option B is correct: zero-initialized global and static buffers reside in
+      .bss. Option A is for code. Option C is for non-zero initialized variables.
+      Option D is the file path string.'
+  - id: b7-c2
+    kind: fillblank
+    concept: size-table-column-identification
+    q: Examine this `size` utility report for an executable. Which column name designates
+      the 8 bytes of zero-initialized static memory?
+    code: "$ size app\n   text    data     bss     dec     hex filename\n   1502 \
+      \    584       8    2094     82e app"
+    answer_text: bss
+    why: The 'bss' column reports the byte footprint of uninitialized and zero-initialized
+      global/static variables.
+  - id: b7-c3
+    kind: mcq
+    concept: text-segment-definition
+    q: In an ELF binary executable, which memory section contains the compiled CPU
+      machine instructions that are executed during program runtime?
+    choices:
+    - The data section, which holds initialized global and static variables.
+    - The bss section, which allocates zero-initialized global variable memory.
+    - The text section, which contains read-only executable CPU instructions.
+    - The dec section, which calculates total decimal memory allocation bytes.
+    answer: 2
+    why: 'Option C is correct: the .text section stores compiled machine instructions.
+      Option A stores initialized variables. Option B stores zero-initialized allocations.
+      Option D is a total summary column.'
+  - id: b7-c4
+    kind: predict
+    concept: size-decimal-total-calculation
+    q: "Examine this `size` report for `app`:\n```text\n   text    data     bss  \
+      \   dec     hex filename\n   1502     584       8    2094     82e app\n```\n\
+      How is the value `2094` in the `dec` column calculated?"
+    choices:
+    - It is the sum of text (1502) and data (584), subtracting the bss (8) segment.
+    - It is the size of the ELF binary file on disk as reported by the filesystem.
+    - It is the hexadecimal value 82e converted into decimal after doubling text.
+    - It is the decimal sum of the text (1502), data (584), and bss (8) sections.
+    answer: 3
+    why: 'Option D is correct: dec is the decimal sum of the three virtual memory
+      segments: 1502 + 584 + 8 = 2094. Options A, B, and C describe false calculations.'
+  - id: b7-c5
+    kind: why-fails
+    concept: bss-zero-disk-footprint
+    q: Why does adding a 10 megabyte zero-initialized global array (`int buf[2500000]
+      = {0};`) not increase the compiled ELF binary file size on disk by 10 megabytes?
+    choices:
+    - The compiler optimizes out the buffer completely because its elements are zero.
+    - The linker compresses the array data using gzip compression inside the ELF file.
+    - The operating system refuses to allocate global arrays larger than one megabyte.
+    - The bss section records only the required memory size; zeroed RAM is allocated
+      at load time.
+    answer: 3
+    why: 'Option D is correct: .bss records only the byte size in ELF section headers.
+      When loaded into RAM, the kernel allocates zero-filled memory pages. Options
+      A, B, and C are false.'
+- id: b8
+  type: model
+  title: 'The Three Trees of Git: Working Tree, Index, and HEAD'
+  explain_md: "### 1. Frame the Problem\nWhy does Git require a two-step commit workflow\
+    \ (`git add` followed by `git commit`) when older version control systems like\
+    \ Subversion only had a single `commit` command? \n\nUnderstanding the staging\
+    \ area (the Index) is the foundation of version control in large systems like\
+    \ Linux.\n\n### 2. The Notional Machine\nGit tracks files across three distinct\
+    \ states (the \"Three Trees\"):\n\n```text\n+---------------------+         +---------------------+\
+    \         +---------------------+\n| 1. WORKING TREE     |         | 2. INDEX\
+    \ / STAGING  |         | 3. HEAD REPOSITORY  |\n| Physical files on   | git add\
+    \ | Snapshot of next    |git commit| Last committed      |\n| disk you edit  \
+    \     | ------> | proposed commit     |-------> | permanent snapshot  |\n| (status:\
+    \ ??)        |         | (status: A / M)     |         | (status: clean)     |\n\
+    +---------------------+         +---------------------+         +---------------------+\n\
+    ```\n\n1. **Working Tree**: The concrete files and directories you read and edit\
+    \ in your editor. Untracked files appear as `??` in short status.\n2. **Index\
+    \ (Staging Area)**: A binary cache (`.git/index`) containing a prepared tree of\
+    \ blobs ready to become the next commit. Files staged with `git add` appear as\
+    \ `A ` (added) or `M ` (modified) in column 1.\n3. **HEAD**: A symbolic reference\
+    \ pointing to the currently checked-out commit object. Once committed, the index\
+    \ and HEAD match, and `git status` reports clean.\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at Evidence `E-T0A-09`:\n```text\n$ git status --short\n?? hello.c\n$ git\
+    \ add hello.c\n$ git status --short\nA  hello.c\n$ git commit -m \"add hello\"\
+    \n[master (root-commit) f71d88d] add hello\n$ git status --short\n(empty: clean\
+    \ working tree)\n```\nTrace the three transitions:\n1. Initially, `hello.c` was\
+    \ untracked in the working tree (`??`).\n2. `git add` copied the file contents\
+    \ into Git's object database and registered it in the index (`A `).\n3. `git commit`\
+    \ sealed the index into commit `f71d88d`, advancing `HEAD` to match the working\
+    \ tree.\n\n### 4. The Failure Mode & Boundary\nModifying a file *after* staging\
+    \ it: if you run `git add main.c` and then edit `main.c` in your editor, `git\
+    \ status -s` will show `MM main.c`. The first `M` means the index has changes;\
+    \ the second `M` means the working tree has unstaged edits! If you type `git commit`,\
+    \ only the staged version is committed; your recent edits remain in the working\
+    \ tree.\n\n### 5. The Compressed Mental Axiom\n*Working tree is what you touch,\
+    \ index is what you stage, HEAD is what you sealed in history.*"
+  diagram:
+    kind: flow
+    caption: Git Three Trees Transition Pipeline
+    nodes:
+    - id: disk
+      label: Working Tree (Files on Disk)
+      shape: round
+    - id: add
+      label: 'git add: Stage into .git/index'
+      shape: decision
+    - id: index
+      label: Index / Staging Area (Proposed Commit)
+      shape: box
+    - id: commit
+      label: 'git commit: Seal Commit Object'
+      shape: decision
+    - id: head
+      label: 'HEAD: Immutable Repository DAG'
+      shape: box
+    edges:
+    - from: disk
+      to: add
+      label: edit files (?? / M)
+    - from: add
+      to: index
+      label: creates blob (A / M)
+    - from: index
+      to: commit
+      label: user invokes commit
+    - from: commit
+      to: head
+      label: advances HEAD pointer
+    steps:
+    - focus:
+      - disk
+      - add
+      - index
+      note: git add copies file contents into object database and stages into index
+    - focus:
+      - index
+      - commit
+      - head
+      note: git commit creates a tree and commit object, moving HEAD to the new state
+  viz:
+    kind: ascii-memory
+    caption: The Three Trees State Progression
+    steps:
+    - '[Step 1: File Created on Disk (Untracked)] · Regs: Working Tree=hello.c exists,
+      Index=EMPTY, HEAD=NO COMMITS · State: git status --short: ?? hello.c · (File
+      exists on physical disk but Git database has no record)'
+    - '[Step 2: File Staged with git add] · Regs: Working Tree=hello.c, Index=blob
+      e69de29 (hello.c), HEAD=NO COMMITS · State: git status --short: A  hello.c ·
+      (Index holds staged snapshot ready for commit)'
+    - '[Step 3: Sealed with git commit] · Regs: Working Tree=hello.c, Index=synced
+      with HEAD, HEAD=commit f71d88d · State: git status --short: [Clean: empty output]
+      · (All three trees synchronized)'
+  example:
+    lang: text
+    code: '$ git status --short
+
+      ?? hello.c
+
+      $ git add hello.c
+
+      $ git status --short
+
+      A  hello.c
+
+      $ git commit -m "add hello"
+
+      [master f71d88d] add hello
+
+      $ git status --short'
+    explain_md: Progressing from untracked (??) to staged in index (A ) and finally
+      clean state after commit.
+  checks:
+  - id: b8-c1
+    kind: predict
+    concept: git-short-status-am-state
+    q: A developer stages a new file with `git add hello.c`, and then modifies `hello.c`
+      in their editor without running `git add` again. What does `git status --short`
+      display?
+    choices:
+    - AM hello.c, indicating a staged file with additional unstaged modifications.
+    - ?? hello.c, indicating that the file is completely untracked by the repository.
+    - ' M hello.c, indicating an unstaged modification with nothing staged in the
+      index.'
+    - A  hello.c, indicating that all working tree changes are fully staged in the
+      index.
+    answer: 0
+    why: 'Option A is correct: the left column ''A'' denotes the file is added in
+      the index; the right column ''M'' denotes unstaged modifications in the working
+      tree. Option B is untracked. Option C has nothing staged. Option D has no unstaged
+      edits.'
+  - id: b8-c2
+    kind: why-fails
+    concept: commit-requires-staged-index
+    q: A developer creates a new file `helper.c` and immediately executes `git commit
+      -m "add helper"` without running `git add`. Why does Git commit nothing?
+    choices:
+    - Git commits can only be created by users with administrative privileges on the
+      repository.
+    - Git commits capture the contents of the staging index, not unstaged working
+      tree files.
+    - Git requires a project to have at least three committed files before allowing
+      commits.
+    - Git automatically deletes untracked files when a commit command is invoked without
+      flags.
+    answer: 1
+    why: 'Option B is correct: ''git commit'' serializes the current tree recorded
+      in the staging index into a commit object. Because helper.c was never added
+      to the index, the index is clean and nothing is committed. Options A, C, and
+      D are false.'
+  - id: b8-c3
+    kind: mcq
+    concept: untracked-status-code
+    q: What does the two-character prefix `??` indicate when displayed in `git status
+      --short` output?
+    choices:
+    - The file contains merge conflicts that must be resolved manually.
+    - The file has been staged in the index and is ready to be committed.
+    - The file exists in the working directory but is untracked by Git.
+    - The file was modified in the working tree after being committed.
+    answer: 2
+    why: 'Option C is correct: ''??'' indicates that the file exists in the working
+      tree but is neither tracked in the index nor in HEAD. Option A is UU. Option
+      B is A. Option D is M.'
+  - id: b8-c4
+    kind: order
+    concept: git-three-tree-lifecycle
+    q: 'Order the 4 stages of tracking a new file through Git''s three-place architecture:'
+    lines:
+    - Create the file in the Working Tree (e.g. 'hello.c', marked '??').
+    - Stage the file into the Index using 'git add hello.c' (marked 'A ').
+    - Record the staged snapshot into HEAD using 'git commit -m "add hello"'.
+    - Verify that Working Tree, Index, and HEAD are synchronized ('git status -s'
+      is empty).
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: Files originate in the working tree as untracked, transition into the index
+      via git add, are recorded into permanent repository history via git commit,
+      and achieve synchronized clean status.
+  - id: b8-c5
+    kind: predict
+    concept: clean-repository-status
+    q: Immediately after creating a commit from staged changes with no further edits
+      made to any files, what does running `git status --short` output?
+    choices:
+    - Empty output (nothing printed), confirming that the working tree, index, and
+      HEAD agree.
+    - clean, indicating that no untracked or modified files exist in the current branch.
+    - A  hello.c, indicating that the recently committed file is preserved in the
+      staging index.
+    - ?? hello.c, indicating that committed files must be re-added before editing
+      them again.
+    answer: 0
+    why: 'Option A is correct: when working tree, index, and HEAD all share the exact
+      same content, git status --short produces completely empty output. Options B,
+      C, and D are false.'
+- id: b9
+  type: syntax
+  title: 'Inspecting Modifications: Short Status and Unified Diffs'
+  explain_md: "### 1. Frame the Problem\nReading verbose multi-paragraph status outputs\
+    \ slows down terminal navigation. How do you inspect modified, staged, and unstaged\
+    \ changes at a glance, and how do you read a unified diff to verify the exact\
+    \ bytes modified?\n\n### 2. The Notional Machine\n1. **Short Status Format (`git\
+    \ status --short` / `-s`)**:\n   Uses a 2-column matrix:\n   ```text\n   XY PATH\n\
+    \   ^|\n   ||-- Column 2: Working tree status relative to index\n   +--- Column\
+    \ 1: Index status relative to HEAD\n   ```\n   - ` M main.c`: Unstaged modification\
+    \ in working tree.\n   - `M  main.c`: Staged modification in index ready for commit.\n\
+    \   - `MM main.c`: Modified, staged, then modified again in working tree!\n  \
+    \ - `?? main.c`: Untracked file.\n\n2. **Unified Diff Anatomy (`git diff`)**:\n\
+    \   - `git diff`: Shows differences between **Working Tree** and **Index**.\n\
+    \   - `git diff --cached`: Shows differences between **Index** and **HEAD**.\n\
+    \   - Hunk header: `@@ -old_line,old_count +new_line,new_count @@`.\n   - `-`:\
+    \ Line removed.\n   - `+`: Line added.\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at Evidence `E-T0A-10`:\n```text\n$ git diff\ndiff --git a/hello.c b/hello.c\n\
+    index e69de29..b80de3a 100644\n--- a/hello.c\n+++ b/hello.c\n@@ -1,5 +1,5 @@\n\
+    \ int main(void)\n {\n-    return 0;\n+    return 1;\n }\n$ git diff --stat\n\
+    \ hello.c | 2 +-\n 1 file changed, 1 insertion(+), 1 deletion(-)\n```\nTrace the\
+    \ output:\n- `--- a/hello.c` and `+++ b/hello.c` identify old and new versions.\n\
+    - `@@ -1,5 +1,5 @@` indicates hunk begins at line 1 and spans 5 lines.\n- `- \
+    \   return 0;` was removed; `+    return 1;` was inserted.\n- `--stat` summarizes\
+    \ 1 insertion and 1 deletion.\n\n### 4. The Failure Mode & Boundary\nRunning bare\
+    \ `git diff` after typing `git add`: the terminal outputs nothing! Because `git\
+    \ diff` compares the working tree to the index, once changes are staged, the working\
+    \ tree and index are identical. You must run `git diff --cached` (or `--staged`)\
+    \ to view staged changes.\n\n### 5. The Compressed Mental Axiom\n*Short status\
+    \ shows the columns of truth; diff reveals the exact line mutations.*"
+  diagram:
+    kind: flow
+    caption: Diff Inspection Routing Matrix
+    nodes:
+    - id: query
+      label: What do you want to inspect?
+      shape: round
+    - id: work
+      label: Working Tree vs Index (Unstaged edits)
+      shape: decision
+    - id: staged
+      label: Index vs HEAD (Staged changes)
+      shape: decision
+    - id: diff_cmd
+      label: git diff
+      shape: box
+    - id: cached_cmd
+      label: git diff --cached
+      shape: box
+    edges:
+    - from: query
+      to: work
+      label: unstaged
+    - from: query
+      to: staged
+      label: staged
+    - from: work
+      to: diff_cmd
+      label: inspect lines
+    - from: staged
+      to: cached_cmd
+      label: inspect lines
+    steps:
+    - focus:
+      - query
+      - work
+      - diff_cmd
+      note: Use git diff to see unstaged working tree edits
+    - focus:
+      - query
+      - staged
+      - cached_cmd
+      note: Use git diff --cached to see what will go into the next commit
+  example:
+    lang: text
+    code: "$ git diff\n--- a/main.c\n+++ b/main.c\n@@ -3,1 +3,1 @@\n-    return 0;\n\
+      +    return 1;\n$ git diff --stat\n main.c | 2 +-\n 1 file changed, 1 insertion(+),\
+      \ 1 deletion(-)"
+    explain_md: Unified diff showing exact single line mutation with hunk header and
+      stat summary.
+  checks:
+  - id: b9-c1
+    kind: predict
+    concept: hunk-header-interpretation
+    q: In a unified diff generated by `git diff`, a hunk header reads `@@ -10,6 +10,7
+      @@`. What does this coordinate header report?
+    choices:
+    - A 6-line segment starting at line 10 in the original became a 7-line segment
+      at line 10 in the new version.
+    - Line number 10 was deleted and replaced by line 6 in the old file and line 7
+      in the modified file.
+    - The patch contains 10 deletions, 6 insertions, and modifies 7 files across the
+      entire repository.
+    - The diff utility encountered a syntax error at line 10 and skipped checking
+      lines 6 and 7.
+    answer: 0
+    why: 'Option A is correct: ''-10,6'' indicates starting at line 10 spanning 6
+      lines in the original; ''+10,7'' indicates starting at line 10 spanning 7 lines
+      in the modified file. Options B, C, and D are false.'
+  - id: b9-c2
+    kind: predict
+    from_chapter: T0A
+    from_block: b8
+    concept: inspect-unstaged-changes
+    q: In `git status --short`, a file is listed with ` M hello.c` (space in left
+      column, M in right column). Which command inspects these unstaged working tree
+      changes?
+    choices:
+    - git show --staged hello.c, to display staged commits.
+    - git status --verbose hello.c, to inspect file hashes.
+    - git diff --cached hello.c, to inspect the index state.
+    - git diff hello.c, to compare working tree with index.
+    answer: 3
+    why: 'Option D is correct: plain ''git diff'' compares the working tree against
+      the index. Option C (--cached / --staged) compares index against HEAD. Option
+      A and B are wrong syntax.'
+  - id: b9-c3
+    kind: fillblank
+    concept: diff-staged-flag
+    q: 'Fill in the flag used with `git diff` to compare the staged index against
+      the last commit (HEAD):'
+    code: '$ git add hello.c
+
+      $ git diff --____'
+    answer_text: staged
+    why: The '--staged' (or synonym '--cached') flag directs git diff to compare the
+      staging index against HEAD.
+  - id: b9-c4
+    kind: mcq
+    concept: diff-minus-line-meaning
+    q: In a unified diff hunk, what does a line prefixed with a leading minus sign
+      (`-`) signify?
+    choices:
+    - A line of code that sets a variable to a negative arithmetic value.
+    - A line that was present in the original version and removed in the new version.
+    - A line that was newly inserted into the modified version of the source file.
+    - A comment line that has been marked as deprecated by the revision control system.
+    answer: 1
+    why: 'Option B is correct: ''-'' prefixes lines removed from the original file.
+      Option A is literal minus arithmetic. Option C is ''+''. Option D is fictitious.'
+  - id: b9-c5
+    kind: mcq
+    concept: diff-stat-interpretation
+    q: What does the summary line `1 file changed, 1 insertion(+), 1 deletion(-)`
+      in `git diff --stat` tell the developer?
+    choices:
+    - The file currently contains only one line of code in the working tree.
+    - The commit hash was incremented by one insertion and one deletion operation.
+    - One line was modified, recorded as one deleted old line and one added new line.
+    - Git deleted the existing file and generated a new file with the same name.
+    answer: 2
+    why: 'Option C is correct: Git models modifications as deletions followed by insertions.
+      A single modified line is summarized as 1 deletion and 1 insertion. Options
+      A, B, and D are false.'
+- id: b10
+  type: design
+  title: 'Failure Triage: Mapping Lifecycle Symptoms to Diagnostic Tools'
+  explain_md: '### 1. Frame the Problem
+
+    In complex systems programming, diagnosing a broken build by random guessing or
+    blind tool invocation wastes immense time. When a failure occurs, how do you instantly
+    identify which toolchain stage failed and reach for the exact tool that solves
+    it?
+
+
+    ### 2. The Notional Machine
+
+    The Systems Triage Matrix:
+
+
+    ```text
+
+    +-------------------------------------------------------------------------------------------------+
+
+    |                                 SYSTEMS DIAGNOSTIC MATRIX                                       |
+
+    +-------------------+-----------------------------+-----------------------+-----------------------+
+
+    | Lifecycle Stage   | Observable Failure Symptom  | Root Cause Boundary   | Primary
+    Diagnostic    |
+
+    +-------------------+-----------------------------+-----------------------+-----------------------+
+
+    | Compilation (cc1) | error: expected '';'' ...     | C99 syntax error or   |
+    GCC first diagnostic  |
+
+    |                   | undefined type struct ...   | missing header contract| line
+    (bad.c:line:col) |
+
+    +-------------------+-----------------------------+-----------------------+-----------------------+
+
+    | Linkage (ld)      | undefined reference to ''foo''| Missing object file or|
+    Check Makefile recipe |
+
+    |                   | multiple definition of ''bar''| duplicate global sym  |
+    and library -l flags  |
+
+    +-------------------+-----------------------------+-----------------------+-----------------------+
+
+    | Build Automation  | make: ''app'' is up to date   | Timestamp skew or     |
+    make clean && make,   |
+
+    | (make)            | (when edits exist)          | missing .PHONY target | inspect
+    mtime with ls |
+
+    +-------------------+-----------------------------+-----------------------+-----------------------+
+
+    | Memory & Layout   | Binary size ballooned or    | Buffer placed in      | size
+    <binary>,        |
+
+    | (ELF)             | segment memory overflow     | .data instead of .bss | readelf
+    -S, objdump   |
+
+    +-------------------+-----------------------------+-----------------------+-----------------------+
+
+    | Version Control   | Accidental mutation or      | Uncommitted working   | git
+    status --short,   |
+
+    | (git)             | conflicting local edits     | tree changes          | git
+    diff, git checkout|
+
+    +-------------------+-----------------------------+-----------------------+-----------------------+
+
+    ```
+
+
+    ### 3. Source-Grounded Walkthrough
+
+    Reconcile Evidence `E-T0A-03` through `E-T0A-10`:
+
+    - When `bad.c` failed to compile (`E-T0A-05`), inspecting the first line of GCC
+    stderr diagnosed the missing semicolon immediately.
+
+    - When cleaning build state (`E-T0A-06`), `make clean` removed `app` via `.PHONY`.
+
+    - When verifying binary footprint (`E-T0A-08`), `size` broke down `.text`, `.data`,
+    and `.bss`.
+
+    - When inspecting working tree edits (`E-T0A-10`), `git diff` proved line 3 was
+    modified from `return 0;` to `return 1;`.
+
+
+    ### 4. The Failure Mode & Boundary
+
+    Using a high-level tool to fix a low-level error (e.g. running `git bisect` or
+    modifying Makefile flags when the compiler is complaining about a missing semicolon).
+
+
+    ### 5. The Compressed Mental Axiom
+
+    *Diagnose at the boundary where the invariant broke: grammar at the compiler,
+    dependencies at Make, state at Git.*'
+  diagram:
+    kind: flow
+    caption: Systems Diagnostic Triage Decision Tree
+    nodes:
+    - id: sym
+      label: Observed Build or Runtime Failure
+      shape: round
+    - id: stage
+      label: What stage produced the error?
+      shape: decision
+    - id: cc_tool
+      label: Compiler Diagnostic (gcc first line)
+      shape: box
+    - id: ld_tool
+      label: Linker Resolution (check -l flags / .o)
+      shape: box
+    - id: make_tool
+      label: Build System (make clean && make)
+      shape: box
+    - id: git_tool
+      label: Version Control (git status -s / git diff)
+      shape: box
+    edges:
+    - from: sym
+      to: stage
+      label: triage
+    - from: stage
+      to: cc_tool
+      label: syntax / missing type
+    - from: stage
+      to: ld_tool
+      label: undefined reference
+    - from: stage
+      to: make_tool
+      label: stale build artifact
+    - from: stage
+      to: git_tool
+      label: source drift / conflict
+    steps:
+    - focus:
+      - sym
+      - stage
+      - cc_tool
+      note: 'Syntax errors: triage first diagnostic line from GCC'
+    - focus:
+      - stage
+      - ld_tool
+      note: 'Symbol errors: verify linker library flags and object targets'
+    - focus:
+      - stage
+      - make_tool
+      - git_tool
+      note: 'Artifact and drift errors: clean build and inspect diffs'
+  example:
+    lang: text
+    code: '# Diagnostic summary matching failure to tool
+
+      1. Syntax error:       gcc first diagnostic line
+
+      2. Undefined symbol:   linker ld flags and object list
+
+      3. Stale binary:       make clean && make
+
+      4. Memory footprint:   size <binary>
+
+      5. Working tree drift: git status -s && git diff'
+    explain_md: Mapping failure symptoms directly to the responsible toolchain component.
+  checks:
+  - id: b10-c1
+    kind: choose-better
+    concept: filesystem-symptom-triage
+    q: 'When running `make`, the compiler terminates with `fatal error: main.c: No
+      such file or directory`. What is the most effective first diagnostic step?'
+    choices:
+    - Check current working directory (`pwd`) and verify whether main.c exists in
+      that directory.
+    - Add `-Wall -Wextra` warning flags to the Makefile recipe and compile the application
+      again.
+    - Run `git diff` on other files in the directory to check if source files were
+      modified.
+    - Run the `size` utility on the project directory to check for binary allocation
+      errors.
+    answer: 0
+    why: 'Option A is correct: ''No such file or directory'' is a filesystem error.
+      The first step is verifying the working directory and ensuring the input file
+      is present. Options B, C, and D target wrong lifecycle stages.'
+  - id: b10-c2
+    kind: eipe
+    from_chapter: T0A
+    from_block: b4
+    concept: first-diagnostic-primacy
+    q: Why should a developer always resolve the first reported compiler diagnostic
+      before attempting to fix subsequent error messages?
+    choices:
+    - The compiler driver stops scanning source code immediately after encountering
+      any syntax error.
+    - Compilers list syntax errors in reverse alphabetical order rather than chronological
+      source order.
+    - Fixing subsequent errors automatically triggers a rebuild that overwrites previous
+      source modifications.
+    - The first error marks where parsing broke; subsequent diagnostics are often
+      cascading false alarms.
+    answer: 3
+    why: 'Option D is correct: compilers process tokens sequentially; the first error
+      pinpoints where parser grammar rules first failed. Downstream diagnostics are
+      frequently phantom artifacts caused by de-synchronized parser state. Options
+      A, B, and C are false.'
+  - id: b10-c3
+    kind: why-fails
+    concept: make-timestamp-staleness
+    q: A developer runs `make` on a cleanly compiled project without modifying any
+      files. Why does Make report `'app' is up to date` and run no compiler recipes?
+    choices:
+    - The GNU Make utility deletes compiled executables after running a successful
+      verification pass.
+    - The target file exists and its modification timestamp is newer than all declared
+      prerequisites.
+    - The GCC compiler driver was removed from the system path after the initial build
+      completed.
+    - The clean target was executed automatically by the operating system kernel in
+      the background.
+    answer: 1
+    why: 'Option B is correct: Make checks mtime timestamps. Because app is newer
+      than main.c, no compilation is required. Options A, C, and D are false.'
+  - id: b10-c4
+    kind: predict
+    concept: git-untracked-diagnosis
+    q: A developer clones a repository, creates a new file `test.c`, and runs `git
+      status --short`, observing `?? test.c`. What does Git lack for this file?
+    choices:
+    - A compiler recipe in the Makefile instructing Git how to build the executable.
+    - An executable permission bit on the filesystem allowing Git to read file contents.
+    - A record in the staging index or commit history associating the file with the
+      repository.
+    - A binary size report confirming that the file contains valid non-zero data.
+    answer: 2
+    why: 'Option C is correct: ''??'' indicates that the file exists in the working
+      directory but has no record in the index or commit tree. Options A, B, and D
+      are irrelevant to Git tracking.'
+  - id: b10-c5
+    kind: choose-better
+    concept: bss-vs-file-footprint
+    q: A developer declares a global buffer `static int data[1000000];`. The `size`
+      report shows ~4MB in `.bss`, but `ls -l` shows the binary file is only 16KB.
+      Why?
+    choices:
+    - The filesystem automatically compresses large binary files when writing them
+      to the disk.
+    - The bss section stores runtime memory allocation size rather than physical zero
+      bytes on disk.
+    - The compiler driver omitted the buffer because it was not referenced in the
+      main function.
+    - The operating system kernel allocates disk space for global buffers only after
+      program execution.
+    answer: 1
+    why: 'Option B is correct: .bss records only the required memory size in the ELF
+      headers. When loaded into RAM, the kernel allocates zeroed virtual memory pages.
+      Options A, C, and D are false.'

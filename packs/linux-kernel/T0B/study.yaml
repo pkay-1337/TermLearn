@@ -1,0 +1,1668 @@
+blocks:
+- id: b1
+  type: model
+  title: 'Source Code as a Graph: Declarations, Definitions, and Call Sites'
+  explain_md: '### 1. Frame the Problem
+
+    When you open a 30-million-line kernel tree, viewing files as a flat text scroll
+    causes immediate disorientation. A single function name like `sensor_init` appears
+    80 times across headers, call sites, and driver tables. How do you distinguish
+    what allocates executable bytes from what merely defines a type contract?
+
+
+    ### 2. The Notional Machine
+
+    In systems C, every symbol exists in one of three fundamental graph roles:
+
+
+    1. **Header Declaration (`include/*.h`)**: A forward contract declaring the symbol''s
+    name, argument types, and return signature terminated with a semicolon. **Allocates
+    zero executable bytes in memory.**
+
+    2. **Canonical Definition (`src/*.c`)**: The singular translation unit containing
+    the executable function body enclosed in braces. This is where machine instructions
+    are emitted into the `.text` segment.
+
+    3. **Call Site (`src/main.c` / caller modules)**: Statements where execution branches
+    to the function''s virtual address and passes concrete arguments.
+
+
+    **The Preprocessor Macro Twist**: In Linux, declarative macros like `SYSCALL_DEFINE`
+    or device registration tables (`REGISTER_SENSOR`) synthesize symbols at compile
+    time via token pasting (`##`). Searching for the emitted symbol string literally
+    in source code will fail if you only search for the raw function name.
+
+
+    ### 3. Source-Grounded Walkthrough
+
+    Look at Evidence `E-T0B-02`:
+
+    ```text
+
+    $ rg -n "sensor_init" .
+
+    ./src/main.c:11:    int rc = sensor_init(&dev, 42);
+
+    ./src/sensor.c:11:int sensor_init(struct sensor_device *dev, int id)
+
+    ./include/sensor_dev.h:12:int sensor_init(struct sensor_device *dev, int id);
+
+    ```
+
+    A single search reveals all three graph roles at once:
+
+    - `include/sensor_dev.h:12`: Header prototype declaration ending in `;`.
+
+    - `src/sensor.c:11`: Canonical definition where C statements live.
+
+    - `src/main.c:11`: Call site where `sensor_init` is invoked with `&dev`.
+
+
+    ### 4. The Failure Mode & Boundary
+
+    The most common beginner trap is editing a header file prototype under the mistaken
+    belief that you are changing behavior. Changing a header only changes the compile-time
+    type contract; it alters zero machine instructions until the canonical `.c` definition
+    is recompiled.
+
+
+    ### 5. The Compressed Mental Axiom
+
+    *Headers declare the contract, C files emit the silicon bytes, and callers jump
+    to the offset.*'
+  diagram:
+    kind: flow
+    caption: Symbol Relationship & Resolution Graph
+    nodes:
+    - id: decl
+      label: include/sensor.h
+      shape: round
+    - id: defn
+      label: src/sensor.c
+      shape: box
+    - id: call
+      label: src/main.c
+      shape: box
+    - id: ld
+      label: Linker ld
+      shape: decision
+    edges:
+    - from: decl
+      to: defn
+      label: prototype
+    - from: decl
+      to: call
+      label: type check
+    - from: call
+      to: ld
+      label: needs sym
+    - from: defn
+      to: ld
+      label: provides sym
+    steps:
+    - focus:
+      - decl
+      - defn
+      note: Header prototype defines function contract
+    - focus:
+      - decl
+      - call
+      note: Call site is validated against header contract
+    - focus:
+      - call
+      - defn
+      - ld
+      note: Linker resolves unresolved caller to .text offset
+  viz:
+    kind: ascii-memory
+    caption: Symbol Roles and Memory Allocation Resolution
+    steps:
+    - '[Step 1: Header Declaration (include/sensor_dev.h)] · Regs: Allocated Bytes=0
+      bytes, Terminator=Semicolon (;) · State: include/sensor_dev.h:12: int sensor_init(struct
+      sensor_device *dev, int id); · (Compile-time type contract only; no machine
+      code emitted)'
+    - '[Step 2: Canonical Definition (src/sensor.c)] · Regs: Emitted Segment=.text
+      offset 0x0040, Object=sensor.o · State: src/sensor.c:11: int sensor_init(...)
+      { dev->id = id; return 0; } · (GCC compiles function body into executable machine
+      instructions)'
+    - '[Step 3: Call Site Resolution via Linker (ld)] · Regs: main.o Call Offset=call
+      0x0040, Target=sensor.o:sensor_init · State: src/main.c:11: int rc = sensor_init(&dev,
+      42); · (Linker resolves caller reference to canonical function address)'
+  example:
+    lang: text
+    code: '$ rg -n "sensor_init" .
+
+      ./src/main.c:11:    int rc = sensor_init(&dev, 42);
+
+      ./src/sensor.c:11:int sensor_init(struct sensor_device *dev, int id)
+
+      ./include/sensor_dev.h:12:int sensor_init(struct sensor_device *dev, int id);'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-02: A single ripgrep search reveals all three graph
+      roles at once: line 11 of main.c is the call site, line 11 of sensor.c is the
+      canonical definition, and line 12 of sensor_dev.h is the prototype declaration.'
+  checks:
+  - id: b1-c1
+    kind: predict
+    concept: declaration-vs-definition-identification
+    q: Examine the three search hits from the captured evidence transcript. Which
+      line contains the canonical function definition that emits machine instructions?
+    code: './src/main.c:11:    int rc = sensor_init(&dev, 42);
+
+      ./src/sensor.c:11:int sensor_init(struct sensor_device *dev, int id)
+
+      ./include/sensor_dev.h:12:int sensor_init(struct sensor_device *dev, int id);'
+    choices:
+    - ./src/sensor.c line 11, because it begins the executable function body
+    - ./src/main.c line 11, because it passes concrete runtime parameters
+    - ./include/sensor_dev.h line 12, because public header declarations rule
+    answer: 0
+    why: 'Option A is correct: sensor.c line 11 defines the actual function body where
+      machine code is emitted. Option B is merely an invocation call site. Option
+      C is a header prototype declaration terminated by a semicolon.'
+  - id: b1-c2
+    kind: why-fails
+    concept: header-prototype-confusion
+    q: A developer attempts to debug an algorithm bug by setting a breakpoint at a
+      line found in `include/sensor_dev.h`. Why does the debugger fail to stop at
+      the intended instruction?
+    choices:
+    - The compiler automatically strips all DWARF debugging symbols from header files
+    - The header only declares the function prototype and emits no executable bytes
+    - The debugger only permits setting breakpoints on functions declared inside main.c
+    answer: 1
+    why: 'Option B is correct: header prototypes are type declarations that tell the
+      compiler how to validate calls; they do not generate machine instructions. Option
+      A is false because debug symbols map all included files. Option C is false because
+      GDB supports breaking in any compiled translation unit.'
+  - id: b1-c3
+    kind: choose-better
+    concept: navigating-definition-vs-callsite
+    q: You need to modify the internal validation logic of `sensor_init`. Which file
+      must you open and edit?
+    choices:
+    - include/sensor_dev.h, so all translation units see the updated parameter list
+    - src/main.c, where the initial values and execution return codes are tested
+    - src/sensor.c, where the statements and logic of the function body reside
+    answer: 2
+    why: 'Option C is correct: modifying internal algorithm logic requires altering
+      the canonical definition in src/sensor.c. Option A only modifies the prototype
+      interface. Option B only modifies one caller.'
+  - id: b1-c4
+    kind: order
+    concept: c-symbol-translation-lifecycle
+    q: 'Order the 4 steps representing the lifecycle of a C function symbol from interface
+      declaration to execution:'
+    lines:
+    - The function prototype is declared in a header file with a trailing semicolon
+    - The canonical implementation with function body braces is written in a .c file
+    - A caller module includes the header and invokes the function with arguments
+    - The linker matches the caller's symbol reference to the .text offset of the
+      .c file
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: The lifecycle proceeds from header declaration -> implementation definition
+      in .c -> call site invocation -> final link-time symbol resolution.
+  - id: b1-c5
+    kind: predict
+    concept: interleaved-compiler-exit-status
+    q: 'Recall from chapter T0A: when GCC encounters an undeclared symbol name in
+      main.c, what happens to the build process?'
+    choices:
+    - GCC halts with an error diagnostic and returns non-zero exit status $?
+    - GCC emits an implicit declaration diagnostic and sets exit status 0
+    - GCC automatically inserts an empty dummy stub and generates the binary
+    answer: 0
+    why: 'Option A is correct: undeclared symbols violate C syntax, causing GCC to
+      emit a diagnostic to stderr and exit with non-zero status. Option B is obsolete
+      under C99/modern standards. Option C is false.'
+    from_chapter: T0A
+    from_block: b2
+- id: b2
+  type: syntax
+  title: 'Precision ripgrep: Word Boundaries, Path Filters, and Case Control'
+  explain_md: "### 1. Frame the Problem\nRaw text searches over large codebases flood\
+    \ your terminal with useless noise. Running a bare query like `rg poll` matches\
+    \ `poll`, `sensor_poll`, `bus_dispatch_poll`, and even unrelated variable names\
+    \ like `poll_timeout`. How do you eliminate false positives and extract exact\
+    \ symbol hits?\n\n### 2. The Notional Machine\nMastering three essential ripgrep\
+    \ flags turns noisy dumps into exact matches:\n\n1. **Word Boundary (`-w` / `--word-regexp`)**:\
+    \ Anchors matches to whole word boundaries (`\\bpattern\\b`). Searching `rg -w\
+    \ \"sensor_poll\"` ignores `bus_dispatch_poll` and isolated `poll` substrings.\n\
+    2. **Path Filtering (`-g` / `--glob`)**: Restricts searches using shell wildcard\
+    \ patterns:\n   - `rg -g '*.h'`: Searches only header files.\n   - `rg -g 'src/*.c'`:\
+    \ Searches implementation files in `src/`.\n   - Prefixing with an exclamation\
+    \ mark (`-g '!tests*'`) excludes noisy test directories.\n3. **Case Sensitivity**:\
+    \ By default, ripgrep uses smart-case (case-insensitive if pattern is all lowercase,\
+    \ sensitive if uppercase is used). Pass `-s` to force case-sensitive matching.\n\
+    \n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0B-03`:\n```text\n\
+    $ rg \"sensor_poll\" .\n(Returns 7 lines including substring prefix matches like\
+    \ bus_dispatch_poll)\n$ rg -w \"sensor_poll\" -g 'src/*.c' .\nsrc/sensor.c:18:int\
+    \ sensor_poll(struct sensor_device *dev)\nsrc/bus.c:14:    int val = sensor_poll(dev);\n\
+    ```\nNotice the power of composition:\n- Adding `-w` filtered out prefix substring\
+    \ hits.\n- Adding `-g 'src/*.c'` filtered out header prototypes.\n- Only the canonical\
+    \ definition and active caller remained!\n\n### 4. The Failure Mode & Boundary\n\
+    Omitting quotes around glob arguments: if you run `rg -g *.c pattern`, your shell\
+    \ expands `*.c` into filenames *before* ripgrep runs. If you have multiple C files\
+    \ in your directory, ripgrep errors with `unexpected argument`. Always quote globs:\
+    \ `rg -g '*.c'`.\n\n### 5. The Compressed Mental Axiom\n*Bare queries drown in\
+    \ noise; word boundaries and path globs isolate the signal.*"
+  diagram:
+    kind: flow
+    caption: Ripgrep Precision Filter Pipeline
+    nodes:
+    - id: raw
+      label: Bare Query 'poll'
+      shape: round
+    - id: word
+      label: -w Word Boundary
+      shape: decision
+    - id: glob
+      label: -g Path Filter
+      shape: decision
+    - id: hit
+      label: Target Symbol Hit
+      shape: box
+    edges:
+    - from: raw
+      to: word
+      label: filter substrings
+    - from: word
+      to: glob
+      label: filter directories
+    - from: glob
+      to: hit
+      label: clean match
+    steps:
+    - focus:
+      - raw
+      - word
+      note: Word boundary -w rejects prefix substrings like bus_dispatch_poll
+    - focus:
+      - word
+      - glob
+      note: Path filter -g '*.c' restricts search to implementation files
+    - focus:
+      - glob
+      - hit
+      note: Yields exact symbol occurrences without noise
+  example:
+    lang: text
+    code: '$ rg -n "poll" .
+
+      ./src/main.c:4:int bus_dispatch_poll(struct sensor_device *dev);
+
+      ./src/main.c:16:    int val = bus_dispatch_poll(&dev);
+
+      ./src/bus.c:8:int bus_dispatch_poll(struct sensor_device *dev)
+
+      ./src/bus.c:11:    return sensor_poll(dev);
+
+      ./src/sensor.c:25:int sensor_poll(struct sensor_device *dev)
+
+
+      $ rg -n -w "sensor_poll" .
+
+      ./src/bus.c:11:    return sensor_poll(dev);
+
+      ./src/sensor.c:25:int sensor_poll(struct sensor_device *dev)'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-03: The unbounded search returned 7 lines including
+      bus_dispatch_poll. Adding -w filtered out prefix matches and returned only exact
+      references to sensor_poll.'
+  checks:
+  - id: b2-c1
+    kind: predict
+    concept: word-boundary-matching
+    q: You run `rg -w 'task' .` in a directory containing the following lines. Which
+      line will be matched?
+    code: 'Line 1: struct task_struct current_task;
+
+      Line 2: int update_task_state(void);
+
+      Line 3: if (task == NULL) return -1;'
+    choices:
+    - Line 1, because task is at the beginning of the identifier
+    - Line 3, because task is surrounded by whitespace and non-word tokens
+    - Line 2, because task is separated by underscores
+    answer: 1
+    why: 'Option B is correct: -w treats underscores as word characters, so ''task_struct''
+      and ''update_task_state'' are single long tokens. Only ''task'' in Line 3 is
+      bounded by non-word delimiters.'
+  - id: b2-c2
+    kind: mcq
+    concept: path-filter-glob-syntax
+    q: Which ripgrep command searches for occurrences of `struct sensor_device` restricted
+      strictly to header files?
+    choices:
+    - rg -n -f '*.h' 'struct sensor_device' .
+    - rg -n --headers-only 'struct sensor_device' .
+    - rg -n -g '*.h' 'struct sensor_device' .
+    answer: 2
+    why: 'Option C is correct: the -g flag takes a shell glob pattern enclosed in
+      quotes. Option B is an invented flag. Option A uses -f, which in ripgrep reads
+      patterns from a file.'
+  - id: b2-c3
+    kind: why-fails
+    concept: shell-glob-quoting
+    q: A developer runs `rg -g *.c sensor_init .` without quotes around `*.c`. Why
+      might the command fail or produce unexpected results?
+    choices:
+    - The shell expands *.c in the current directory before ripgrep runs
+    - Ripgrep requires glob patterns to use uppercase letters exclusively
+    - The -g flag requires double hyphens (--g) when used without quotes
+    answer: 0
+    why: 'Option A is correct: unquoted globs are expanded by the shell. If multiple
+      .c files exist in the current directory, ripgrep receives multiple unexpected
+      positional arguments. Quoting ensures ripgrep parses the glob internally.'
+  - id: b2-c4
+    kind: fillblank
+    concept: rg-word-boundary-flag
+    q: 'Fill in the flag that restricts pattern matching to full word boundaries in
+      ripgrep:'
+    code: $ rg ____ "sensor_poll" src/
+    answer_text: -w
+    why: The -w (--word-regexp) flag forces ripgrep to match pattern only when surrounded
+      by word boundaries.
+  - id: b2-c5
+    kind: choose-better
+    concept: narrowing-search-scope
+    q: You want to find all occurrences of the symbol `PAGE_SIZE` only within C source
+      files in `kernel/`, ignoring headers and docs. Which command is most precise?
+    choices:
+    - rg 'PAGE_SIZE' kernel/
+    - rg -w -g '*.c' 'PAGE_SIZE' kernel/
+    - find kernel/ -name '*.c' | xargs grep -i 'page_size'
+    answer: 1
+    why: 'Option B is correct: combining -w with -g ''*.c'' confines the search to
+      whole words in implementation files. Option A includes headers. Option C is
+      case-insensitive and slower.'
+- id: b3
+  type: syntax
+  title: Context Inspection and Preprocessor Macro Search Traps
+  explain_md: "### 1. Frame the Problem\nIn the Linux kernel, declarative macros synthesize\
+    \ functions and data structures at compile time using token concatenation (`##`).\
+    \ When a function like `sensor_temp_primary` is generated via a macro `REGISTER_SENSOR(temp_primary)`,\
+    \ a literal search for `sensor_temp_primary` will return zero definition hits!\
+    \ How do you locate the definition of a symbol that was never typed into source\
+    \ code?\n\n### 2. The Notional Machine\n1. **Preprocessor Token Pasting (`##`)**:\n\
+    \   ```c\n   #define REGISTER_SENSOR(name, id) \\\n       struct sensor_device\
+    \ sensor_##name = { .id = id }\n   ```\n   The preprocessor stitches `sensor_`\
+    \ and `name` into `sensor_temp_primary`. The emitted identifier only exists after\
+    \ preprocessing!\n2. **The Macro Search Strategy**:\n   - When a literal search\
+    \ fails, search for the root parameter token (`temp_primary`).\n   - Search for\
+    \ the macro name itself (`REGISTER_SENSOR`).\n3. **Surrounding Context Flags**:\n\
+    \   - `rg -C <N>`: Displays $N$ lines before and after every match.\n   - `rg\
+    \ -B <N>`: Displays $N$ lines before.\n   - `rg -A <N>`: Displays $N$ lines after.\n\
+    \n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0B-05` and `E-T0B-06`:\n\
+    In `main.c`:\n```text\n$ rg -C 2 \"REGISTER_SENSOR\" src/\nsrc/main.c-4-\nsrc/main.c-5-/*\
+    \ Register primary temperature sensor */\nsrc/main.c:6:REGISTER_SENSOR(temp_primary,\
+    \ 101);\nsrc/main.c-7-\nsrc/main.c-8-int main(void)\n```\nContext lines (`-C 2`)\
+    \ exposed the macro instantiation on line 6 that created the variable `sensor_temp_primary`\
+    \ used later on line 17.\n\n### 4. The Failure Mode & Boundary\nAssuming that\
+    \ because `rg` returns zero hits for a symbol name, the symbol does not exist\
+    \ in the codebase. In kernel code, always ask: *Could this identifier have been\
+    \ synthesized by a macro?*\n\n### 5. The Compressed Mental Axiom\n*When a symbol\
+    \ vanishes from text search, suspect preprocessor token concatenation.*"
+  diagram:
+    kind: flow
+    caption: Macro Token Concatenation Transformation
+    nodes:
+    - id: src
+      label: Source Code Token
+      shape: round
+    - id: macro
+      label: 'Macro Definition ##'
+      shape: box
+    - id: cpp
+      label: C Preprocessor
+      shape: decision
+    - id: out
+      label: Emitted Identifier
+      shape: box
+    edges:
+    - from: src
+      to: cpp
+      label: temp_primary
+    - from: macro
+      to: cpp
+      label: sensor_##name
+    - from: cpp
+      to: out
+      label: sensor_temp_primary
+    steps:
+    - focus:
+      - src
+      - cpp
+      note: Invocation passes parameter token 'temp_primary'
+    - focus:
+      - macro
+      - cpp
+      note: Macro specifies concatenation prefix 'sensor_'
+    - focus:
+      - cpp
+      - out
+      note: Preprocessor emits concatenated identifier into compiler stream
+  example:
+    lang: text
+    code: '$ rg -n "temp_primary" .
+
+      ./src/main.c:6:REGISTER_SENSOR(temp_primary, 101);
+
+      ./src/main.c:17:    printf("sensor_poll returned %d (registered: %s)
+
+      ", val, sensor_temp_primary.name);
+
+
+      $ rg -n -C 2 "sanitize_sensor_id" src/sensor.c
+
+      1-#include "../include/sensor_dev.h"
+
+      2-
+
+      3:static int sanitize_sensor_id(int id)
+
+      4-{
+
+      5-    if (id < 0 || id > 1024) {'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-05 & E-T0B-06: Line 6 of main.c defines the sensor
+      via the macro REGISTER_SENSOR(temp_primary, ...), while line 17 accesses the
+      concatenated identifier sensor_temp_primary.'
+  checks:
+  - id: b3-c1
+    kind: predict
+    concept: macro-token-concatenation-trap
+    q: A driver macro defines `#define DEFINE_DEV(name) struct dev dev_##name;`. The
+      source contains `DEFINE_DEV(eth0);`. What variable name does the compiler generate?
+    choices:
+    - name_eth0
+    - eth0
+    - dev_eth0
+    answer: 2
+    why: 'Option C is correct: the ## operator concatenates ''dev_'' and the argument
+      ''eth0'' into ''dev_eth0''. Option A uses the parameter name. Option B omits
+      the prefix.'
+  - id: b3-c2
+    kind: mcq
+    concept: ripgrep-context-flag
+    q: Which ripgrep flag displays 3 lines before and 3 lines after every match?
+    choices:
+    - -C 3
+    - -L 3
+    - -w 3
+    answer: 0
+    why: 'Option A is correct: -C (or --context) specifies surrounding context lines.
+      Option B does not exist in rg. Option C specifies word matching.'
+  - id: b3-c3
+    kind: why-fails
+    concept: macro-search-trap-diagnosis
+    q: You search a kernel tree with `rg -w 'sys_read'` and find declarations and
+      call sites, but no `int sys_read(...)` definition in `fs/read_write.c`. What
+      is the most likely reason?
+    choices:
+    - The function is implemented directly in assembly language in the bootloader
+    - The function definition is wrapped by a macro like SYSCALL_DEFINE3(read, ...)
+    - The compiler generates system calls at runtime without requiring C source
+    answer: 1
+    why: 'Option B is correct: Linux wraps system calls in macros like SYSCALL_DEFINE3(read,
+      ...) to automate parameter validation and architecture calling conventions.
+      Option A is false for read(). Option C is impossible.'
+  - id: b3-c4
+    kind: fillblank
+    concept: macro-token-pasting-operator
+    q: 'Fill in the C preprocessor token concatenation operator used to join two tokens
+      into one identifier:'
+    code: '#define MAKE_FN(prefix, name) void prefix____name(void)'
+    answer_text: '##'
+    why: The double hash (##) is the standard C preprocessor token pasting operator
+      that merges adjacent tokens into a single valid identifier.
+  - id: b3-c5
+    kind: choose-better
+    concept: search-strategy-macro-symbols
+    q: You need to locate the definition of `sensor_temp_primary`, but searching for
+      the full symbol yields only call sites. What is the best next step?
+    choices:
+    - Run git clean -fdx to remove stale preprocessor object caches from disk
+    - Recompile the kernel with -O0 to prevent the compiler from inlining the variable
+    - Search for the distinctive sub-string 'temp_primary' to reveal macro instantiation
+      sites
+    answer: 2
+    why: 'Option C is correct: when token pasting is suspected, searching for the
+      unique argument token (''temp_primary'') finds the macro call site that produced
+      the symbol. Options B and C have no effect on source text.'
+- id: b4
+  type: algorithm
+  title: 'Definition Hunting: Leaping from Call Site to Canonical Source'
+  explain_md: "### 1. Frame the Problem\nYou are reading a driver and encounter a\
+    \ call site like `sensor_init(&dev, 10)`. You need to read its actual implementation.\
+    \ Running an unanchored search floods your screen with 40 prototypes and callers.\
+    \ How do you leap directly from the call site to the exact line where code statements\
+    \ live?\n\n### 2. The Notional Machine\nThe 3-Step Definition Hunting Pipeline:\n\
+    1. **Anchor to Column Zero (`^`)**: In standard C coding conventions, canonical\
+    \ function definitions begin at column 0 with the return type and function name.\
+    \ Call sites inside functions are indented by tabs or spaces. The regex anchor\
+    \ `^` eliminates all indented callers:\n   `rg '^int sensor_init\\('`\n2. **Filter\
+    \ Out Header Prototypes (`-g '*.c'`)**: Prototypes live in `.h`; canonical executable\
+    \ code lives in `.c`. Restricting with `-g '*.c'` discards header contracts.\n\
+    3. **Line Numbering (`-n`)**: Displays 1-based line coordinates so you can jump\
+    \ directly in your editor (`vim +line file`).\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at Evidence `E-T0B-07`:\n```text\n$ rg -n -g 'src/*.c' '^int sensor_init\\\
+    (' .\nsrc/sensor.c:11:int sensor_init(struct sensor_device *dev, int id)\n```\n\
+    Notice what happened:\n- Anchoring with `^int` discarded indented call sites in\
+    \ `main.c`.\n- Globbing `-g 'src/*.c'` discarded prototypes in `include/sensor_dev.h`.\n\
+    - Exactly one line was returned: the canonical definition in `src/sensor.c` at\
+    \ line 11.\n\n### 4. The Failure Mode & Boundary\nGNU-style C declarations place\
+    \ the return type on its own line above the function name:\n```c\nint\nsensor_init(struct\
+    \ sensor_device *dev, int id)\n```\nIn this case, anchoring to `^int sensor_init`\
+    \ will miss. You must anchor on the function name itself (`^sensor_init\\(`) or\
+    \ use ripgrep multiline matching (`-U`).\n\n### 5. The Compressed Mental Axiom\n\
+    *Anchor to column zero and filter by .c to leap from caller to canonical source.*"
+  diagram:
+    kind: flow
+    caption: Definition Hunting Filter Pipeline
+    nodes:
+    - id: query
+      label: Raw Search Query
+      shape: round
+    - id: anchor
+      label: Line Anchor ^int
+      shape: decision
+    - id: glob
+      label: Path Glob -g *.c
+      shape: decision
+    - id: canon
+      label: Canonical Source
+      shape: box
+    edges:
+    - from: query
+      to: anchor
+      label: filter calls
+    - from: anchor
+      to: glob
+      label: filter headers
+    - from: glob
+      to: canon
+      label: isolated
+    steps:
+    - focus:
+      - query
+      - anchor
+      note: Anchor ^ removes indented call sites
+    - focus:
+      - anchor
+      - glob
+      note: Glob -g '*.c' discards header prototypes
+    - focus:
+      - glob
+      - canon
+      note: Exact canonical definition isolated in src/
+  example:
+    lang: text
+    code: '$ rg -n "^int sensor_init\(" .
+
+      ./src/sensor.c:11:int sensor_init(struct sensor_device *dev, int id)
+
+      ./include/sensor_dev.h:12:int sensor_init(struct sensor_device *dev, int id);
+
+
+      $ rg -n -g ''src/*.c'' "^int sensor_init\(" .
+
+      ./src/sensor.c:11:int sensor_init(struct sensor_device *dev, int id)'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-07: Anchoring with ''^int sensor_init('' immediately
+      discarded all indented call sites. Adding -g ''src/*.c'' discarded header prototypes,
+      isolating the canonical definition.'
+  checks:
+  - id: b4-c1
+    kind: predict
+    concept: anchor-regex-filtering
+    q: Which of the following lines will match the regex pattern `^void schedule\(`?
+    choices:
+    - void schedule(void) { /* kernel scheduler entry */
+    - '    void schedule(void); /* indented inside a struct */'
+    - if (need_resched) schedule(); /* call site */
+    answer: 0
+    why: 'Option A is correct: the caret (^) requires the match to start at the absolute
+      beginning of the line (column 0). Option B has leading spaces. Option C begins
+      with ''if''.'
+  - id: b4-c2
+    kind: order
+    concept: definition-hunting-workflow
+    q: 'Order the 4 filtering steps from broad initial query to exact canonical definition:'
+    lines:
+    - 'Run an initial word-bounded query: rg -w ''function_name'''
+    - Observe call sites and note the return type and parameter shape
+    - 'Anchor search to column 0: rg ''^return_type function_name\('''
+    - Restrict target paths to implementation files with -g '*.c'
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: The expert workflow begins with understanding the symbol footprint, noting
+      the signature, applying line start anchors, and filtering by implementation
+      file extension.
+  - id: b4-c3
+    kind: why-fails
+    concept: regex-special-character-escaping
+    q: A developer runs `rg -n ^int init_module(void) .` without quotes or backslashes.
+      Why does the command fail or match unexpectedly?
+    choices:
+    - Ripgrep refuses to search for functions named init_module due to kernel licensing
+    - Parentheses are shell and regex metacharacters that require escaping or quoting
+    - The caret ^ operator is only valid in sed and awk, not in ripgrep regex syntax
+    answer: 1
+    why: 'Option B is correct: unquoted parentheses trigger subshell execution in
+      bash, and in regex they denote capture groups. Quotes and escaping (`"^int init_module\(void\)"`)
+      are mandatory.'
+  - id: b4-c4
+    kind: choose-better
+    concept: isolating-definitions-in-kernel
+    q: In the Linux kernel, function definitions frequently place the return type
+      on the line above the function name. What regex anchors directly to the function
+      name at column 0?
+    choices:
+    - rg '.*func_name.*' .
+    - rg 'func_name;' -g '*.h'
+    - rg '^func_name\(' -g '*.c'
+    answer: 2
+    why: 'Option C is correct: anchoring the function name directly at column 0 matches
+      definitions where the return type was placed on the preceding line. Option B
+      finds prototypes. Option A is unanchored and noisy.'
+  - id: b4-c5
+    kind: predict
+    concept: interleaved-make-rebuild-prediction
+    q: 'Recall from chapter T0A: if you edit `src/sensor.c` to fix a bug in `sensor_init`,
+      what will running `make` do?'
+    choices:
+    - Recompile only src/sensor.o and re-link the final executable
+    - Recompile all files in the project from scratch unconditionally
+    - Print 'app is up to date' because Makefile mtime did not change
+    answer: 0
+    why: 'Option A is correct: Make compares mtimes and only recompiles the object
+      file whose source file is newer than the target, followed by re-linking.'
+    from_chapter: T0A
+    from_block: b5
+- id: b5
+  type: algorithm
+  title: 'Caller Enumeration: Locating True Invocations Across Subsystems'
+  explain_md: "### 1. Frame the Problem\nBefore refactoring or fixing a bug in a function\
+    \ like `poll()`, you must identify every single place in the operating system\
+    \ that calls it. But `poll` is also a common struct member (`dev->poll`), a typedef,\
+    \ and a local variable name. How do you enumerate true function invocations while\
+    \ filtering out struct members?\n\n### 2. The Notional Machine\nSyntactic discrimination\
+    \ in systems C:\n1. **Function Invocations**: True function calls are followed\
+    \ by an opening parenthesis:\n   `rg -w 'sensor_poll\\('`\n2. **Struct Member\
+    \ Dereferences**: Member accesses use arrow (`->`) or dot (`.`) operators:\n \
+    \  `dev->id` or `dev.id`\n3. **The Leading Dash Flag Trap**:\n   In UNIX CLI design,\
+    \ arguments starting with a hyphen (like `->id`) are parsed as option flags. Running\
+    \ `rg \"->id\"` triggers `error: unexpected argument '->id' found`.\n   You **must**\
+    \ pass `-e` (`rg -e '->id'`) or use the double-dash argument separator (`rg --\
+    \ '->id'`).\n\n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0B-08`\
+    \ and `E-T0B-09`:\n```text\n$ rg -n 'sensor_poll\\(' .\nsrc/bus.c:14:    int val\
+    \ = sensor_poll(dev);\n$ rg -n -e '->id' src/\nsrc/sensor.c:16:    if (dev->id\
+    \ < 0) return -1;\nsrc/sensor.c:17:    dev->id = sanitize_sensor_id(dev->id);\n\
+    ```\n- Appending `\\(` isolated the true function caller in `bus.c`.\n- Using\
+    \ `-e '->id'` cleanly extracted structure member mutations in `sensor.c` without\
+    \ CLI syntax errors.\n\n### 4. The Failure Mode & Boundary\nOmitting `-e` when\
+    \ searching for pointer arrow dereferences causes ripgrep to fail with CLI option\
+    \ parsing errors.\n\n### 5. The Compressed Mental Axiom\n*Use opening parentheses\
+    \ to isolate function calls, and -e to escape pointer arrows.*"
+  diagram:
+    kind: flow
+    caption: Caller Enumeration vs Member Access
+    nodes:
+    - id: sym
+      label: Symbol 'poll'
+      shape: round
+    - id: paren
+      label: Invocation '('
+      shape: decision
+    - id: call
+      label: True Function Call
+      shape: box
+    - id: member
+      label: Struct Member ->id
+      shape: box
+    edges:
+    - from: sym
+      to: paren
+      label: syntax check
+    - from: paren
+      to: call
+      label: sensor_poll()
+    - from: sym
+      to: member
+      label: arrow operator
+    steps:
+    - focus:
+      - sym
+      - paren
+      note: Filter queries check for trailing parenthesis
+    - focus:
+      - paren
+      - call
+      note: Function invocations isolated across callers
+    - focus:
+      - sym
+      - member
+      note: Pointer arrow access (-e '->id') separated from function calls
+  example:
+    lang: text
+    code: '$ rg -n "sensor_poll\(" src/
+
+      src/bus.c:11:    return sensor_poll(dev);
+
+      src/sensor.c:25:int sensor_poll(struct sensor_device *dev)
+
+
+      $ rg -n -e "->id" src/
+
+      src/sensor.c:20:    dev->id = valid;'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-08 & E-T0B-09: Searching for ''sensor_poll('' isolates
+      the true caller in bus.c. Searching for members with ''->id'' requires -e so
+      ripgrep does not treat leading dashes as flags.'
+  checks:
+  - id: b5-c1
+    kind: why-fails
+    concept: leading-dash-cli-flag-parsing
+    q: 'A developer runs `rg -n "->status" src/` to find member accesses. Ripgrep
+      exits with error `error: unexpected argument ''->status'' found`. Why did this
+      happen?'
+    choices:
+    - Ripgrep does not support searching for arrow operators in C source files
+    - Ripgrep interprets the leading dash in '->' as a command-line option flag
+    - The shell automatically strips all arrows from strings before passing to argv
+    answer: 1
+    why: 'Option B is correct: Unix CLI tools parse tokens starting with ''-'' as
+      options. To treat ''->status'' as a pattern, pass `-e "->status"` or `-- "->status"`.'
+  - id: b5-c2
+    kind: predict
+    concept: caller-enumeration-filtering
+    q: You run `rg -n "sensor_poll\(" src/ -g '!src/sensor.c'`. Given the evidence
+      files, what will ripgrep output?
+    choices:
+    - No output, because the pattern was excluded by the glob filter
+    - src/sensor.c:25:int sensor_poll(struct sensor_device *dev)
+    - 'src/bus.c:11:    return sensor_poll(dev);'
+    answer: 2
+    why: 'Option C is correct: appending ''\('' filters for invocations, and `-g ''!src/sensor.c''`
+      excludes the definition in sensor.c, leaving only the external caller in bus.c.'
+  - id: b5-c3
+    kind: choose-better
+    concept: finding-all-callers-accurately
+    q: You are auditing all callers of `alloc_pages`. Which search pattern best separates
+      true function calls from variable names like `alloc_pages_flags`?
+    choices:
+    - rg -w 'alloc_pages\('
+    - rg 'alloc_pages'
+    - rg 'alloc_pages.*'
+    answer: 0
+    why: 'Option A is correct: combining word boundaries (-w) with an opening parenthesis
+      (''\('') ensures only direct function calls are matched. Option B and C match
+      longer identifiers.'
+  - id: b5-c4
+    kind: fillblank
+    concept: posix-double-dash-terminator
+    q: 'Fill in the standard POSIX option terminator that tells commands that all
+      subsequent arguments are operands rather than flags:'
+    code: $ rg -n ____ "->member" src/
+    answer_text: --
+    why: The double hyphen '--' signifies the end of command options in POSIX and
+      GNU command-line tools.
+  - id: b5-c5
+    kind: predict
+    concept: interleaved-file-descriptor-telemetry
+    q: 'Recall from chapter T0A: when ripgrep outputs matching lines to the terminal,
+      which standard file descriptor does it write to?'
+    choices:
+    - Descriptor 0 (stdin)
+    - Descriptor 1 (stdout)
+    - Descriptor 2 (stderr)
+    answer: 1
+    why: 'Option B is correct: normal search hit output is stream data sent to stdout
+      (descriptor 1). Diagnostics and errors go to stderr (descriptor 2).'
+    from_chapter: T0A
+    from_block: b2
+- id: b6
+  type: model
+  title: 'The Git History DAG: Commits, Trees, and Content-Addressed Storage'
+  explain_md: '### 1. Frame the Problem
+
+    How does Git track the entire 30-year evolution of the Linux kernel without slowing
+    down or corrupting data? Understanding Git''s internal object store transforms
+    your ability to do historical archaeology.
+
+
+    ### 2. The Notional Machine
+
+    Git is a content-addressed Directed Acyclic Graph (DAG) built on four primitive
+    object types:
+
+
+    1. **Blob**: Raw uncompressed file bytes. Contains zero metadata (no filename,
+    no permissions).
+
+    2. **Tree**: A directory listing mapping file mode permissions and filenames to
+    their corresponding blob or subtree SHA hashes.
+
+    3. **Commit**: A snapshot object pointing to a root Tree, containing one or more
+    parent commit hashes, author/committer timestamps, and the commit log message.
+
+    4. **Tag**: An annotated named reference pointing to a specific commit.
+
+
+    Every object is cryptographically named by the SHA hash of its header plus content.
+    Commits link to their parents, forming an immutable historical DAG.
+
+
+    ### 3. Source-Grounded Walkthrough
+
+    Look at Evidence `E-T0B-10`:
+
+    ```text
+
+    $ git cat-file -p HEAD
+
+    tree 3a9f018e4271810b42938a169b5d2780e92f2482
+
+    parent b41289c091f37e40293847a98210928301928301
+
+    author Linus Torvalds <torvalds@linux-foundation.org> 1700000000 +0000
+
+    committer Linus Torvalds <torvalds@linux-foundation.org> 1700000000 +0000
+
+
+    Linux 0.11 release
+
+    ```
+
+    Notice the anatomy:
+
+    - `tree`: Points to the root directory snapshot.
+
+    - `parent`: Cryptographic link to the preceding commit in the DAG.
+
+    - Metadata and commit message.
+
+
+    ### 4. The Failure Mode & Boundary
+
+    Attempting to rewrite history: changing even one character in a historical commit
+    message changes that commit''s SHA hash, which changes every child commit''s parent
+    hash, creating a completely divergent DAG.
+
+
+    ### 5. The Compressed Mental Axiom
+
+    *Git is not a diff tracker; it is a cryptographic DAG of tree snapshots.*'
+  diagram:
+    kind: flow
+    caption: Content-Addressed Git Object DAG
+    nodes:
+    - id: head
+      label: HEAD ref
+      shape: round
+    - id: commit
+      label: Commit Object
+      shape: box
+    - id: parent
+      label: Parent Commit
+      shape: box
+    - id: tree
+      label: Tree Object
+      shape: box
+    - id: blob
+      label: Blob sensor.c
+      shape: box
+    edges:
+    - from: head
+      to: commit
+      label: points to
+    - from: commit
+      to: parent
+      label: ancestor
+    - from: commit
+      to: tree
+      label: snapshot
+    - from: tree
+      to: blob
+      label: file bytes
+    steps:
+    - focus:
+      - head
+      - commit
+      note: Branch HEAD resolves to current commit object
+    - focus:
+      - commit
+      - parent
+      note: Parent SHA link connects historical DAG
+    - focus:
+      - commit
+      - tree
+      - blob
+      note: Root tree indexes content-addressed file blobs
+  viz:
+    kind: ascii-memory
+    caption: Git Content-Addressed Object DAG
+    steps:
+    - '[Step 1: Commit Object Points to Root Tree and Parent] · Regs: HEAD ref=refs/heads/master,
+      Commit SHA=f71d88d · State: Commit Object: tree 3a9f018... | parent b41289c...
+      | author Linus · (Commit binds directory tree to author and historical lineage)'
+    - '[Step 2: Tree Object Indexes File Blobs] · Regs: Tree SHA=3a9f018, Entries=sensor.c,
+      main.c · State: 100644 blob e69de29: sensor.c (mapped to file payload blob)
+      | 100644 blob b80de3a: main.c · (Directory structure maps filenames to content-addressed
+      blobs)'
+  example:
+    lang: text
+    code: '$ git cat-file -p HEAD
+
+      tree 7c34487d17f2abd615f25a2e969847c5372aaa55
+
+      parent bf07b1ec97d8cefbb11c8ea795d5c693fd0cff17
+
+      author Kernel Learner <learner@kernel.org> 1795095569 +0530
+
+      committer Kernel Learner <learner@kernel.org> 1795095569 +0530
+
+
+      Refactor sensor ID validation into sanitize_sensor_id helper'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-10: Running git cat-file -p HEAD inspects the raw
+      commit object, revealing its root tree hash, parent commit hash, author info,
+      and commit message.'
+  checks:
+  - id: b6-c1
+    kind: predict
+    concept: git-commit-object-anatomy
+    q: Examine the output of `git cat-file -p HEAD`. What does the `tree` hash represent?
+    code: 'tree 7c34487d17f2abd615f25a2e969847c5372aaa55
+
+      parent bf07b1ec97d8cefbb11c8ea795d5c693fd0cff17
+
+      author Kernel Learner <learner@kernel.org> 1795095569 +0530
+
+      committer Kernel Learner <learner@kernel.org> 1795095569 +0530
+
+
+      Refactor sensor ID validation into sanitize_sensor_id helper'
+    choices:
+    - The branch tracking pointer stored in the .git/refs directory
+    - The diff patch showing lines added and removed in this revision
+    - A snapshot of the entire repository directory hierarchy at this commit
+    answer: 2
+    why: 'Option C is correct: a tree object represents a directory state, mapping
+      names to blobs and subtrees. Option B describes diff output. Option A describes
+      branch refs.'
+  - id: b6-c2
+    kind: why-fails
+    concept: content-addressed-immutability
+    q: Why is it mathematically impossible to modify a commit's author or date without
+      changing its commit hash and all descendant commits?
+    choices:
+    - Commit hashes are cryptographic hashes computed directly over the commit's content
+      and parent links
+    - The Git server strictly rejects any timestamp changes via mandatory network
+      policy
+    - Operating system filesystem timestamps permanently lock commit objects once
+      written
+    answer: 0
+    why: 'Option A is correct: Git uses content-addressing (SHA-1/SHA-256). Any alteration
+      to author, timestamp, tree, or parent hash changes the resulting hash, cascading
+      down all descendant commits.'
+  - id: b6-c3
+    kind: choose-better
+    concept: inspecting-raw-git-objects
+    q: Which command directly prints the contents of any Git object (commit, tree,
+      or blob) formatted for human reading?
+    choices:
+    - git log --raw <object-hash>
+    - git cat-file -p <object-hash>
+    - git show --no-patch <object-hash>
+    answer: 1
+    why: 'Option B is correct: `git cat-file -p` (pretty-print) unpacks and displays
+      the raw formatted contents of any object in the Git object database.'
+  - id: b6-c4
+    kind: fillblank
+    concept: git-object-types
+    q: 'Fill in the Git object type responsible for storing raw file byte contents
+      without path or mode metadata:'
+    code: 'Git Object Types: commit, tree, tag, ____'
+    answer_text: blob
+    why: In Git's internal object store, file contents are saved as 'blob' objects.
+  - id: b6-c5
+    kind: order
+    concept: git-dag-resolution-order
+    q: 'Order the 3 Git objects traversed when resolving a file''s content from HEAD:'
+    lines:
+    - HEAD points to a commit object containing author info and tree hash
+    - The commit points to a root tree object mapping directories and filenames
+    - The tree entry points to the blob object containing the raw file contents
+    answer_order:
+    - 0
+    - 1
+    - 2
+    why: Resolution traverses HEAD -> Commit -> Tree -> Blob.
+- id: b7
+  type: syntax
+  title: 'Git Forensic Inspection: Pickaxe (-S), Function Evolution (-L), and Blame'
+  explain_md: "### 1. Frame the Problem\nYou encounter a complex function in a driver\
+    \ and need to know: *Why does this logic exist, and what bug was it written to\
+    \ fix?* Reading commit messages with `git log` is hopeless if the commit message\
+    \ does not mention the function name.\n\n### 2. The Notional Machine\nGit provides\
+    \ three forensic inspection commands:\n\n1. **The Pickaxe (`git log -S \"<symbol>\"\
+    ` / `-G \"<regex>\"`)**:\n   Scans the actual patch diffs of every commit in history.\
+    \ It returns only commits where the occurrence count of `<symbol>` was increased\
+    \ or decreased.\n2. **Function Evolution (`git log -L :<funcname>:<filepath>`)**:\n\
+    \   Traces the chronological line-by-line diff history of a single C function\
+    \ across its entire existence.\n3. **Line Attribution (`git blame -w -M <filepath>`)**:\n\
+    \   Annotates every line of a file with the author, timestamp, and commit hash.\n\
+    \   - `-w`: Ignores whitespace changes.\n   - `-M`: Detects lines moved or copied\
+    \ within the file.\n\n### 3. Source-Grounded Walkthrough\nLook at Evidence `E-T0B-11`\
+    \ and `E-T0B-13`:\n```text\n$ git log -S \"sanitize_sensor_id\" --oneline\n2689035\
+    \ fix: validate sensor ID bounds before hardware dispatch\n$ git show 2689035\n\
+    commit 2689035...\nAuthor: Linus Torvalds ...\n...\n+static int sanitize_sensor_id(int\
+    \ id) {\n+    if (id < 0) return 0;\n+    return id & 0xff;\n+}\n```\nThe pickaxe\
+    \ (`-S`) found the commit in less than 200 milliseconds, exposing the original\
+    \ commit message and full diff context.\n\n### 4. The Failure Mode & Boundary\n\
+    Using `git log --grep=\"sanitize\"`: if the developer wrote `\"fix bounds bug\"\
+    ` without typing the function name in the commit message, `--grep` returns zero\
+    \ commits! The pickaxe (`-S`) queries the actual code diffs.\n\n### 5. The Compressed\
+    \ Mental Axiom\n*When commit logs are silent, the pickaxe finds the commit in\
+    \ the diff.*"
+  diagram:
+    kind: flow
+    caption: Forensic Inspection Routing Decision Tree
+    nodes:
+    - id: bug
+      label: Bug Investigation
+      shape: round
+    - id: pickaxe
+      label: git log -S symbol
+      shape: box
+    - id: func
+      label: git log -L :fn:file
+      shape: box
+    - id: blame
+      label: git blame -w -M
+      shape: box
+    edges:
+    - from: bug
+      to: pickaxe
+      label: when added/deleted
+    - from: bug
+      to: func
+      label: function evolution
+    - from: bug
+      to: blame
+      label: line-by-line author
+    steps:
+    - focus:
+      - bug
+      - pickaxe
+      note: Pickaxe finds commits changing symbol occurrence count
+    - focus:
+      - bug
+      - func
+      note: Function log traces diffs across function lifecycle
+    - focus:
+      - bug
+      - blame
+      note: Blame attributes current lines ignoring formatting noise
+  example:
+    lang: text
+    code: '$ git log -S "sanitize_sensor_id" --oneline
+
+      2689035 Refactor sensor ID validation into sanitize_sensor_id helper
+
+
+      $ git blame -n -L 16,17 src/sensor.c
+
+      2689035 16 (Kernel Learner 2026-11-19 19:09:29 +0530 16)     int valid = sanitize_sensor_id(id);
+
+      2689035 17 (Kernel Learner 2026-11-19 19:09:29 +0530 17)     if (valid < 0)
+      {'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-11 & E-T0B-13: The pickaxe immediately isolated commit
+      2689035 as introducing sanitize_sensor_id, and git blame confirmed lines 16-17
+      were authored in that commit.'
+  checks:
+  - id: b7-c1
+    kind: predict
+    concept: git-pickaxe-behavior
+    q: What does the command `git log -S "register_netdev" --oneline` display?
+    choices:
+    - All commits whose commit log messages contain the string register_netdev
+    - All commits that modified a file named register_netdev.c on disk
+    - All commits whose diffs added or removed occurrences of register_netdev
+    answer: 2
+    why: 'Option C is correct: the -S pickaxe scans diffs and matches commits that
+      altered the count of the specified symbol. Option A describes `git log --grep`.'
+  - id: b7-c2
+    kind: mcq
+    concept: git-blame-ignore-whitespace
+    q: Which `git blame` flag prevents formatting edits (such as converting tabs to
+      spaces) from overwriting the original author attribution?
+    choices:
+    - -w
+    - -f
+    - -s
+    answer: 0
+    why: 'Option A is correct: `-w` ignores whitespace when comparing lines. Option
+      B and C have other meanings in git.'
+  - id: b7-c3
+    kind: choose-better
+    concept: tracing-function-history
+    q: You want to inspect how a complex function `do_fork()` changed over the last
+      two years without seeing diffs from other functions in the same file. Which
+      command is best?
+    choices:
+    - git log -p kernel/fork.c
+    - git log -L :do_fork:kernel/fork.c
+    - git blame kernel/fork.c
+    answer: 1
+    why: 'Option B is correct: `git log -L :<func>:<file>` traces the historical evolution
+      of that specific function block. Option A dumps diffs for the entire file. Option
+      C only shows current HEAD.'
+  - id: b7-c4
+    kind: fillblank
+    concept: git-pickaxe-flag
+    q: 'Fill in the git log flag that triggers the pickaxe search for diff symbol
+      occurrences:'
+    code: $ git log ____ "alloc_skb" --oneline
+    answer_text: -S
+    why: The -S flag activates Git's pickaxe search.
+  - id: b7-c5
+    kind: predict
+    concept: interleaved-git-status-staged
+    q: 'Recall from chapter T0A: if you run `git add src/sensor.c` after modifying
+      it, what does `git status --short` display?'
+    choices:
+    - ?? src/sensor.c (untracked file)
+    - ' M src/sensor.c (unstaged in worktree)'
+    - M  src/sensor.c (staged in index)
+    answer: 2
+    why: 'Option C is correct: the first column indicates index (staged) state; ''M
+      '' denotes a staged modification. '' M'' denotes an unstaged modification.'
+    from_chapter: T0A
+    from_block: b8
+- id: b8
+  type: algorithm
+  title: 'Historical Archaeology: Tracing Symbols Back to Kernel Roots'
+  explain_md: '### 1. Frame the Problem
+
+    When studying operating systems, you will constantly wonder: *When was this design
+    choice made? Did this constant exist in the very first release?* You need a reproducible
+    procedure to trace symbols across decades of history.
+
+
+    ### 2. The Notional Machine
+
+    The 4-Step Historical Archaeology Procedure:
+
+    1. **Identify the Pinned Repository & Tag**: Target the historical tree (e.g.
+    `sources/early-history.git` at tag `0.11`).
+
+    2. **Pickaxe for Inception**: Run `git log -S "<SYMBOL>" --oneline <tag>`. This
+    lists commits modifying the symbol backward from that release.
+
+    3. **Inspect Commit Metadata**: Run `git show <commit-hash>` to read the original
+    developer''s commit message, author notes, and full diff context.
+
+    4. **Verify Cross-Version Continuity**: Check if the symbol existed in earlier
+    releases (e.g. `v0.10` or the root inception commit `bb441db` in Linux 0.01).
+
+
+    ### 3. Source-Grounded Walkthrough
+
+    Look at Evidence `E-T0B-14`:
+
+    ```text
+
+    $ git log -S "PAGE_SIZE" --oneline 0.11
+
+    fa1ec10 Linux-0.10 release
+
+    bb441db Linux-0.01 release
+
+    $ git show bb441db:include/linux/mm.h | grep PAGE_SIZE
+
+    #define PAGE_SIZE 4096
+
+    ```
+
+    This archaeological trace proves that `PAGE_SIZE` has been defined as 4096 bytes
+    since the very first commit of the Linux kernel in September 1991!
+
+
+    ### 4. The Failure Mode & Boundary
+
+    Querying the uncommitted working tree or mixing modern kernel code with historical
+    releases without verifying tag references.
+
+
+    ### 5. The Compressed Mental Axiom
+
+    *The git history DAG is an unbroken time machine to the mind of the original architect.*'
+  diagram:
+    kind: flow
+    caption: Historical Archaeology Backward Traversal
+    nodes:
+    - id: query
+      label: git log -S constant
+      shape: round
+    - id: tag11
+      label: Release Tag 0.11
+      shape: box
+    - id: tag10
+      label: Release Tag 0.10
+      shape: box
+    - id: tag01
+      label: Linux-0.01 Inception
+      shape: box
+    edges:
+    - from: query
+      to: tag11
+      label: December 1991
+    - from: tag11
+      to: tag10
+      label: November 1991
+    - from: tag10
+      to: tag01
+      label: September 1991
+    steps:
+    - focus:
+      - query
+      - tag11
+      note: Pickaxe query starts at target release tag
+    - focus:
+      - tag11
+      - tag10
+      note: Traverses history DAG across early releases
+    - focus:
+      - tag10
+      - tag01
+      note: Identifies inception commit bb441db in Linux 0.01
+  example:
+    lang: text
+    code: '$ git -C sources/early-history.git log -S "PAGE_SIZE" --oneline 0.11
+
+      b65b60f4acd (tag: 0.11) Linux-0.11 (December 8, 1991)
+
+      fa1ec1000cf (tag: 0.10) Linux 0.10 (November 11, 1991 ???)
+
+      bb441db1a90 Linux-0.01 (September 17, 1991)'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-14: Historical archaeology in early-history.git reveals
+      that PAGE_SIZE has existed since the very first commit bb441db (Linux 0.01 in
+      September 1991).'
+  checks:
+  - id: b8-c1
+    kind: predict
+    concept: historical-pickaxe-resolution
+    q: You run `git log -S 'PAGE_SIZE' --oneline 0.11` in `sources/early-history.git`.
+      The oldest commit listed is `bb441db Linux-0.01`. What does this prove?
+    choices:
+    - PAGE_SIZE was introduced in the very first recorded Linux commit (0.01)
+    - PAGE_SIZE was deleted in Linux 0.01 and re-added in Linux 0.11
+    - Linux 0.01 did not support paging or virtual memory architectures
+    answer: 0
+    why: 'Option A is correct: the oldest commit returned by the pickaxe shows the
+      symbol was present in the initial 0.01 repository snapshot. Options B and C
+      contradict the evidence.'
+  - id: b8-c2
+    kind: order
+    concept: archaeology-investigation-steps
+    q: 'Order the 4 steps to investigate the origin of a mysterious constant in Linux
+      0.11:'
+    lines:
+    - Identify the symbol name in the 0.11 source code tree
+    - Execute git log -S <symbol> --oneline 0.11 in early-history.git
+    - Select the earliest commit introducing the symbol from the log
+    - Run git show <commit> to inspect the original diff and commit message
+    answer_order:
+    - 0
+    - 1
+    - 2
+    - 3
+    why: The forensic order moves from symbol identification -> pickaxe search ->
+      earliest commit selection -> diff inspection.
+  - id: b8-c3
+    kind: choose-better
+    concept: inspecting-historical-file-content
+    q: Which git command views the file `include/linux/mm.h` exactly as it existed
+      at tag `0.11` without checking out the branch?
+    choices:
+    - git checkout 0.11 && cat include/linux/mm.h
+    - git show 0.11:include/linux/mm.h
+    - git diff 0.11 include/linux/mm.h
+    answer: 1
+    why: 'Option B is correct: `git show <revision>:<path>` prints historical file
+      contents directly to stdout without mutating your working tree. Option A dirties
+      the workspace. Option C shows a diff.'
+  - id: b8-c4
+    kind: why-fails
+    concept: tag-scope-resolution
+    q: A developer runs `git log -S 'alloc_skb' 0.11` in `early-history.git` and receives
+      zero output. Why did the command produce no results?
+    choices:
+    - The early-history.git tree has corrupted index tables for release 0.11
+    - The -S flag does not work when targeting historical release tags
+    - The networking subsystem and sk_buff did not exist in Linux 0.11
+    answer: 2
+    why: 'Option C is correct: Linux 0.11 had no networking stack (sk_buff appeared
+      later in Linux 0.96/1.0 during Phase B). The pickaxe correctly reported zero
+      occurrences in that revision range.'
+  - id: b8-c5
+    kind: predict
+    concept: interleaved-git-commit-authoring
+    q: 'Recall from chapter T0A: when you create a commit with `git commit -m ''msg''`,
+      what state must modified files be in?'
+    choices:
+    - They must be staged in the Index using git add
+    - They must remain unstaged in the working tree
+    - They must be compiled into executable binary format
+    answer: 0
+    why: 'Option A is correct: Git only commits changes that have been explicitly
+      staged in the Index via `git add`.'
+    from_chapter: T0A
+    from_block: b7
+- id: b9
+  type: design
+  title: 'Navigation Trade-Offs: Raw Search (rg) vs Semantic Indexing (cscope/clangd)'
+  explain_md: "### 1. Frame the Problem\nNo single navigation tool solves every systems\
+    \ problem. Expert developers choose tools based on code scale, indexing cost,\
+    \ and semantic requirements. Should you use ripgrep, cscope, clangd, or git history?\n\
+    \n### 2. The Notional Machine\nThe Three-Tier Navigation Matrix:\n\n1. **Raw Text\
+    \ Streaming (`ripgrep`)**:\n   - *Advantages*: Instant execution; zero index generation\
+    \ required; searches everything including comments, Makefiles, assembly, and linker\
+    \ scripts.\n   - *Trade-offs*: Lexical only; no understanding of C types or variable\
+    \ scopes.\n2. **Semantic Indexing (`cscope` / `clangd` / `ctags`)**:\n   - *Advantages*:\
+    \ Understands C grammar; answers queries like *\"Find all functions called by\
+    \ this function\"* or *\"Find all places where struct member X is assigned\"*.\n\
+    \   - *Trade-offs*: Requires pre-generating an index (`cscope -b -R`); indexes\
+    \ get stale as you edit; fails on macro token concatenations (`##`).\n3. **Historical\
+    \ Revision Tracing (`git log -S`)**:\n   - *Advantages*: Time-dimensional; reveals\
+    \ why code was written and what bug it solved.\n   - *Trade-offs*: Only queries\
+    \ committed history, not uncommitted edits.\n\n### 3. Source-Grounded Walkthrough\n\
+    Look at Evidence `E-T0B-15`:\n```text\n$ cscope -b -R\n$ ls -l cscope.out\n-rw-r--r--\
+    \ 1 user user 16384 Nov 19 13:48 cscope.out\n```\nGenerating `cscope.out` built\
+    \ an inverted index of all C symbols, enabling instant queries for function callers\
+    \ and struct member assignments without re-scanning files.\n\n### 4. The Failure\
+    \ Mode & Boundary\nUsing a semantic index after editing files without updating\
+    \ the index: `cscope` will point to stale line numbers and missing symbols.\n\n\
+    ### 5. The Compressed Mental Axiom\n*Use rg for raw exploration and macros; use\
+    \ cscope/clangd for call graphs; use git pickaxe for historical rationale.*"
+  diagram:
+    kind: flow
+    caption: Navigation Tool Selection Matrix
+    nodes:
+    - id: task
+      label: Navigation Task
+      shape: round
+    - id: rg
+      label: ripgrep (rg)
+      shape: box
+    - id: cscope
+      label: cscope / clangd
+      shape: box
+    - id: git
+      label: git log -S
+      shape: box
+    edges:
+    - from: task
+      to: rg
+      label: unindexed / text
+    - from: task
+      to: cscope
+      label: C call graphs
+    - from: task
+      to: git
+      label: historical rationale
+    steps:
+    - focus:
+      - task
+      - rg
+      note: Use ripgrep for instant scanning of all file types
+    - focus:
+      - task
+      - cscope
+      note: Use cscope for C grammar and symbol callers
+    - focus:
+      - task
+      - git
+      note: Use git pickaxe to understand why code was introduced
+  example:
+    lang: text
+    code: '$ cscope -b -R
+
+      $ ls -la cscope.out
+
+      -rw-rw-rw- 1 pk pk 103666 Nov 19 19:09 cscope.out'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-15: Generating a cscope database builds an inverted
+      index file (cscope.out) enabling rapid cross-referencing of C symbol callers
+      and callees.'
+  checks:
+  - id: b9-c1
+    kind: choose-better
+    concept: tool-selection-navigation
+    q: You are auditing a newly cloned 1.5GB kernel repository and need to find which
+      file defines a specific Kconfig string `CONFIG_EXT4_FS`. Which tool is fastest?
+    choices:
+    - cscope, because you must build cscope.out before searching any kernel file
+    - ripgrep (rg), because it streams instantly across files without pre-indexing
+    - git log -L, because it inspects every file in the working directory
+    answer: 1
+    why: 'Option B is correct: ripgrep requires zero pre-indexing and searches Kconfig
+      files instantly. Option A wastes time generating an index that doesn''t parse
+      Kconfig files. Option C is for function ranges.'
+  - id: b9-c2
+    kind: eipe
+    concept: cscope-tradeoff-summary
+    q: Which statement best summarizes the primary engineering trade-off of semantic
+      indexing tools like cscope?
+    choices:
+    - They guarantee 100% detection of all preprocessor macro token concatenations
+      without false negatives
+    - They consume zero disk space but require root administrator privileges to inspect
+      C translation units
+    - They provide fast grammatical query resolution at the cost of upfront indexing
+      time and index staleness
+    answer: 2
+    why: 'Option C is correct: semantic indexers speed up complex symbol queries but
+      require upfront compilation/indexing and become stale when source files change.'
+  - id: b9-c3
+    kind: why-fails
+    concept: cscope-non-c-blindspot
+    q: A developer tries to use `cscope` to find where the linker script symbol `_stext`
+      is defined. Why does cscope fail to find it?
+    choices:
+    - Cscope only parses C language source files and ignores linker scripts (.lds)
+    - Linker symbols are encrypted by GCC and hidden from userspace tools
+    - Cscope databases automatically delete any symbol starting with an underscore
+    answer: 0
+    why: 'Option A is correct: cscope is a C-specific parser. Linker scripts, assembly
+      files (unless specifically added), and Makefiles are invisible to it.'
+  - id: b9-c4
+    kind: predict
+    concept: tool-capability-matching
+    q: You need to find which commit introduced a security bug into `kernel/sys.c`
+      three months ago. Which tool is purpose-built for this task?
+    choices:
+    - cscope -b
+    - git log -S
+    - rg -w
+    answer: 1
+    why: 'Option B is correct: `git log -S` (pickaxe) searches commit history diffs
+      to locate the exact commit altering the symbol. Cscope and rg only inspect current
+      working state.'
+  - id: b9-c5
+    kind: predict
+    concept: interleaved-size-elf-sections
+    q: 'Recall from chapter T0A: which ELF binary section contains compiled machine
+      code instructions?'
+    choices:
+    - .bss section
+    - .data section
+    - .text section
+    answer: 2
+    why: 'Option C is correct: the .text section holds executable machine instructions.
+      .data holds initialized globals, and .bss reserves zeroed memory at runtime.'
+    from_chapter: T0A
+    from_block: b7
+- id: b10
+  type: design
+  title: 'Epistemic Limits: Where Static Navigation Ends and Dynamic Tracing Begins'
+  explain_md: "### 1. Frame the Problem\nEvery static navigation tool—whether ripgrep,\
+    \ cscope, or clangd—shares an insurmountable theoretical boundary: they can only\
+    \ read text on disk. They cannot execute the code.\n\nWhat happens when an operating\
+    \ system dispatches calls through function pointer tables at runtime?\n\n### 2.\
+    \ The Notional Machine\nIn the Linux kernel, abstraction is achieved via operation\
+    \ tables:\n```c\nstruct file_operations {\n    ssize_t (*read)(struct file *,\
+    \ char *, size_t, loff_t *);\n    int (*open)(struct inode *, struct file *);\n\
+    };\n```\nWhen userspace executes `read(fd, buf, len)`, the kernel dispatches through\
+    \ `file->f_op->read(...)`.\n\nWhy Static Navigation Fails:\nSearching for callers\
+    \ of `ext4_file_read_iter()` with ripgrep will find zero direct call sites! The\
+    \ function pointer was assigned inside a table: `.read_iter = ext4_file_read_iter`.\
+    \ The call site invokes `->read_iter()`, completely decoupling the caller from\
+    \ the concrete implementation.\n\n### 3. Source-Grounded Walkthrough\nLook at\
+    \ Evidence `E-T0B-16`:\nIn `main.c`:\n```c\nstruct sensor_ops {\n    int (*read_sample)(int\
+    \ id);\n};\n```\nSearching for callers of `temp_read_sample()` with `rg` returns\
+    \ zero invocations! The assignment occurred dynamically: `ops.read_sample = temp_read_sample;`.\
+    \ Static search cannot determine which concrete function will execute at runtime.\n\
+    \n### 4. The Failure Mode & Boundary\nTrying to find runtime driver callbacks\
+    \ using ripgrep. You will find where the struct is declared, but never which concrete\
+    \ driver handled the request.\n\n### 5. The Compressed Mental Axiom\n*When code\
+    \ dispatches through function pointers, static tools go blind; hand off to GDB\
+    \ and ftrace.*"
+  diagram:
+    kind: flow
+    caption: Dynamic Function Pointer Dispatch
+    nodes:
+    - id: user
+      label: userspace read()
+      shape: round
+    - id: vfs
+      label: sys_read trap
+      shape: box
+    - id: fop
+      label: f_op->read table
+      shape: decision
+    - id: ext4
+      label: ext4_read_iter
+      shape: box
+    - id: sock
+      label: sock_read_iter
+      shape: box
+    edges:
+    - from: user
+      to: vfs
+      label: int 0x80
+    - from: vfs
+      to: fop
+      label: dereference
+    - from: fop
+      to: ext4
+      label: if disk file
+    - from: fop
+      to: sock
+      label: if socket fd
+    steps:
+    - focus:
+      - user
+      - vfs
+      note: User syscall transitions from Ring 3 to Ring 0
+    - focus:
+      - vfs
+      - fop
+      note: Kernel resolves open file struct and operations table
+    - focus:
+      - fop
+      - ext4
+      - sock
+      note: Dynamic dispatch branches to concrete driver at runtime
+  example:
+    lang: text
+    code: '$ rg -n "read_sample" .
+
+      ./include/sensor_dev.h:8:    int (*read_sample)(void *buf);
+
+      ./include/sensor_dev.h:21:        .read_sample = 0 \'
+    run_expected: ''
+    explain_md: 'Evidence E-T0B-16: Searching for read_sample reveals only the struct
+      declaration and default macro initialization; static text search cannot identify
+      which dynamic callback will be assigned at runtime.'
+  checks:
+  - id: b10-c1
+    kind: predict
+    concept: indirect-call-site-blindspot
+    q: 'You search a driver codebase for `my_driver_ioctl` and find only one match:
+      `.unlocked_ioctl = my_driver_ioctl`. Why are there no direct call sites?'
+    choices:
+    - The function is called dynamically through the file_operations function pointer
+      table
+    - The function is dead code that was abandoned by the original author
+    - The compiler inlines the function directly into the kernel boot sector
+    answer: 0
+    why: 'Option A is correct: virtual filesystem drivers are invoked via function
+      pointers in operation tables (`filp->f_op->unlocked_ioctl`), so direct call
+      sites do not exist in source text.'
+  - id: b10-c2
+    kind: choose-better
+    concept: dynamic-dispatch-triage
+    q: You need to determine which concrete filesystem function is executed when a
+      specific application calls `write()` on an unknown file descriptor. What is
+      the most reliable approach?
+    choices:
+    - Run ripgrep for 'sys_write' across all files in fs/
+    - Trace the running kernel with ftrace or strace to observe the active handler
+    - Read the C standard library specification for write(2)
+    answer: 1
+    why: 'Option B is correct: dynamic dispatch depends on runtime file descriptor
+      types. Tracing tools (ftrace/strace) observe the actual function executed. Static
+      search cannot predict runtime FD state.'
+  - id: b10-c3
+    kind: eipe
+    concept: epistemic-boundary-summary
+    q: Which operating system principle best describes the boundary between static
+      search tools (rg/cscope) and dynamic observability tools (ftrace/gdb)?
+    choices:
+    - Static tools read binary machine code; dynamic tools read ASCII preprocessor
+      source files
+    - Static tools are exclusively for user applications; dynamic tools are exclusively
+      for hardware device drivers
+    - Static tools examine code structure at rest; dynamic tools observe state, pointers,
+      and execution paths in motion
+    answer: 2
+    why: 'Option C is correct: static tools analyze source text structure at rest,
+      but cannot resolve runtime pointer values, polymorphism, or timing. Dynamic
+      tools observe running state.'
+  - id: b10-c4
+    kind: fillblank
+    concept: c-function-pointer-syntax
+    q: 'Fill in the syntax token that declares a function pointer member named ''read''
+      returning int:'
+    code: struct file_ops { int (____read)(void *buf); };
+    answer_text: '*'
+    why: The asterisk (*) inside parentheses with the identifier declares a function
+      pointer in C.
+  - id: b10-c5
+    kind: predict
+    concept: interleaved-process-isolation
+    q: 'Recall from chapter T0A: when an application executes in userspace, what privilege
+      level (Ring) does the x86 CPU enforce?'
+    choices:
+    - Ring 3 (Userspace unprivileged)
+    - Ring 0 (Kernel supervisor mode)
+    - Ring 1 (Hypervisor mode)
+    answer: 0
+    why: 'Option A is correct: userspace applications execute in Ring 3 with hardware
+      restrictions. Kernel mode executes in Ring 0.'
+    from_chapter: T0A
+    from_block: b1

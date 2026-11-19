@@ -1,0 +1,73 @@
+{
+  "chapter": "T1A",
+  "captured_at": "2026-11-19",
+  "status": "userspace_and_qemu_captured",
+  "source_of_truth": "actual gdb runs on a known local C workload",
+  "environment": "environment.json",
+  "transcript": "transcript.md",
+  "artifacts": [
+    "artifacts/workload/debugme.c"
+  ],
+  "source": [],
+  "evidence": [
+    {
+      "id": "E-T1A-01",
+      "claim": "gdb 18.1 is installed in this environment",
+      "command": "gdb --version",
+      "cwd": "evidence/T1A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md"]
+    },
+    {
+      "id": "E-T1A-02",
+      "claim": "debug build with -g -O0 succeeds and file reports debug_info, not stripped",
+      "command": "gcc -std=c99 -Wall -Wextra -g -O0 debugme.c -o debugme; file debugme",
+      "cwd": "evidence/T1A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/debugme.c"]
+    },
+    {
+      "id": "E-T1A-03",
+      "claim": "breakpoint at socket_probe stops before doubled is initialized; bt, frame, info locals and print observe state; next advances one source line; continue finishes the process",
+      "command": "gdb -q -batch -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'break socket_probe' -ex 'run' -ex 'bt' -ex 'frame 0' -ex 'info locals' -ex 'print fd' -ex 'print doubled' -ex 'next' -ex 'print doubled' -ex 'continue' ./debugme",
+      "cwd": "evidence/T1A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/debugme.c"]
+    },
+    {
+      "id": "E-T1A-04",
+      "claim": "hardware watchpoint on fd triggers on the write and is deleted when fd leaves scope",
+      "command": "gdb -q -batch -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'break main' -ex 'run' -ex 'watch fd' -ex 'continue' -ex 'info locals' -ex 'print fd' -ex 'continue' ./debugme",
+      "cwd": "evidence/T1A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/debugme.c"]
+    },
+    {
+      "id": "E-T1A-05",
+      "claim": "list, next, step, bt and finish follow a userspace call and return value",
+      "command": "gdb -q -batch -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'break main' -ex 'run' -ex 'next' -ex 'step' -ex 'bt' -ex 'finish' -ex 'print result' ./debugme",
+      "cwd": "evidence/T1A/artifacts/workload",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/debugme.c"]
+    },
+    {
+      "id": "E-T1A-06",
+      "claim": "workload hash pins the exact T1A input",
+      "command": "sha256sum evidence/T1A/artifacts/workload/debugme.c",
+      "cwd": "/home/pk/Apps/termlearn/curriculum/linux-kernel",
+      "exit_code": 0,
+      "artifacts": ["transcript.md", "artifacts/workload/debugme.c"]
+    },
+    {
+      "id": "E-T1A-07",
+      "claim": "QEMU -s -S with target remote reaches main in the 0.11 runtime fork; kernel source mapping and first instructions are observed",
+      "command": "qemu-system-i386 -m 16M -boot a -fda Image -hda hdc-0.11.img -s -S -display none & gdb -q -batch -ex 'set debuginfod enabled off' -ex 'set pagination off' -ex 'file tools/system' -ex 'target remote :1234' -ex 'break main' -ex 'continue' -ex 'bt' -ex 'info registers eip esp eax' -ex 'x/8i $eip' -ex 'info breakpoints'",
+      "cwd": "sources/Linux-0.11-fork",
+      "exit_code": 0,
+      "artifacts": ["../A1/transcript.md", "../A1/source/init-main.c.txt"]
+    }
+  ],
+  "open_questions": [
+    "QEMU kernel symbol/source-mapping beyond reaching main is not captured yet."
+  ]
+}

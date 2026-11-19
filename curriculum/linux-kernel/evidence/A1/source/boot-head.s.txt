@@ -1,0 +1,133 @@
+source: 0.11:boot/head.s
+sha256: 31c86b26f2741a2c0a1d71722a340679f74089d1ae62d5c7bde51ccd694eafd1
+commands:
+  git show 0.11:boot/head.s | nl -ba | sed -n '1,80p'
+  git show 0.11:boot/head.s | nl -ba | sed -n '130,145p'
+  git show 0.11:boot/head.s | nl -ba | sed -n '198,225p'
+
+     1	/*
+     2	 *  linux/boot/head.s
+     3	 *
+     4	 *  (C) 1991  Linus Torvalds
+     5	 */
+     6	
+     7	/*
+     8	 *  head.s contains the 32-bit startup code.
+     9	 *
+    10	 * NOTE!!! Startup happens at absolute address 0x00000000, which is also where
+    11	 * the page directory will exist. The startup code will be overwritten by
+    12	 * the page directory.
+    13	 */
+    14	.text
+    15	.globl _idt,_gdt,_pg_dir,_tmp_floppy_area
+    16	_pg_dir:
+    17	startup_32:
+    18		movl $0x10,%eax
+    19		mov %ax,%ds
+    20		mov %ax,%es
+    21		mov %ax,%fs
+    22		mov %ax,%gs
+    23		lss _stack_start,%esp
+    24		call setup_idt
+    25		call setup_gdt
+    26		movl $0x10,%eax		# reload all the segment registers
+    27		mov %ax,%ds		# after changing gdt. CS was already
+    28		mov %ax,%es		# reloaded in 'setup_gdt'
+    29		mov %ax,%fs
+    30		mov %ax,%gs
+    31		lss _stack_start,%esp
+    32		xorl %eax,%eax
+    33	1:	incl %eax		# check that A20 really IS enabled
+    34		movl %eax,0x000000	# loop forever if it isn't
+    35		cmpl %eax,0x100000
+    36		je 1b
+    37	/*
+    38	 * NOTE! 486 should set bit 16, to check for write-protect in supervisor
+    39	 * mode. Then it would be unnecessary with the "verify_area()"-calls.
+    40	 * 486 users probably want to set the NE (#5) bit also, so as to use
+    41	 * int 16 for math errors.
+    42	 */
+    43		movl %cr0,%eax		# check math chip
+    44		andl $0x80000011,%eax	# Save PG,PE,ET
+    45	/* "orl $0x10020,%eax" here for 486 might be good */
+    46		orl $2,%eax		# set MP
+    47		movl %eax,%cr0
+    48		call check_x87
+    49		jmp after_page_tables
+    50	
+    51	/*
+    52	 * We depend on ET to be correct. This checks for 287/387.
+    53	 */
+    54	check_x87:
+    55		fninit
+    56		fstsw %ax
+    57		cmpb $0,%al
+    58		je 1f			/* no coprocessor: have to set bits */
+    59		movl %cr0,%eax
+    60		xorl $6,%eax		/* reset MP, set EM */
+    61		movl %eax,%cr0
+    62		ret
+    63	.align 2
+    64	1:	.byte 0xDB,0xE4		/* fsetpm for 287, ignored by 387 */
+    65		ret
+    66	
+    67	/*
+    68	 *  setup_idt
+    69	 *
+    70	 *  sets up a idt with 256 entries pointing to
+    71	 *  ignore_int, interrupt gates. It then loads
+    72	 *  idt. Everything that wants to install itself
+    73	 *  in the idt-table may do so themselves. Interrupts
+    74	 *  are enabled elsewhere, when we can be relatively
+    75	 *  sure everything is ok. This routine will be over-
+    76	 *  written by the page tables.
+    77	 */
+    78	setup_idt:
+    79		lea ignore_int,%edx
+    80		movl $0x00080000,%eax
+
+   130	 * on a 64kB border.
+   131	 */
+   132	_tmp_floppy_area:
+   133		.fill 1024,1,0
+   134	
+   135	after_page_tables:
+   136		pushl $0		# These are the parameters to main :-)
+   137		pushl $0
+   138		pushl $0
+   139		pushl $L6		# return address for main, if it decides to.
+   140		pushl $_main
+   141		jmp setup_paging
+   142	L6:
+   143		jmp L6			# main should never return here, but
+   144					# just in case, we know what happens.
+   145	
+
+   198	setup_paging:
+   199		movl $1024*5,%ecx		/* 5 pages - pg_dir+4 page tables */
+   200		xorl %eax,%eax
+   201		xorl %edi,%edi			/* pg_dir is at 0x000 */
+   202		cld;rep;stosl
+   203		movl $pg0+7,_pg_dir		/* set present bit/user r/w */
+   204		movl $pg1+7,_pg_dir+4		/*  --------- " " --------- */
+   205		movl $pg2+7,_pg_dir+8		/*  --------- " " --------- */
+   206		movl $pg3+7,_pg_dir+12		/*  --------- " " --------- */
+   207		movl $pg3+4092,%edi
+   208		movl $0xfff007,%eax		/*  16Mb - 4096 + 7 (r/w user,p) */
+   209		std
+   210	1:	stosl			/* fill pages backwards - more efficient :-) */
+   211		subl $0x1000,%eax
+   212		jge 1b
+   213		xorl %eax,%eax		/* pg_dir is at 0x0000 */
+   214		movl %eax,%cr3		/* cr3 - page directory start */
+   215		movl %cr0,%eax
+   216		orl $0x80000000,%eax
+   217		movl %eax,%cr0		/* set paging (PG) bit */
+   218		ret			/* this also flushes prefetch-queue */
+   219	
+   220	.align 2
+   221	.word 0
+   222	idt_descr:
+   223		.word 256*8-1		# idt contains 256 entries
+   224		.long _idt
+   225	.align 2

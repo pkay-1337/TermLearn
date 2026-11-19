@@ -79,6 +79,54 @@ def _ch(**kw):
 
 # --- SPEC-EXPL-003 F1: example.explain_md (VR-EXPL-002) ---
 
+def test_mission_metadata_absent_adds_no_errors_or_warnings():
+    ch = _ch()
+    errs, warns = pack.validate_chapter_data(ch)
+    assert errs == []
+    assert not any("MISSION" in x or "LAB-" in x for x in warns)
+
+
+def test_mission_metadata_valid_passes():
+    ch = _ch()
+    ch["meta"].update({
+        "track": "kernel",
+        "phase": "P0",
+    })
+    ch["labs"] = [{
+        "id": "lab1",
+        "title": "Compile",
+        "instruction_md": "Compile and report the diagnostic.",
+        "files": [{"path": "bad.c", "content": "int main(void){return 0}\n"}],
+        "commands": {"tinker": "sh"},
+        "family": "compiler-diagnostics",
+        "tier": "core",
+        "expected_observation": "The first failing line is reported.",
+        "artifacts": ["build.log"],
+        "environment": {
+            "name": "host-user", "boundary": "host", "privilege": "user",
+            "network": "none", "timeout_s": 30,
+        },
+    }]
+    errs, warns = pack.validate_chapter_data(ch)
+    assert errs == [], errs
+    assert not any("MISSION" in x or "LAB-" in x for x in warns), warns
+
+
+def test_mission_metadata_malformed_reports_codes():
+    ch = _ch()
+    ch["meta"]["track"] = 7
+    ch["labs"] = [{
+        "id": "lab1", "title": "L", "instruction_md": "I",
+        "files": [{"path": "x.c", "content": ""}], "commands": {"run": "true"},
+        "tier": "optional", "environment": "host",
+    }]
+    errs, _ = pack.validate_chapter_data(ch)
+    joined = "\n".join(errs)
+    assert "MISSION-META" in joined
+    assert "LAB-TIER" in joined
+    assert "LAB-ENV" in joined
+
+
 def test_expl_missing_is_warn_not_error():
     ch = _ch()
     ch["blocks"][0]["example"] = {"lang": "c", "code": "int x;\n"}
@@ -402,7 +450,8 @@ def test_labs_stanza_validation():
             ],
             "commands": {
                 "run": "gcc -Wall module.c -o app && ./app",
-                "test": "gcc -Wall module.c -o app && ./app"
+                "test": "gcc -Wall module.c -o app && ./app",
+                "tinker": "gdb -q ./app"
             },
             "test_cases": [
                 {"name": "Basic Run", "expect": "", "expect_exit": 0}
@@ -422,6 +471,17 @@ def test_labs_stanza_validation():
     ch["labs"][0]["commands"]["run"] = "rm -rf /"
     errs, _ = pack.validate_chapter_data(ch, "x.yaml")
     assert any("LAB-DENY" in e for e in errs), errs
+
+    # Tinker is validated like run/test
+    ch["labs"][0]["commands"]["run"] = "gcc -Wall module.c -o app && ./app"
+    ch["labs"][0]["commands"]["tinker"] = "ssh localhost"
+    errs, _ = pack.validate_chapter_data(ch, "x.yaml")
+    assert any("LAB-DENY" in e and "tinker" in e for e in errs), errs
+
+    # Tinker-only labs are allowed
+    ch["labs"][0]["commands"] = {"tinker": "unshare -n sh"}
+    errs, _ = pack.validate_chapter_data(ch, "x.yaml")
+    assert not any("LAB-COMMANDS" in e for e in errs), errs
 
 
 
